@@ -92,7 +92,7 @@ It needs Docker (for example Colima), Lima, `mkcert` (run `mkcert -install` once
 | `-registry` | required | Container registry name |
 | `-create-registry` | `true` | Create the registry |
 | `-dns-domain` | none | Domain in DigitalOcean DNS that holds the stagelet domain |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for linux/amd64 |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
@@ -138,7 +138,7 @@ The agent keeps the access key that setup ran with, in `/etc/stagely/stagely-age
 | `-stagelet-domain` | required | Domain that stagelet host names live under |
 | `-availability-zone` | AWS chooses | Availability zone of the environment's subnet |
 | `-registry-prefix` | the environment's name | ECR repository name prefix that build workers push under |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for linux/amd64 |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
@@ -187,7 +187,7 @@ The agent gets the key in base64 in its environment file. Machines never get it:
 | `-zone` | required | Zone in the region of the hosts and stagelet machines |
 | `-stagelet-domain` | required | Domain that stagelet host names live under |
 | `-registry` | required | ID of the Artifact Registry Docker repository |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for linux/amd64 |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
@@ -239,7 +239,7 @@ Hetzner's firewalls do not filter private networks, so each machine's user data 
 | `-stagelet-domain` | required | Domain that stagelet host names live under |
 | `-registry` | required | Image name prefix in your container registry |
 | `-registry-username` | none | Registry user name; the password comes from `STAGELY_REGISTRY_PASSWORD` |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for the hosts' Linux CPU: `bin/linux-amd64` for the default `cx23` hosts |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
@@ -282,7 +282,7 @@ Vultr's firewall does not filter VPC traffic, so each machine's user data adds i
 | `-region` | required | Vultr region, such as `fra` |
 | `-stagelet-domain` | required | Domain that stagelet host names live under |
 | `-registry` | required | Name of the container registry to create. Vultr registry names are global and hold lowercase letters and digits only. |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for linux/amd64 |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
@@ -327,7 +327,7 @@ Azure gives the operator's key to the admin user. The hosts' cloud-config keeps 
 | `-location` | required | Azure location |
 | `-stagelet-domain` | required | Domain that stagelet host names live under |
 | `-registry` | required | Name of the container registry to create: 5 to 50 letters and digits, unique across Azure |
-| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more |
+| `-operator-cidr` | required | Address range that may reach the hosts over SSH; repeat for more. Use only the operators' own addresses: a range that includes the gateway host lets the gateway reach the agent host |
 | `-binaries` | required | Directory with `stagely-agent` and `stagely-gateway` for linux/amd64 |
 | `-acme-email` | none | Contact email for the ACME account |
 | `-acme-directory` | Let's Encrypt | ACME directory URL |
