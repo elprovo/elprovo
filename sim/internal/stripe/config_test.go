@@ -2,11 +2,15 @@ package stripe
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -90,4 +94,94 @@ func callAPI(t *testing.T, sim *Simulation, method, path string, form url.Values
 		t.Fatalf("%s %s: status %d, body %v", method, path, resp.status, resp.body)
 	}
 	return resp.body
+}
+
+const testCatalog = `[
+  {"lookup_key": "team_monthly", "product": "Team", "amount": 2000, "currency": "usd", "interval": "month"},
+  {"lookup_key": "team_yearly", "product": "Team", "amount": 20000, "currency": "usd", "interval": "year"},
+  {"lookup_key": "business-monthly", "product": "Business", "amount": 9900, "currency": "usd", "interval": "month"}
+]`
+
+func writeCatalog(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "catalog.json")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
+	return path
+}
+
+func TestCatalogFileSeedsExactlyItsPrices(t *testing.T) {
+	sim, err := buildFromArgs(t, t.TempDir(), "-stripe", "-stripe-catalog", writeCatalog(t, testCatalog))
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	var got []string
+	for _, pr := range callAPI(t, sim, http.MethodGet, "/v1/prices", url.Values{"active": {"true"}})["data"].([]any) {
+		got = append(got, fmt.Sprintf("%v %v %v %v %v %v", dig(pr, "id"), dig(pr, "lookup_key"), dig(pr, "product"),
+			dig(pr, "currency"), dig(pr, "recurring", "interval"), dig(pr, "unit_amount")))
+	}
+	slices.Sort(got)
+	want := []string{
+		"price_business_monthly business-monthly prod_business usd month 9900",
+		"price_team_monthly team_monthly prod_team usd month 2000",
+		"price_team_yearly team_yearly prod_team usd year 20000",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("active prices =\n%v\nwant\n%v", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	var products []string
+	for _, p := range callAPI(t, sim, http.MethodGet, "/v1/products", nil)["data"].([]any) {
+		products = append(products, dig(p, "name").(string))
+	}
+	slices.Sort(products)
+	if !slices.Equal(products, []string{"Business", "Team"}) {
+		t.Errorf("products = %v, want one per product name: [Business Team]", products)
+	}
+}
+
+func TestRestartWithCatalogRetiresTheDefaultPrice(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := buildFromArgs(t, dir, "-stripe"); err != nil {
+		t.Fatalf("first build: %v", err)
+	}
+
+	sim, err := buildFromArgs(t, dir, "-stripe", "-stripe-catalog", writeCatalog(t, testCatalog))
+	if err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+
+	if prices := callAPI(t, sim, http.MethodGet, "/v1/prices", url.Values{"lookup_keys[]": {seedLookupKey}})["data"].([]any); len(prices) != 0 {
+		t.Errorf("prices with lookup key %s = %v, want none", seedLookupKey, prices)
+	}
+	if pr := callAPI(t, sim, http.MethodGet, "/v1/prices/"+seedPriceID, nil); pr["active"] != false {
+		t.Errorf("%s active = %v, want false", seedPriceID, pr["active"])
+	}
+}
+
+func TestInvalidCatalogFileStopsStart(t *testing.T) {
+	cases := []struct {
+		name    string
+		catalog string
+		wantErr string
+	}{
+		{"empty list", `[]`, "at least one price"},
+		{"repeated lookup key", `[{"lookup_key":"a","product":"P","amount":1,"currency":"usd","interval":"month"},
+			{"lookup_key":"a","product":"P","amount":2,"currency":"usd","interval":"year"}]`, `lookup_key "a" is used twice`},
+		{"uppercase currency", `[{"lookup_key":"a","product":"P","amount":1,"currency":"USD","interval":"month"}]`, `currency "USD"`},
+		{"unknown interval", `[{"lookup_key":"a","product":"P","amount":1,"currency":"usd","interval":"fortnight"}]`, `interval "fortnight"`},
+		{"negative amount", `[{"lookup_key":"a","product":"P","amount":-1,"currency":"usd","interval":"month"}]`, "must not be negative"},
+		{"missing amount", `[{"lookup_key":"a","product":"P","currency":"usd","interval":"month"}]`, "amount is required"},
+		{"unknown field", `[{"lookup_key":"a","product":"P","amount":1,"currency":"usd","interval":"month","trial":7}]`, `unknown field "trial"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sim, err := buildFromArgs(t, t.TempDir(), "-stripe", "-stripe-catalog", writeCatalog(t, tc.catalog))
+
+			if sim != nil || err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("build = %v, %v; want an error that contains %q", sim, err, tc.wantErr)
+			}
+		})
+	}
 }

@@ -29,12 +29,15 @@ type account struct {
 	PortalSecrets   map[string]string        `json:"portal_secrets"`
 	RenewalDeclines map[string]bool          `json:"renewal_declines"`
 	ArmedFailures   map[string]bool          `json:"armed_failures"`
+	TrialReminders  map[string]bool          `json:"trial_reminders"`
 	IdempotencyKeys []*idempotencyRecord     `json:"idempotency_keys"`
 }
 
 type checkoutOrder struct {
 	LineItems            []lineItem        `json:"line_items"`
 	SubscriptionMetadata map[string]string `json:"subscription_metadata"`
+	TrialPeriodDays      int64             `json:"trial_period_days"`
+	MissingPaymentMethod string            `json:"missing_payment_method"`
 }
 
 type lineItem struct {
@@ -63,6 +66,9 @@ func (a *account) ensureMaps() {
 	}
 	if a.ArmedFailures == nil {
 		a.ArmedFailures = map[string]bool{}
+	}
+	if a.TrialReminders == nil {
+		a.TrialReminders = map[string]bool{}
 	}
 }
 

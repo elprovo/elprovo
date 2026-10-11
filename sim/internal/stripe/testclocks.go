@@ -77,7 +77,13 @@ func (t *tx) nextClockAction(clockID string, target int64) (func(), int64) {
 		}
 	}
 	for _, sub := range t.acct.Subscriptions {
-		if string(sub.TestClock) == clockID && sub.renews() && sub.CurrentPeriodEnd < at {
+		if string(sub.TestClock) != clockID {
+			continue
+		}
+		if due, ok := t.trialReminderDue(sub); ok && due < at {
+			action, at = func() { t.remindTrialEnd(sub) }, due
+		}
+		if sub.renews() && sub.CurrentPeriodEnd < at {
 			action, at = func() { t.endPeriod(sub) }, sub.CurrentPeriodEnd
 		}
 	}

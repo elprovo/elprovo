@@ -23,6 +23,8 @@ type config struct {
 	secretKeys      []string
 	apiVersion      string
 	plan            planConfig
+	catalogPath     string
+	catalog         []seedPrice
 	webhooks        []webhookConfig
 	markUnpaid      bool
 	deliveryRetries []time.Duration
@@ -60,6 +62,7 @@ func registerFlags(fs *flag.FlagSet, cfg *config, keys, hooks *repeatedFlag) {
 	fs.Int64Var(&cfg.plan.amount, "stripe-plan-amount", 2000, "amount of the seeded price "+seedPriceID+", in the smallest currency unit")
 	fs.StringVar(&cfg.plan.currency, "stripe-plan-currency", "usd", "currency of the seeded price")
 	fs.StringVar(&cfg.plan.interval, "stripe-plan-interval", "month", "billing interval of the seeded price: day, week, month or year")
+	fs.StringVar(&cfg.catalogPath, "stripe-catalog", "", "JSON file of the prices to seed instead of the -stripe-plan-* price; see sim/README.md")
 	fs.Var(hooks, "stripe-webhook", "webhook endpoint that receives every event, as url=...,secret=whsec_...; repeatable")
 	fs.BoolVar(&cfg.markUnpaid, "stripe-mark-unpaid", false, "mark a subscription unpaid instead of canceling it when every payment retry fails")
 }
@@ -82,7 +85,22 @@ func (c *config) finish(keys, hooks repeatedFlag) error {
 		c.webhooks = append(c.webhooks, hook)
 	}
 	c.webURL = strings.TrimSuffix(c.webURL, "/")
-	return c.validate()
+	if err := c.validate(); err != nil {
+		return err
+	}
+	if c.catalogPath == "" {
+		return nil
+	}
+	var err error
+	c.catalog, err = loadCatalog(c.catalogPath)
+	return err
+}
+
+func (c *config) seedPrices() []seedPrice {
+	if c.catalog != nil {
+		return c.catalog
+	}
+	return defaultSeed(c.plan)
 }
 
 func (c *config) validate() error {
@@ -96,7 +114,7 @@ func (c *config) validate() error {
 		return errors.New("stripe-plan-name must not be empty")
 	case c.plan.amount < 0:
 		return errors.New("stripe-plan-amount must not be negative")
-	case len(c.plan.currency) != 3 || strings.ToLower(c.plan.currency) != c.plan.currency:
+	case !validCurrency(c.plan.currency):
 		return fmt.Errorf("stripe-plan-currency %q must be a lowercase three-letter ISO code", c.plan.currency)
 	case !validInterval(c.plan.interval):
 		return fmt.Errorf("stripe-plan-interval %q must be day, week, month or year", c.plan.interval)

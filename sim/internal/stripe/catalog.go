@@ -1,15 +1,6 @@
 package stripe
 
-import (
-	"strconv"
-	"time"
-)
-
-const (
-	seedProductID = "prod_team_stagelet"
-	seedPriceID   = "price_team_stagelet"
-	seedLookupKey = "team_stagelet"
-)
+import "strconv"
 
 type productFields struct {
 	name        string
@@ -154,23 +145,10 @@ func planOf(pr price) plan {
 	}
 }
 
-func seedPlan(a *account, cfg planConfig, now time.Time) {
-	p := find(a.Products, seedProductID)
-	if p == nil {
-		p = newProduct(seedProductID, cfg.name, now.Unix())
-		a.Products = append(a.Products, p)
-	}
-	p.Name = cfg.name
-	p.DefaultPrice = seedPriceID
+func sameBillingTerms(a, b price) bool {
+	return a.Currency == b.Currency && *a.Recurring == *b.Recurring
+}
 
-	pr := find(a.Prices, seedPriceID)
-	if pr == nil {
-		pr = newPrice(seedPriceID, seedProductID, cfg.amount, cfg.currency, cfg.interval, 1, now.Unix())
-		a.Prices = append(a.Prices, pr)
-	}
-	pr.UnitAmount = cfg.amount
-	pr.UnitAmountDecimal = strconv.FormatInt(cfg.amount, 10)
-	pr.Currency = cfg.currency
-	pr.Recurring.Interval = cfg.interval
-	pr.LookupKey = seedLookupKey
+func mixedPriceTerms(param string) *apiError {
+	return invalidRequest(param, "All prices on a subscription must have the same `currency` and `recurring.interval`.")
 }

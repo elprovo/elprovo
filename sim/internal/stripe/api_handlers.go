@@ -141,21 +141,31 @@ func (s *Simulation) listPrices(req *apiRequest) (any, error) {
 }
 
 func checkoutFieldsFrom(p *params) (checkoutFields, error) {
+	subscriptionData := p.get("subscription_data")
 	in := checkoutFields{
-		mode:                 p.str("mode"),
-		customer:             p.str("customer"),
-		customerEmail:        p.str("customer_email"),
-		successURL:           p.str("success_url"),
-		cancelURL:            p.str("cancel_url"),
-		clientReferenceID:    p.str("client_reference_id"),
-		metadata:             p.metadata("metadata").apply(nil),
-		subscriptionMetadata: p.get("subscription_data").metadata("metadata").apply(nil),
+		mode:                    p.str("mode"),
+		customer:                p.str("customer"),
+		customerEmail:           p.str("customer_email"),
+		successURL:              p.str("success_url"),
+		cancelURL:               p.str("cancel_url"),
+		clientReferenceID:       p.str("client_reference_id"),
+		metadata:                p.metadata("metadata").apply(nil),
+		subscriptionMetadata:    subscriptionData.metadata("metadata").apply(nil),
+		paymentMethodCollection: p.str("payment_method_collection"),
+		missingPaymentMethod:    subscriptionData.get("trial_settings").get("end_behavior").str("missing_payment_method"),
 	}
 	expiresAt, _, err := p.integer("expires_at")
 	if err != nil {
 		return in, err
 	}
 	in.expiresAt = expiresAt
+	trialDays, set, err := subscriptionData.integer("trial_period_days")
+	if err != nil {
+		return in, invalidInteger("subscription_data[trial_period_days]", subscriptionData.str("trial_period_days"))
+	}
+	if set {
+		in.trialPeriodDays = &trialDays
+	}
 	for i, item := range p.get("line_items").list() {
 		quantity, _, err := item.integer("quantity")
 		if err != nil {
@@ -223,15 +233,45 @@ func subscriptionStatusMatches(filter, status string) bool {
 	return filter == status
 }
 
-func (s *Simulation) updateSubscription(req *apiRequest) (any, error) {
-	id := req.http.PathValue("id")
-	in := subscriptionFields{metadata: req.params.metadata("metadata")}
-	cancel, set, err := req.params.boolean("cancel_at_period_end")
+func subscriptionFieldsFrom(p *params) (subscriptionFields, error) {
+	in := subscriptionFields{metadata: p.metadata("metadata"), prorationBehavior: p.str("proration_behavior")}
+	cancel, set, err := p.boolean("cancel_at_period_end")
 	if err != nil {
-		return nil, err
+		return in, err
 	}
 	if set {
 		in.cancelAtPeriodEnd = &cancel
+	}
+	for i, item := range p.get("items").list() {
+		u, err := itemUpdateFrom(item, fmt.Sprintf("items[%d]", i))
+		if err != nil {
+			return in, err
+		}
+		in.items = append(in.items, u)
+	}
+	return in, nil
+}
+
+func itemUpdateFrom(p *params, param string) (itemUpdate, error) {
+	u := itemUpdate{id: p.str("id"), price: p.str("price")}
+	quantity, set, err := p.integer("quantity")
+	if err != nil {
+		return u, invalidInteger(param+"[quantity]", p.str("quantity"))
+	}
+	if set {
+		u.quantity = &quantity
+	}
+	if u.deleted, _, err = p.boolean("deleted"); err != nil {
+		return u, invalidRequest(param+"[deleted]", "Invalid boolean: %s", p.str("deleted"))
+	}
+	return u, nil
+}
+
+func (s *Simulation) updateSubscription(req *apiRequest) (any, error) {
+	id := req.http.PathValue("id")
+	in, err := subscriptionFieldsFrom(req.params)
+	if err != nil {
+		return nil, err
 	}
 	return s.mutate(req.info, func(t *tx) (any, error) { return t.updateSubscription(id, in) })
 }

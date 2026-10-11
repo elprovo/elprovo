@@ -237,8 +237,18 @@ type subscription struct {
 	StartDate            int64               `json:"start_date"`
 	Status               string              `json:"status"`
 	TestClock            nullString          `json:"test_clock"`
-	TrialEnd             jsonNull            `json:"trial_end"`
-	TrialStart           jsonNull            `json:"trial_start"`
+	TrialEnd             nullTime            `json:"trial_end"`
+	TrialSettings        trialSettings       `json:"trial_settings"`
+	TrialStart           nullTime            `json:"trial_start"`
+}
+
+type trialSettings struct {
+	EndBehavior trialEndBehavior `json:"end_behavior"`
+}
+
+type trialEndBehavior struct {
+	BillingCycleAnchor   string `json:"billing_cycle_anchor"`
+	MissingPaymentMethod string `json:"missing_payment_method"`
 }
 
 type cancellationDetails struct {

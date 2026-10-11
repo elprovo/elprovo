@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-const day = 24 * time.Hour
+const (
+	day               = 24 * time.Hour
+	trialReminderLead = 3 * day
+)
 
 func (sub *subscription) interval() (string, int64) {
 	r := sub.Items.Data[0].Price.Recurring
@@ -14,10 +17,10 @@ func (sub *subscription) interval() (string, int64) {
 }
 
 func (sub *subscription) renews() bool {
-	return sub.Status == "active" || sub.Status == "past_due"
+	return sub.Status == "active" || sub.Status == "past_due" || sub.Status == "trialing"
 }
 
-func (t *tx) newSubscription(c *customer, items []lineItem, paymentMethodID string, metadata map[string]string) *subscription {
+func (t *tx) newSubscription(c *customer, order checkoutOrder, paymentMethodID string) *subscription {
 	start := t.clockNow(c.TestClock)
 	sub := &subscription{
 		ID:                   newID("sub"),
@@ -27,35 +30,54 @@ func (t *tx) newSubscription(c *customer, items []lineItem, paymentMethodID stri
 		Created:              start,
 		Customer:             c.ID,
 		DefaultPaymentMethod: nullString(paymentMethodID),
-		Metadata:             maps.Clone(metadata),
+		Metadata:             maps.Clone(order.SubscriptionMetadata),
 		StartDate:            start,
 		Status:               "incomplete",
 		TestClock:            c.TestClock,
+		TrialSettings: trialSettings{EndBehavior: trialEndBehavior{
+			BillingCycleAnchor:   "now",
+			MissingPaymentMethod: order.MissingPaymentMethod,
+		}},
 	}
 	if sub.Metadata == nil {
 		sub.Metadata = map[string]string{}
 	}
-	data := make([]subscriptionItem, 0, len(items))
-	for _, li := range items {
-		pr := find(t.acct.Prices, li.Price)
-		data = append(data, subscriptionItem{
-			ID:           newID("si"),
-			Object:       "subscription_item",
-			Created:      start,
-			Metadata:     map[string]string{},
-			Plan:         planOf(*pr),
-			Price:        *pr,
-			Quantity:     li.Quantity,
-			Subscription: sub.ID,
-			TaxRates:     []string{},
-		})
+	data := make([]subscriptionItem, 0, len(order.LineItems))
+	for _, li := range order.LineItems {
+		data = append(data, newSubscriptionItem(sub.ID, *find(t.acct.Prices, li.Price), li.Quantity, start))
 	}
 	sub.Items = subscriptionItems{Object: "list", Data: data, TotalCount: len(data), URL: "/v1/subscription_items?subscription=" + sub.ID}
 	sub.Currency = data[0].Price.Currency
-	interval, count := sub.interval()
-	sub.setPeriod(start, nextBoundary(start, interval, count, start))
+	if order.TrialPeriodDays > 0 {
+		sub.startTrial(start, order.TrialPeriodDays)
+	} else {
+		interval, count := sub.interval()
+		sub.setPeriod(start, nextBoundary(start, interval, count, start))
+	}
 	t.acct.Subscriptions = append(t.acct.Subscriptions, sub)
 	return sub
+}
+
+func newSubscriptionItem(subscriptionID string, pr price, quantity, created int64) subscriptionItem {
+	return subscriptionItem{
+		ID:           newID("si"),
+		Object:       "subscription_item",
+		Created:      created,
+		Metadata:     map[string]string{},
+		Plan:         planOf(pr),
+		Price:        pr,
+		Quantity:     quantity,
+		Subscription: subscriptionID,
+		TaxRates:     []string{},
+	}
+}
+
+func (sub *subscription) startTrial(start, days int64) {
+	end := time.Unix(start, 0).UTC().AddDate(0, 0, int(days)).Unix()
+	sub.Status = "trialing"
+	sub.TrialStart, sub.TrialEnd = nullTime(start), nullTime(end)
+	sub.BillingCycleAnchor = end
+	sub.setPeriod(start, end)
 }
 
 func (sub *subscription) setPeriod(start, end int64) {
@@ -94,8 +116,9 @@ func (t *tx) newInvoice(sub *subscription, c *customer, reason string, periodSta
 	}
 	lines := make([]invoiceLine, 0, len(sub.Items.Data))
 	for _, item := range sub.Items.Data {
-		lines = append(lines, t.invoiceLine(inv, sub, item))
-		inv.Subtotal += item.Price.UnitAmount * item.Quantity
+		line := t.invoiceLine(inv, sub, item)
+		lines = append(lines, line)
+		inv.Subtotal += line.Amount
 	}
 	inv.Lines = invoiceLines{Object: "list", Data: lines, TotalCount: len(lines), URL: "/v1/invoices/" + inv.ID + "/lines"}
 	inv.SubtotalExcludingTax, inv.Total, inv.TotalExcludingTax = inv.Subtotal, inv.Subtotal, inv.Subtotal
@@ -110,13 +133,17 @@ func (t *tx) invoiceLine(inv *invoice, sub *subscription, item subscriptionItem)
 		productName = p.Name
 	}
 	amount := item.Price.UnitAmount * item.Quantity
+	description := fmt.Sprintf("%d × %s (at %s / %s)", item.Quantity, productName,
+		formatMoney(item.Price.UnitAmount, item.Price.Currency), item.Price.Recurring.Interval)
+	if sub.Status == "trialing" {
+		amount, description = 0, "Trial period for "+productName
+	}
 	return invoiceLine{
-		ID:       newID("il"),
-		Object:   "line_item",
-		Amount:   amount,
-		Currency: inv.Currency,
-		Description: fmt.Sprintf("%d × %s (at %s / %s)", item.Quantity, productName,
-			formatMoney(item.Price.UnitAmount, item.Price.Currency), item.Price.Recurring.Interval),
+		ID:           newID("il"),
+		Object:       "line_item",
+		Amount:       amount,
+		Currency:     inv.Currency,
+		Description:  description,
 		Discountable: true,
 		Invoice:      inv.ID,
 		Metadata:     maps.Clone(sub.Metadata),
@@ -150,6 +177,11 @@ func (t *tx) finalizeInvoice(inv *invoice, c *customer) {
 
 func (t *tx) collectInvoice(inv *invoice, c *customer, paymentMethodID string, automatic bool) bool {
 	at := t.clockNow(inv.TestClock)
+	if inv.AmountDue == 0 {
+		inv.Attempted = true
+		t.markInvoicePaid(inv, c, at)
+		return true
+	}
 	pi := t.invoicePaymentIntent(inv, c, paymentMethodID, at)
 	pi.PaymentMethod = nullString(paymentMethodID)
 	inv.Attempted = true
@@ -225,7 +257,10 @@ func (t *tx) markPaid(inv *invoice, c *customer, pi *paymentIntent, at int64) {
 	pi.AmountReceived = pi.Amount
 	pi.LastPaymentError = nil
 	t.emit("payment_intent.succeeded", pi)
+	t.markInvoicePaid(inv, c, at)
+}
 
+func (t *tx) markInvoicePaid(inv *invoice, c *customer, at int64) {
 	inv.AmountPaid, inv.AmountRemaining = inv.AmountDue, 0
 	inv.Paid = true
 	inv.Status = "paid"
@@ -292,20 +327,59 @@ func defaultPaymentMethod(sub *subscription, c *customer) string {
 }
 
 func (t *tx) endPeriod(sub *subscription) {
-	if sub.CancelAtPeriodEnd {
+	switch {
+	case sub.CancelAtPeriodEnd:
 		t.cancelSubscription(sub, sub.CurrentPeriodEnd, "")
+	case sub.Status == "trialing":
+		t.endTrial(sub)
+	default:
+		t.renewSubscription(sub)
+	}
+}
+
+func (t *tx) endTrial(sub *subscription) {
+	c := find(t.acct.Customers, sub.Customer)
+	if defaultPaymentMethod(sub, c) != "" {
+		t.renewSubscription(sub)
 		return
 	}
-	t.renewSubscription(sub)
+	switch sub.TrialSettings.EndBehavior.MissingPaymentMethod {
+	case "cancel":
+		t.cancelSubscription(sub, sub.CurrentPeriodEnd, "")
+	case "pause":
+		t.setSubscriptionStatus(sub, "paused")
+		t.emit("customer.subscription.paused", sub)
+	default:
+		t.renewSubscription(sub)
+	}
+}
+
+func (t *tx) trialReminderDue(sub *subscription) (int64, bool) {
+	if sub.Status != "trialing" || t.acct.TrialReminders[sub.ID] {
+		return 0, false
+	}
+	return int64(sub.TrialEnd) - int64(trialReminderLead/time.Second), true
+}
+
+func (t *tx) remindTrialEnd(sub *subscription) {
+	t.acct.TrialReminders[sub.ID] = true
+	t.emit("customer.subscription.trial_will_end", sub)
 }
 
 func (t *tx) renewSubscription(sub *subscription) {
-	c := find(t.acct.Customers, sub.Customer)
 	before := snapshot(sub)
 	oldStart, oldEnd := sub.CurrentPeriodStart, sub.CurrentPeriodEnd
+	if sub.Status == "trialing" {
+		sub.Status = "active"
+	}
 	interval, count := sub.interval()
 	sub.setPeriod(oldEnd, nextBoundary(sub.BillingCycleAnchor, interval, count, oldEnd))
-	inv := t.newInvoice(sub, c, "subscription_cycle", oldStart, oldEnd)
+	t.billPeriod(sub, before, "subscription_cycle", oldStart, oldEnd)
+}
+
+func (t *tx) billPeriod(sub *subscription, before map[string]any, reason string, periodStart, periodEnd int64) {
+	c := find(t.acct.Customers, sub.Customer)
+	inv := t.newInvoice(sub, c, reason, periodStart, periodEnd)
 	t.emit("invoice.created", inv)
 	sub.LatestInvoice = nullString(inv.ID)
 	t.emitUpdate("customer.subscription.updated", sub, before)
@@ -365,23 +439,57 @@ func (t *tx) cancelSubscription(sub *subscription, at int64, reason string) {
 type subscriptionFields struct {
 	cancelAtPeriodEnd *bool
 	metadata          metadataUpdate
+	items             []itemUpdate
+	prorationBehavior string
 }
+
+const canceledUpdateMessage = "A canceled subscription can only update its cancellation_details and metadata."
 
 func (t *tx) updateSubscription(id string, in subscriptionFields) (*subscription, error) {
 	sub := find(t.acct.Subscriptions, id)
 	if sub == nil {
 		return nil, noSuch("subscription", id, "id")
 	}
-	if sub.Status == "canceled" && in.cancelAtPeriodEnd != nil {
-		return nil, invalidRequest("cancel_at_period_end", "A canceled subscription can only update its cancellation_details and metadata.")
+	if err := validateProrationBehavior(in.prorationBehavior); err != nil {
+		return nil, err
 	}
+	if sub.Status == "canceled" && in.cancelAtPeriodEnd != nil {
+		return nil, invalidRequest("cancel_at_period_end", canceledUpdateMessage)
+	}
+	if sub.Status == "canceled" && len(in.items) > 0 {
+		return nil, invalidRequest("items", canceledUpdateMessage)
+	}
+	items, err := t.updatedItems(sub, in.items)
+	if err != nil {
+		return nil, err
+	}
+	now := t.clockNow(sub.TestClock)
 	before := snapshot(sub)
 	sub.Metadata = in.metadata.apply(sub.Metadata)
 	if in.cancelAtPeriodEnd != nil {
-		sub.setCancelAtPeriodEnd(*in.cancelAtPeriodEnd, t.clockNow(sub.TestClock))
+		sub.setCancelAtPeriodEnd(*in.cancelAtPeriodEnd, now)
+	}
+	if items != nil && sub.replaceItems(items, now) && sub.renews() {
+		t.billPeriod(sub, before, "subscription_update", now, now)
+		return sub, nil
 	}
 	t.emitUpdate("customer.subscription.updated", sub, before)
 	return sub, nil
+}
+
+func (sub *subscription) replaceItems(items []subscriptionItem, now int64) (periodRestarted bool) {
+	oldInterval, oldCount := sub.interval()
+	sub.Items.Data, sub.Items.TotalCount = items, len(items)
+	interval, count := sub.interval()
+	if (interval == oldInterval && count == oldCount) || sub.Status == "trialing" {
+		return false
+	}
+	sub.BillingCycleAnchor = now
+	sub.setPeriod(now, nextBoundary(now, interval, count, now))
+	if sub.CancelAtPeriodEnd {
+		sub.CancelAt = nullTime(sub.CurrentPeriodEnd)
+	}
+	return true
 }
 
 func (sub *subscription) setCancelAtPeriodEnd(cancel bool, now int64) {

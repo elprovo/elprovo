@@ -147,3 +147,176 @@ func TestAdminCompletesCheckoutWithChosenTestCard(t *testing.T) {
 		t.Errorf("session status = %v, want complete", got)
 	}
 }
+
+func TestCheckoutWithTrialStartsTrialingSubscriptionWithFreeInvoice(t *testing.T) {
+	env := newTestEnv(t)
+	session := env.createSession(url.Values{"customer_email": {"ada@example.com"}, "subscription_data[trial_period_days]": {"14"}})
+	if session["amount_total"] != float64(0) || session["payment_method_collection"] != "always" {
+		t.Fatalf("amount_total, payment_method_collection = %v, %v; want 0 due today and always", session["amount_total"], session["payment_method_collection"])
+	}
+	page := env.getPage(session["url"].(string))
+	for _, want := range []string{"14 days free", "then $20.00 per month", "Start trial", `name="cardNumber"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("checkout page lacks %q", want)
+		}
+	}
+
+	env.submitCheckout(session["url"].(string), "4242424242424242", nil)
+
+	completed := env.ok(http.MethodGet, "/v1/checkout/sessions/"+session["id"].(string), url.Values{"expand[]": {"subscription", "invoice"}})
+	sub := completed["subscription"].(map[string]any)
+	start := sub["start_date"].(float64)
+	end := start + 14*24*60*60
+	line := dig(completed, "invoice", "lines", "data").([]any)[0]
+	checks := map[string][2]any{
+		"session payment_status":   {completed["payment_status"], "paid"},
+		"status":                   {sub["status"], "trialing"},
+		"trial_start":              {sub["trial_start"], start},
+		"trial_end":                {sub["trial_end"], end},
+		"current_period_start":     {sub["current_period_start"], start},
+		"current_period_end":       {sub["current_period_end"], end},
+		"billing_cycle_anchor":     {sub["billing_cycle_anchor"], end},
+		"missing_payment_method":   {dig(sub, "trial_settings", "end_behavior", "missing_payment_method"), "create_invoice"},
+		"invoice billing_reason":   {dig(completed, "invoice", "billing_reason"), "subscription_create"},
+		"invoice status":           {dig(completed, "invoice", "status"), "paid"},
+		"invoice amount_due":       {dig(completed, "invoice", "amount_due"), float64(0)},
+		"invoice payment_intent":   {dig(completed, "invoice", "payment_intent"), nil},
+		"invoice line amount":      {dig(line, "amount"), float64(0)},
+		"invoice line description": {dig(line, "description"), "Trial period for Team Stagelet"},
+	}
+	for name, c := range checks {
+		if c[0] != c[1] {
+			t.Errorf("%s = %v, want %v", name, c[0], c[1])
+		}
+	}
+	wantTypes := []string{
+		"customer.created",
+		"payment_method.attached",
+		"customer.subscription.created",
+		"invoice.created",
+		"invoice.finalized",
+		"invoice.paid",
+		"invoice.payment_succeeded",
+		"checkout.session.completed",
+	}
+	if got := env.eventTypesSince(0); !slices.Equal(got, wantTypes) {
+		t.Errorf("event types = %v\nwant %v", got, wantTypes)
+	}
+}
+
+func TestTrialCheckoutCollectingPaymentMethodIfRequiredCompletesWithoutCard(t *testing.T) {
+	cases := []struct {
+		name       string
+		completion func(env *testEnv, session map[string]any) string
+		wantStatus int
+	}{
+		{"hosted page", func(_ *testEnv, session map[string]any) string { return session["url"].(string) }, http.StatusSeeOther},
+		{"admin API", func(env *testEnv, session map[string]any) string {
+			return env.web.URL + "/_sim/checkout/sessions/" + session["id"].(string) + "/complete"
+		}, http.StatusOK},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			session := env.createSession(url.Values{
+				"customer_email":                       {"ada@example.com"},
+				"payment_method_collection":            {"if_required"},
+				"subscription_data[trial_period_days]": {"14"},
+			})
+
+			if status := env.postPage(tc.completion(env, session), nil).status; status != tc.wantStatus {
+				t.Fatalf("completion without card details answered %d, want %d", status, tc.wantStatus)
+			}
+
+			completed := env.ok(http.MethodGet, "/v1/checkout/sessions/"+session["id"].(string), url.Values{"expand[]": {"subscription", "customer"}})
+			if completed["payment_method_collection"] != "if_required" || completed["status"] != "complete" {
+				t.Errorf("session payment_method_collection, status = %v, %v; want if_required, complete", completed["payment_method_collection"], completed["status"])
+			}
+			if dig(completed, "subscription", "status") != "trialing" || dig(completed, "subscription", "default_payment_method") != nil {
+				t.Errorf("subscription status, default_payment_method = %v, %v; want trialing without a payment method",
+					dig(completed, "subscription", "status"), dig(completed, "subscription", "default_payment_method"))
+			}
+			if got := dig(completed, "customer", "email"); got != "ada@example.com" {
+				t.Errorf("customer email = %v, want ada@example.com", got)
+			}
+			if slices.Contains(env.eventTypesSince(0), "payment_method.attached") {
+				t.Errorf("events include payment_method.attached, want no payment method")
+			}
+		})
+	}
+}
+
+func TestTrialCheckoutPageWithoutPaymentDueHasNoCardFields(t *testing.T) {
+	env := newTestEnv(t)
+	session := env.createSession(url.Values{"payment_method_collection": {"if_required"}, "subscription_data[trial_period_days]": {"14"}})
+
+	page := env.getPage(session["url"].(string))
+
+	if strings.Contains(page, `name="cardNumber"`) || !strings.Contains(page, "Start trial") {
+		t.Errorf("checkout page shows card fields or lacks Start trial; want an email-only trial form")
+	}
+}
+
+func TestCollectingPaymentMethodIfRequiredStillNeedsCardWhenPaymentIsDue(t *testing.T) {
+	env := newTestEnv(t)
+	session := env.createSession(url.Values{"customer_email": {"ada@example.com"}, "payment_method_collection": {"if_required"}})
+
+	resp := env.postPage(session["url"].(string), nil)
+
+	if resp.status != http.StatusOK || !strings.Contains(resp.body, "Your card number is incomplete.") {
+		t.Fatalf("status %d; want 200 and the incomplete card number message", resp.status)
+	}
+	if got := env.ok(http.MethodGet, "/v1/checkout/sessions/"+session["id"].(string), nil)["status"]; got != "open" {
+		t.Errorf("session status = %v, want open", got)
+	}
+}
+
+func TestTrialShorterThanThreeDaysSendsTrialWillEndAtSignup(t *testing.T) {
+	env := newTestEnv(t)
+	session := env.createSession(url.Values{"customer_email": {"ada@example.com"}, "subscription_data[trial_period_days]": {"2"}})
+
+	env.submitCheckout(session["url"].(string), "4242424242424242", nil)
+
+	types := env.eventTypesSince(0)
+	created := slices.Index(types, "customer.subscription.created")
+	if created < 0 || created+1 >= len(types) || types[created+1] != "customer.subscription.trial_will_end" {
+		t.Errorf("events = %v, want customer.subscription.trial_will_end right after customer.subscription.created", types)
+	}
+}
+
+func TestCheckoutRejectsInvalidTrialOptions(t *testing.T) {
+	env := newTestEnv(t)
+	cases := []struct {
+		name      string
+		form      url.Values
+		wantParam string
+	}{
+		{"zero trial days", url.Values{"subscription_data[trial_period_days]": {"0"}}, "subscription_data[trial_period_days]"},
+		{"more than 730 trial days", url.Values{"subscription_data[trial_period_days]": {"731"}}, "subscription_data[trial_period_days]"},
+		{"trial days not an integer", url.Values{"subscription_data[trial_period_days]": {"two"}}, "subscription_data[trial_period_days]"},
+		{
+			"unknown missing payment method behavior",
+			url.Values{"subscription_data[trial_settings][end_behavior][missing_payment_method]": {"delete"}},
+			"subscription_data[trial_settings][end_behavior][missing_payment_method]",
+		},
+		{"unknown payment method collection", url.Values{"payment_method_collection": {"never"}}, "payment_method_collection"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			form := url.Values{
+				"mode":                    {"subscription"},
+				"line_items[0][price]":    {seedPriceID},
+				"line_items[0][quantity]": {"1"},
+			}
+			for k, v := range tc.form {
+				form[k] = v
+			}
+
+			resp := env.request(http.MethodPost, "/v1/checkout/sessions", form, nil)
+
+			if resp.status != http.StatusBadRequest || dig(resp.body, "error", "param") != tc.wantParam {
+				t.Errorf("status %d, body %v; want 400 for param %s", resp.status, resp.body, tc.wantParam)
+			}
+		})
+	}
+}

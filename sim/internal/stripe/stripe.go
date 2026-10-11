@@ -1,5 +1,5 @@
 // Package stripe simulates the parts of the Stripe API that Stagely uses to
-// sell its subscription plan: customers, products and prices, Checkout
+// sell its subscription plans: customers, products and prices, Checkout
 // Sessions with a hosted payment page, subscriptions, invoices, the billing
 // portal, test clocks, and events delivered to signed webhook endpoints.
 package stripe
@@ -77,7 +77,7 @@ func newSimulation(cfg config, statePath string, log *slog.Logger) (*Simulation,
 	s.hooks = newDispatcher(cfg.deliveryRetries, s.log, s.deliveryTarget, s.markDelivered)
 	err = store.Update(func(a *account) error {
 		a.ensureMaps()
-		seedPlan(a, cfg.plan, s.now())
+		seedCatalog(a, cfg.seedPrices(), s.now())
 		syncFlagEndpoints(a, cfg.webhooks, s.now())
 		return nil
 	})

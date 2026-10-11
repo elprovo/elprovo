@@ -1,7 +1,10 @@
 {{define "checkout"}}{{template "top" .}}
 {{if .CancelURL}}<a class="back" href="{{.CancelURL}}">&larr; Back</a>{{end}}
-<h1>Subscribe to {{.ProductName}}</h1>
-<p><span class="amount">{{.Total}}</span> <span class="muted">per {{.Interval}}</span></p>
+{{if .TrialDays}}<h1>Try {{.ProductName}}</h1>
+<p><span class="amount">{{.TrialDays}} days free</span> <span class="muted">then {{.Recurring}} per {{.Interval}}</span></p>
+{{else}}<h1>Subscribe to {{.ProductName}}</h1>
+<p><span class="amount">{{.Recurring}}</span> <span class="muted">per {{.Interval}}</span></p>
+{{end}}
 <ul class="lines">
 {{range .Lines}}<li><span>{{.Name}}{{if gt .Quantity 1}} &times; {{.Quantity}}{{end}}</span><span>{{.Amount}}</span></li>
 {{end}}</ul>
@@ -9,8 +12,8 @@
 <form method="post" action="{{.Action}}" novalidate>
 <label for="email">Email</label>
 <input id="email" name="email" type="email" autocomplete="email" value="{{.Form.Email}}"{{if .EmailLocked}} readonly{{end}}>
-{{template "cardFields" .Form}}
+{{if .CollectsCard}}{{template "cardFields" .Form}}{{end}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-<button type="submit">Subscribe</button>
+<button type="submit">{{if .TrialDays}}Start trial{{else}}Subscribe{{end}}</button>
 </form>
 {{template "bottom" .}}{{end}}

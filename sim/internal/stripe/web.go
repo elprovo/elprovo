@@ -65,16 +65,19 @@ type lineView struct {
 }
 
 type checkoutView struct {
-	Title       string
-	Action      string
-	ProductName string
-	Interval    string
-	Lines       []lineView
-	Total       string
-	EmailLocked bool
-	CancelURL   string
-	Form        cardForm
-	Error       string
+	Title        string
+	Action       string
+	ProductName  string
+	Interval     string
+	Lines        []lineView
+	Recurring    string
+	Total        string
+	TrialDays    int64
+	CollectsCard bool
+	EmailLocked  bool
+	CancelURL    string
+	Form         cardForm
+	Error        string
 }
 
 type messageView struct {
@@ -112,15 +115,19 @@ func (s *Simulation) renderCheckout(w http.ResponseWriter, id string, form cardF
 }
 
 func checkoutPage(a *account, cs *checkoutSession, form cardForm, problem string) checkoutView {
+	order := a.CheckoutOrders[cs.ID]
 	view := checkoutView{
-		Title:     "Checkout",
-		Action:    "/c/pay/" + cs.ID,
-		Total:     formatMoney(cs.AmountTotal, cs.Currency),
-		CancelURL: string(cs.CancelURL),
-		Form:      form,
-		Error:     problem,
+		Title:        "Checkout",
+		Action:       "/c/pay/" + cs.ID,
+		Total:        formatMoney(cs.AmountTotal, cs.Currency),
+		TrialDays:    order.TrialPeriodDays,
+		CollectsCard: cs.collectsPaymentMethod(),
+		CancelURL:    string(cs.CancelURL),
+		Form:         form,
+		Error:        problem,
 	}
-	for _, li := range a.CheckoutOrders[cs.ID].LineItems {
+	var recurring int64
+	for _, li := range order.LineItems {
 		pr := find(a.Prices, li.Price)
 		name := pr.Product
 		if p := find(a.Products, pr.Product); p != nil {
@@ -130,7 +137,9 @@ func checkoutPage(a *account, cs *checkoutSession, form cardForm, problem string
 			view.ProductName, view.Interval = name, pr.Recurring.Interval
 		}
 		view.Lines = append(view.Lines, lineView{Name: name, Quantity: li.Quantity, Amount: formatMoney(pr.UnitAmount*li.Quantity, pr.Currency)})
+		recurring += pr.UnitAmount * li.Quantity
 	}
+	view.Recurring = formatMoney(recurring, cs.Currency)
 	if c := find(a.Customers, string(cs.Customer)); c != nil && c.Email != "" {
 		view.Form.Email, view.EmailLocked = string(c.Email), true
 	} else if cs.CustomerEmail != "" {

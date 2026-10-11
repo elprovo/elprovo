@@ -38,7 +38,7 @@ Each simulation lives in `internal/<service>/`, registers its flags in `cmd/stag
 
 ## Stripe
 
-The Stripe simulation serves the calls Stagely makes to sell one subscription plan: a hosted Checkout page, subscriptions with invoices and payments, the billing portal, test clocks, and events delivered to signed webhooks. It runs two listeners: the API, like `api.stripe.com`, and the hosted pages, like `checkout.stripe.com` and `billing.stripe.com`. The hosted-pages listener also serves the `/_sim/` admin API.
+The Stripe simulation serves the calls Stagely makes to sell subscription plans: a hosted Checkout page with optional free trials, subscriptions with invoices, payments and plan changes, the billing portal, test clocks, and events delivered to signed webhooks. It runs two listeners: the API, like `api.stripe.com`, and the hosted pages, like `checkout.stripe.com` and `billing.stripe.com`. The hosted-pages listener also serves the `/_sim/` admin API.
 
 ```sh
 go run ./cmd/stagely-sim -stripe \
@@ -61,10 +61,34 @@ Point a Stripe SDK at `http://localhost:9200` with the key `sk_test_stagely`. In
 | `-stripe-plan-amount` | `2000` | Amount of the seeded price `price_team_stagelet`, in the smallest currency unit |
 | `-stripe-plan-currency` | `usd` | Currency of the seeded price |
 | `-stripe-plan-interval` | `month` | Interval of the seeded price: `day`, `week`, `month` or `year` |
+| `-stripe-catalog` | none | JSON file of the prices to seed instead of the `-stripe-plan-*` price. See [Price catalog](#price-catalog). |
 | `-stripe-webhook` | none | Webhook endpoint that receives every event, as `url=...,secret=whsec_...`. Repeatable. |
 | `-stripe-mark-unpaid` | off | When every payment retry fails, mark the subscription `unpaid` instead of canceling it |
 
-The seeded price has the lookup key `team_stagelet`, so code can find it with `GET /v1/prices?lookup_keys[]=team_stagelet` in the simulation and in Stripe alike. Every start updates the seeded product and price from the flags.
+Without `-stripe-catalog`, the simulation seeds one price with the lookup key `team_stagelet`, so code can find it with `GET /v1/prices?lookup_keys[]=team_stagelet` in the simulation and in Stripe alike. Every start updates the seeded product and price from the flags.
+
+### Price catalog
+
+`-stripe-catalog <path>` names a JSON file with the prices to seed. The simulation then seeds exactly these prices and not the `-stripe-plan-*` price, and it ignores the `-stripe-plan-*` flags:
+
+```json
+[
+  {"lookup_key": "team_monthly", "product": "Team", "amount": 2000, "currency": "usd", "interval": "month"},
+  {"lookup_key": "team_yearly", "product": "Team", "amount": 20000, "currency": "usd", "interval": "year"}
+]
+```
+
+| Field | Meaning |
+| --- | --- |
+| `lookup_key` | Lookup key of the price. It must be unique in the file. |
+| `product` | Name of the product. Entries with the same name share one product. |
+| `amount` | Price in the smallest currency unit, `0` or more. Required. |
+| `currency` | Lowercase three-letter ISO code, for example `usd` |
+| `interval` | `day`, `week`, `month` or `year` |
+
+Each price is active and recurring with an interval count of 1. IDs come from the names: `team_monthly` becomes `price_team_monthly`, and `Team` becomes `prod_team`. A product's `default_price` is its first price in the file. The simulation checks the file at start and stops with a message that names the entry and the problem: invalid JSON, an unknown field, a repeated lookup key, two names that give the same ID, a missing or negative amount, or an invalid currency or interval.
+
+Seeded products and prices carry the metadata `stagely_sim_seed: true`. At each start, the simulation deactivates seeded prices and products that the current seed no longer names, and removes the lookup key from those prices.
 
 ### Coverage
 
@@ -73,8 +97,8 @@ The seeded price has the lookup key `team_stagelet`, so code can find it with `G
 | `POST /v1/customers`, `GET /v1/customers`, `GET`/`POST /v1/customers/{id}` | `email`, `name`, `description`, `phone`, `metadata`, `invoice_settings[default_payment_method]`, `test_clock`. List filters: `email`, `test_clock`. |
 | `POST`/`GET /v1/products`, `GET /v1/products/{id}` | `name`, `description`, `active`, `metadata` |
 | `POST`/`GET /v1/prices`, `GET /v1/prices/{id}` | `product` or `product_data[name]`, `unit_amount`, `currency`, `recurring[interval]`, `recurring[interval_count]`, `lookup_key`, `nickname`. List filters: `active`, `product`, `type`, `lookup_keys[]`. |
-| `POST`/`GET /v1/checkout/sessions`, `GET /v1/checkout/sessions/{id}`, `POST .../{id}/expire` | `mode=subscription` only. `customer` or `customer_email`, `line_items`, `success_url` with `{CHECKOUT_SESSION_ID}`, `cancel_url`, `client_reference_id`, `metadata`, `subscription_data[metadata]`, `expires_at` (30 minutes to 24 hours). Open sessions expire on their own within 5 seconds of `expires_at`. |
-| `GET /v1/subscriptions`, `GET`/`POST`/`DELETE /v1/subscriptions/{id}` | Update `cancel_at_period_end` and `metadata`; `DELETE` cancels now. List filters: `customer`, `price`, and `status`, where an empty status excludes canceled subscriptions and `all` includes them. |
+| `POST`/`GET /v1/checkout/sessions`, `GET /v1/checkout/sessions/{id}`, `POST .../{id}/expire` | `mode=subscription` only. `customer` or `customer_email`, `line_items`, `success_url` with `{CHECKOUT_SESSION_ID}`, `cancel_url`, `client_reference_id`, `metadata`, `subscription_data[metadata]`, `subscription_data[trial_period_days]` (1 to 730), `subscription_data[trial_settings][end_behavior][missing_payment_method]` (`cancel`, `pause` or `create_invoice`, the default), `payment_method_collection` (`always`, the default, or `if_required`), `expires_at` (30 minutes to 24 hours). Open sessions expire on their own within 5 seconds of `expires_at`. |
+| `GET /v1/subscriptions`, `GET`/`POST`/`DELETE /v1/subscriptions/{id}` | Update `cancel_at_period_end`, `metadata`, `items[N][id]`, `items[N][price]`, `items[N][quantity]`, `items[N][deleted]` and `proration_behavior`; `DELETE` cancels now. List filters: `customer`, `price`, and `status`, where an empty status excludes canceled subscriptions and `all` includes them. See [Plan changes](#plan-changes). |
 | `GET /v1/invoices`, `GET /v1/invoices/{id}` | List filters: `customer`, `subscription`, `status` |
 | `GET /v1/payment_intents/{id}`, `GET /v1/payment_methods/{id}` | Read only |
 | `POST /v1/billing_portal/sessions` | `customer`, `return_url` |
@@ -106,14 +130,27 @@ Use any future expiration date and any three- or four-digit security code. Strip
 
 Completing Checkout creates the customer if the session has none, a card payment method, an `incomplete` subscription, an invoice and its payment intent. It pays the invoice, makes the subscription `active` and completes the session. The events, in this order: `customer.created`, `payment_method.attached`, `customer.subscription.created`, `invoice.created`, `invoice.finalized`, `payment_intent.created`, `payment_intent.succeeded`, `invoice.paid`, `invoice.payment_succeeded`, `customer.subscription.updated` (status `incomplete` to `active`) and `checkout.session.completed`. Each event's `data.object` is the object at that moment, and `*.updated` events carry `data.previous_attributes`.
 
+A session with `subscription_data[trial_period_days]` has nothing due today, so its `amount_subtotal` and `amount_total` are 0. The page shows the free days, the price after the trial and a **Start trial** button. With `payment_method_collection=if_required` and nothing due, the page asks only for the email and collects no card; with `always`, or when a payment is due, it asks for a card. Completing a trial session creates a `trialing` subscription with `trial_start`, `trial_end`, a current period equal to the trial and `billing_cycle_anchor` at the trial end, and a paid $0 `subscription_create` invoice without a payment intent. Its line reads "Trial period for <product>". The session's `payment_status` is `paid`. The events, in this order: `customer.created`, `payment_method.attached` (only when a card was collected), `customer.subscription.created`, `customer.subscription.trial_will_end` (only for a trial of three days or less), `invoice.created`, `invoice.finalized`, `invoice.paid`, `invoice.payment_succeeded` and `checkout.session.completed`. Any invoice with nothing due is paid this way, without a payment intent.
+
 The billing portal page shows each active plan with its price, status and renewal date, the payment method and the invoice history. Its actions:
 
 - **Cancel plan** sets `cancel_at_period_end` and `cancel_at` and emits `customer.subscription.updated`.
 - **Renew plan** clears them and emits `customer.subscription.updated`.
-- **Update payment method** attaches a new card, makes it the customer's and the subscriptions' default, and emits `payment_method.attached`, `customer.updated` and `customer.subscription.updated`.
+- **Update payment method** attaches a new card, makes it the customer's and the subscriptions' default, and emits `payment_method.attached`, `customer.updated` and `customer.subscription.updated`. A trialing customer can add a card here, and the trial then ends with a charge to that card.
 - **Return to ...** links to `return_url`.
 
 Each finalized invoice has a hosted page at `hosted_invoice_url`.
+
+### Plan changes
+
+`POST /v1/subscriptions/{id}` changes items as Stripe does:
+
+- An entry with `items[N][id]` updates that item. A new `price` replaces the item's price and sets its quantity to 1 unless `quantity` is also sent. `quantity` alone changes the quantity.
+- An entry without an ID and with a `price` adds an item, with quantity 1 unless `quantity` is sent.
+- `items[N][deleted]=true` with an ID removes that item.
+- These are errors, with Stripe's error shape and no change to the subscription: an unknown item ID, an unknown, inactive or one-time price, a negative quantity, `deleted` without an ID, a new item without a price, removing every item, prices that differ from the subscription in currency or recurring interval, an unknown `proration_behavior`, and any item change on a canceled subscription.
+
+When the change keeps the recurring interval, the billing period and the billing date stay the same and no invoice is created. When it changes the interval, for example from `month` to `year`, a new billing period starts now: `billing_cycle_anchor` and `current_period_start` become now, and the simulation creates, finalizes and charges a `subscription_update` invoice for the new period, which follows the dunning rule below when the charge fails. A trialing subscription keeps its trial and is not invoiced; its first paid period uses the new interval. Every change emits one `customer.subscription.updated` with `previous_attributes`, for example the earlier `items`.
 
 ### Test clocks and dunning
 
@@ -122,8 +159,11 @@ A customer created with `test_clock` follows that clock. Its subscriptions and i
 At a period end, the simulation does one of the following:
 
 - A subscription with `cancel_at_period_end` becomes `canceled` and emits `customer.subscription.deleted`.
+- At the end of a trial, a subscription that has a payment method, on the subscription or as the customer's default, becomes `active` and continues as a renewal below. A subscription without one follows its `trial_settings.end_behavior.missing_payment_method`: `cancel` makes it `canceled` and emits `customer.subscription.deleted`; `pause` makes it `paused` and emits `customer.subscription.updated` and `customer.subscription.paused`, after which it creates no invoices; `create_invoice` makes it `active` and continues as a renewal, whose charge fails, so the subscription becomes `past_due`.
 - Otherwise it starts a new period and creates, finalizes and charges a `subscription_cycle` invoice.
 - If the charge fails, the invoice stays `open`, `payment_intent.payment_failed` and `invoice.payment_failed` are emitted, and an `active` subscription becomes `past_due`.
+
+Three days before a trial ends, the clock emits `customer.subscription.trial_will_end`. A trial of three days or less emits it when the subscription is created.
 
 The dunning rule: the simulation retries a failed invoice 3, 5 and 7 days after its first attempt (`next_payment_attempt` shows the next retry). A successful retry pays the invoice and makes the subscription `active` again. When the fourth attempt fails, the subscription is canceled with `cancellation_details.reason: payment_failed`, or marked `unpaid` with `-stripe-mark-unpaid`. An `unpaid` subscription creates no further invoices.
 
@@ -155,7 +195,7 @@ Deliver an event again to every endpoint that receives it, or to one endpoint:
 curl -X POST http://localhost:9201/_sim/events/evt_123/redeliver -d endpoint=we_123
 ```
 
-Complete a Checkout Session without the browser. `card` defaults to `4242424242424242`, `expiry` to `12/34` and `cvc` to `123`. `email` is needed when the session has no customer email. A decline answers 402 with a `card_error`:
+Complete a Checkout Session without the browser. `card` defaults to `4242424242424242`, `expiry` to `12/34` and `cvc` to `123`. A session with `payment_method_collection=if_required` and nothing due collects no card and ignores these fields. `email` is needed when the session has no customer email. A decline answers 402 with a `card_error`:
 
 ```sh
 curl -X POST http://localhost:9201/_sim/checkout/sessions/cs_test_123/complete \
@@ -164,7 +204,10 @@ curl -X POST http://localhost:9201/_sim/checkout/sessions/cs_test_123/complete \
 
 ### Differences from Stripe
 
-- Only `mode=subscription` Checkout with recurring prices. No trials, coupons, taxes, proration, plan changes, one-time payments or charges (`latest_charge` is null).
+- Only `mode=subscription` Checkout with recurring prices. No coupons, taxes, one-time payments or charges (`latest_charge` is null). Trials come only from `subscription_data[trial_period_days]`, not `trial_end`.
+- No proration amounts. `proration_behavior` is checked but changes nothing: a plan change on the same interval creates no proration items and no invoice, and an interval change invoices the full new period without a credit for unused time. A change from a free to a paid price on the same interval does not start a new period, and adding items during a trial creates no $0 invoice, where Stripe does both.
+- The subscriptions of customers without a test clock never reach a period end, so their trials never end and they get `customer.subscription.trial_will_end` only for a trial of three days or less.
+- A subscription canceled at the end of a trial without a payment method has a null `cancellation_details.reason`; Stripe documents no reason for this case. A `paused` subscription cannot be resumed, because the simulation has no `POST /v1/subscriptions/{id}/resume`.
 - A declined Checkout attempt creates no objects and no events.
 - A renewal invoice is finalized and charged at the period end, not about an hour later.
 - Portal sessions do not expire, the portal has no cancellation confirmation step, and test clocks are never deleted after `deletes_after`.
@@ -173,7 +216,7 @@ curl -X POST http://localhost:9201/_sim/checkout/sessions/cs_test_123/complete \
 ### Sources
 
 - API reference, version `2026-09-30.endive`: [errors](https://docs.stripe.com/api/errors), [pagination](https://docs.stripe.com/api/pagination), [expanding responses](https://docs.stripe.com/api/expanding_objects), [idempotent requests](https://docs.stripe.com/api/idempotent_requests), [customers](https://docs.stripe.com/api/customers/object), [Checkout Sessions](https://docs.stripe.com/api/checkout/sessions/object), [creating a Checkout Session](https://docs.stripe.com/api/checkout/sessions/create), [subscriptions](https://docs.stripe.com/api/subscriptions/object), [invoices](https://docs.stripe.com/api/invoices/object), [invoice line items](https://docs.stripe.com/api/invoices/line_item), [PaymentIntents](https://docs.stripe.com/api/payment_intents/object), [events](https://docs.stripe.com/api/events/object), [webhook endpoints](https://docs.stripe.com/api/webhook_endpoints/create), [billing portal sessions](https://docs.stripe.com/api/customer_portal/sessions/object), [test clocks](https://docs.stripe.com/api/test_clocks/object) and [advancing them](https://docs.stripe.com/api/test_clocks/advance)
-- Guides: [webhooks and signature verification](https://docs.stripe.com/webhooks), [subscription webhooks and statuses](https://docs.stripe.com/billing/subscriptions/webhooks), [simulating subscriptions with test clocks](https://docs.stripe.com/billing/testing/test-clocks/simulate-subscriptions), [test cards](https://docs.stripe.com/testing), [error codes](https://docs.stripe.com/error-codes), [low-level error handling and idempotency](https://docs.stripe.com/error-low-level), [API versions](https://docs.stripe.com/upgrades)
+- Guides: [free trials in Checkout](https://docs.stripe.com/payments/checkout/free-trials), [free trial periods on subscriptions](https://docs.stripe.com/billing/subscriptions/trials/free-trials), [changing the price of a subscription](https://docs.stripe.com/billing/subscriptions/change-price), [updating a subscription](https://docs.stripe.com/api/subscriptions/update), [webhooks and signature verification](https://docs.stripe.com/webhooks), [subscription webhooks and statuses](https://docs.stripe.com/billing/subscriptions/webhooks), [simulating subscriptions with test clocks](https://docs.stripe.com/billing/testing/test-clocks/simulate-subscriptions), [test cards](https://docs.stripe.com/testing), [error codes](https://docs.stripe.com/error-codes), [low-level error handling and idempotency](https://docs.stripe.com/error-low-level), [API versions](https://docs.stripe.com/upgrades)
 - SDK source: [stripe-go `api_version.go`](https://github.com/stripe/stripe-go/blob/master/api_version.go) (pins `2026-09-30.endive`), [stripe-go `form`](https://github.com/stripe/stripe-go/blob/master/form/form.go) (indexed array keys), [stripe-go `webhook`](https://github.com/stripe/stripe-go/blob/master/webhook/client.go) (signature and API version check), [stripe-node `utils.ts`](https://github.com/stripe/stripe-node/blob/master/src/utils.ts) (form encoding)
 
 ## GitHub
