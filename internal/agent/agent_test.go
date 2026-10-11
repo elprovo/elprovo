@@ -783,6 +783,32 @@ func TestInventoryListsOwnMachinesAndShrinksThePool(t *testing.T) {
 	})
 }
 
+func TestInventoryShowsMachinesThatAreBeingCreatedOrDeleted(t *testing.T) {
+	ctx := context.Background()
+	machines := newFakeMachines("127.0.0.1")
+	machines.existing["stagely-5e1a9c0b7d42"] = true
+	machines.existing["stagely-build-1"] = true
+	r := newRunner(t, machines)
+	s := serve(t, r)
+	s.await(t, protocol.TypeInventory)
+	if err := r.setMachineState(ctx, "stagely-5e1a9c0b7d42", protocol.MachineDeleting); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.setMachineState(ctx, "stagely-build-1", protocol.MachineCreating); err != nil {
+		t.Fatal(err)
+	}
+
+	inv, _, err := r.inventory(ctx)
+
+	want := []protocol.Machine{
+		{Name: "stagely-5e1a9c0b7d42", Kind: protocol.MachineRuntime, StageletID: "5e1a9c0b7d42", Status: protocol.MachineDeleting},
+		{Name: "stagely-build-1", Kind: protocol.MachineBuildWorker, Status: protocol.MachineCreating},
+	}
+	if err != nil || !slices.Equal(inv.Machines, want) {
+		t.Fatalf("inventory = %+v, %v; want %+v", inv.Machines, err, want)
+	}
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)

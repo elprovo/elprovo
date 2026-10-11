@@ -52,6 +52,15 @@ type session struct {
 	requests    map[*http.Request]context.CancelFunc
 }
 
+// ConfirmWindow is how long the gateway admits a session after the control
+// plane last confirmed it, and ConfirmEvery is how often it asks. Together
+// they keep the promise that a revoked or unconfirmable session stops within
+// about 50 seconds.
+const (
+	ConfirmWindow = 50 * time.Second
+	ConfirmEvery  = 20 * time.Second
+)
+
 // New returns a gateway. A session older than confirmWindow since its last
 // confirmation is refused.
 func New(cp ControlPlane, confirmWindow time.Duration, now func() time.Time, log *slog.Logger) *Gateway {

@@ -88,12 +88,12 @@ func run(args []string) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	link := &gateway.Link{}
-	gw := gateway.New(link, 50*time.Second, time.Now, log)
+	gw := gateway.New(link, gateway.ConfirmWindow, time.Now, log)
 	tlsConfig, challenges, err := certificates(gw, opts)
 	if err != nil {
 		return err
 	}
-	go gw.RunConfirmLoop(ctx, 20*time.Second)
+	go gw.RunConfirmLoop(ctx, gateway.ConfirmEvery)
 
 	cfg := controlplane.Config{
 		URL:             opts.controlPlane,

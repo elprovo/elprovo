@@ -73,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 		},
 		valid: map[string]bool{"sess1": true},
 	}
-	f.gw = New(f.cp, 50*time.Second, f.clock.now, slog.New(slog.DiscardHandler))
+	f.gw = New(f.cp, ConfirmWindow, f.clock.now, slog.New(slog.DiscardHandler))
 	upstream, _ := url.Parse(f.upstream.URL)
 	f.gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: upstream.Host}})
 	return f
@@ -184,6 +184,12 @@ func TestSessionFailsClosedWhenControlPlaneIsUnreachable(t *testing.T) {
 	f.clock.t = f.clock.t.Add(11 * time.Second)
 	if rec := f.get("/", cookie); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status after the window = %d, want 401", rec.Code)
+	}
+}
+
+func TestARevokedSessionStopsWithinAboutFiftySeconds(t *testing.T) {
+	if worst := ConfirmEvery + ConfirmEvery/2; worst > 50*time.Second {
+		t.Fatalf("a revocation can take %v (one confirm round, plus the half round its answer may take) to reach the gateway, want at most 50 seconds", worst)
 	}
 }
 

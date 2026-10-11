@@ -28,6 +28,7 @@ linters:
         gateway:
           files:
             - "**/internal/gateway/**"
+            - "**/cmd/stagely-gateway/**"
           deny:
             - pkg: github.com/stagely-dev/stagely/internal/agent
               desc: the gateway holds no credentials, so it must not link agent code
