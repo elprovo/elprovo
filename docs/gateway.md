@@ -116,7 +116,8 @@ To run the gateway itself against Pebble, let Pebble accept every challenge with
 docker run -d --name pebble -p 127.0.0.1:14000:14000 -p 127.0.0.1:15000:15000 \
   -e PEBBLE_VA_ALWAYS_VALID=1 ghcr.io/letsencrypt/pebble:2.10.1
 docker cp pebble:/test/certs/pebble.minica.pem /tmp/pebble.minica.pem
-go run ./cmd/stagely-gateway run -enrollment-token <gateway token> -data-dir /tmp/stagely-gateway-pebble \
+go run ./cmd/stagely-gateway run -control-plane ws://localhost:8080/v1/connect \
+  -enrollment-token <gateway token> -data-dir /tmp/stagely-gateway-pebble \
   -acme -acme-directory https://localhost:14000/dir -acme-directory-ca /tmp/pebble.minica.pem \
   -listen :8443 -http-listen :8081
 ```

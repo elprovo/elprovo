@@ -41,7 +41,7 @@ The registry speaks plain HTTP, so the agent tells Docker in each new VM to trus
 ## Start the agent
 
 ```sh
-go run ./cmd/stagely-agent run -enrollment-token <agent token> \
+go run ./cmd/stagely-agent run -control-plane ws://localhost:8080/v1/connect -enrollment-token <agent token> \
   -registry host.lima.internal:5050/stagely -lima-insecure-registry host.lima.internal:5050
 ```
 
