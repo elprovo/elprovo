@@ -1,0 +1,9 @@
+{{define "invoice"}}{{template "top" .}}
+<h1>Invoice {{.Number}}</h1>
+<p class="muted">{{.Customer}} &middot; {{.Date}}</p>
+<p><span class="amount">{{.Total}}</span> <span class="muted">{{.Status}}</span></p>
+<ul class="lines">
+{{range .Lines}}<li><span>{{.Name}}</span><span>{{.Amount}}</span></li>
+{{end}}</ul>
+<p class="total"><span>Total</span><span>{{.Total}}</span></p>
+{{template "bottom" .}}{{end}}

@@ -1,0 +1,5 @@
+{{define "message"}}{{template "top" .}}
+<h1>{{.Title}}</h1>
+<p>{{.Message}}</p>
+{{if .LinkURL}}<p><a href="{{.LinkURL}}">{{.LinkText}}</a></p>{{end}}
+{{template "bottom" .}}{{end}}

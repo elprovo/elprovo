@@ -1,0 +1,60 @@
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    - acme
+    - simdocker
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - errorlint
+    - govet
+    - ineffassign
+    - misspell
+    - noctx
+    - nolintlint
+    - staticcheck
+    - unconvert
+    - unused
+    - wastedassign
+  settings:
+    depguard:
+      rules:
+        gateway:
+          files:
+            - "**/internal/gateway/**"
+          deny:
+            - pkg: github.com/stagely-dev/stagely/internal/agent
+              desc: the gateway holds no credentials, so it must not link agent code
+        agent-subpackages:
+          files:
+            - "**/internal/agent/build/**"
+            - "**/internal/agent/runtime/**"
+            - "**/internal/agent/provider/**"
+            - "**/internal/agent/secrets/**"
+            - "**/internal/agent/journal/**"
+          deny:
+            - pkg: github.com/stagely-dev/stagely/internal/agent
+              desc: agent subpackages do not import the runner or each other; the runner passes data between them
+        protocol:
+          files:
+            - "**/protocol/**"
+          deny:
+            - pkg: github.com/stagely-dev/stagely/internal
+              desc: protocol is imported by the control plane and must not depend on agent or gateway code
+  exclusions:
+    generated: strict
+    warn-unused: true
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: strict
+    warn-unused: true

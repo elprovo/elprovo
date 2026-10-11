@@ -1,0 +1,10 @@
+[Unit]
+Description=Simulated instance metadata service
+
+[Service]
+ExecStartPre=/usr/local/sbin/stagely-vm-init metadata-net
+ExecStart=/usr/sbin/ip netns exec stagely-metadata /usr/local/sbin/stagely-vm-init metadata-serve
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

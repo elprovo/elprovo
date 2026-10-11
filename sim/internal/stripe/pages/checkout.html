@@ -1,0 +1,16 @@
+{{define "checkout"}}{{template "top" .}}
+{{if .CancelURL}}<a class="back" href="{{.CancelURL}}">&larr; Back</a>{{end}}
+<h1>Subscribe to {{.ProductName}}</h1>
+<p><span class="amount">{{.Total}}</span> <span class="muted">per {{.Interval}}</span></p>
+<ul class="lines">
+{{range .Lines}}<li><span>{{.Name}}{{if gt .Quantity 1}} &times; {{.Quantity}}{{end}}</span><span>{{.Amount}}</span></li>
+{{end}}</ul>
+<p class="total"><span>Total due today</span><span>{{.Total}}</span></p>
+<form method="post" action="{{.Action}}" novalidate>
+<label for="email">Email</label>
+<input id="email" name="email" type="email" autocomplete="email" value="{{.Form.Email}}"{{if .EmailLocked}} readonly{{end}}>
+{{template "cardFields" .Form}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+<button type="submit">Subscribe</button>
+</form>
+{{template "bottom" .}}{{end}}

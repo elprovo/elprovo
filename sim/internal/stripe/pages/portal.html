@@ -1,0 +1,47 @@
+{{define "portal"}}{{template "top" .}}
+{{if .ReturnURL}}<a class="back" href="{{.ReturnURL}}">&larr; Return to {{.ReturnHost}}</a>{{end}}
+<h1>Billing</h1>
+<p class="muted">{{.Email}}</p>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+
+<h2>Current plan</h2>
+{{range .Subscriptions}}
+<div class="plan" data-subscription="{{.ID}}">
+<p class="plan-name">{{.Name}}</p>
+<p>{{.Price}} per {{.Interval}}</p>
+<p class="muted">Status: {{.Status}}</p>
+{{if .CancelAtPeriodEnd}}
+<p>Your plan will be canceled on {{.PeriodEnd}}.</p>
+<form method="post" action="{{$.Base}}/renew"><input type="hidden" name="subscription" value="{{.ID}}"><button type="submit">Renew plan</button></form>
+{{else}}
+<p>Your plan renews on {{.PeriodEnd}}.</p>
+<form method="post" action="{{$.Base}}/cancel"><input type="hidden" name="subscription" value="{{.ID}}"><button type="submit" class="secondary">Cancel plan</button></form>
+{{end}}
+</div>
+{{else}}
+<p>You have no active plan.</p>
+{{end}}
+
+<h2>Payment method</h2>
+{{if .Card}}<p>{{.Card}}</p>{{else}}<p class="muted">No payment method on file.</p>{{end}}
+<details{{if .CardError}} open{{end}}>
+<summary>Update payment method</summary>
+<form method="post" action="{{.Base}}/payment_method" novalidate>
+{{template "cardFields" .Form}}
+{{if .CardError}}<p class="error" role="alert">{{.CardError}}</p>{{end}}
+<button type="submit">Save card</button>
+</form>
+</details>
+
+<h2>Invoice history</h2>
+{{if .Invoices}}
+<table>
+<thead><tr><th>Date</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+<tbody>
+{{range .Invoices}}<tr><td>{{.Date}}</td><td>{{.Amount}}</td><td>{{.Status}}</td><td><a href="{{.URL}}">View {{.Number}}</a></td></tr>
+{{end}}</tbody>
+</table>
+{{else}}
+<p class="muted">No invoices yet.</p>
+{{end}}
+{{template "bottom" .}}{{end}}

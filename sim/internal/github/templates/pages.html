@@ -1,0 +1,143 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · GitHub simulation</title>
+<style>
+body { font-family: -apple-system, system-ui, sans-serif; margin: 0; color: #1f2328; background: #fff; }
+header { background: #24292f; color: #fff; padding: 12px 16px; display: flex; gap: 16px; align-items: center; }
+header a, header button { color: #fff; }
+header form { margin: 0 0 0 auto; }
+main { max-width: 880px; margin: 24px auto; padding: 0 16px; }
+.box { border: 1px solid #d0d7de; border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
+.label { display: inline-block; background: #ddf4ff; border-radius: 12px; padding: 0 8px; margin-right: 4px; }
+.state { font-weight: 600; }
+input[type=text], textarea, select { width: 100%; box-sizing: border-box; margin: 4px 0 8px; padding: 6px; }
+button { cursor: pointer; padding: 5px 12px; }
+.inline { display: inline; }
+.error { color: #cf222e; }
+</style>
+</head>
+<body>
+<header>
+<a href="/"><strong>GitHub simulation</strong></a>
+{{if .User}}<form method="post" action="/logout"><span>Signed in as <strong id="signed-in-user">{{.User.Login}}</strong></span> <button type="submit">Sign out</button></form>
+{{else}}<a href="/login">Sign in</a>{{end}}
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}</main>
+</body>
+</html>
+{{end}}
+
+{{define "message"}}{{template "head" .}}
+<h1>{{.Title}}</h1>
+<p class="{{if .Data.Error}}error{{end}}">{{.Data.Text}}</p>
+{{template "foot" .}}{{end}}
+
+{{define "login"}}{{template "head" .}}
+<h1>Sign in to GitHub</h1>
+{{range .Data.Users}}
+<form method="post" action="/session" class="box">
+<input type="hidden" name="login" value="{{.Login}}">
+<input type="hidden" name="return_to" value="{{$.Data.ReturnTo}}">
+<button type="submit">Sign in as {{.Login}}</button> {{.Name}}
+</form>
+{{else}}<p>No users yet. Create one below.</p>{{end}}
+<h2>Create a user</h2>
+<form method="post" action="/signup" class="box">
+<input type="hidden" name="return_to" value="{{.Data.ReturnTo}}">
+<label>Login <input type="text" name="login" required></label>
+<label>Name <input type="text" name="name"></label>
+<label>Email <input type="text" name="email"></label>
+<button type="submit">Create user and sign in</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "authorize"}}{{template "head" .}}
+<h1>Authorize {{.Data.AppName}}</h1>
+<p>{{.Data.AppName}} wants to verify your GitHub identity and act on your behalf.</p>
+<form method="post" action="/login/oauth/authorize" class="box">
+<input type="hidden" name="client_id" value="{{.Data.ClientID}}">
+<input type="hidden" name="redirect_uri" value="{{.Data.RedirectURI}}">
+<input type="hidden" name="state" value="{{.Data.State}}">
+<button type="submit" name="decision" value="authorize">Authorize {{.Data.AppName}}</button>
+<button type="submit" name="decision" value="cancel">Cancel</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "install"}}{{template "head" .}}
+<h1>Install {{.Data.AppName}}</h1>
+<form method="post" action="/apps/{{.Data.Slug}}/installations/new">
+<input type="hidden" name="state" value="{{.Data.State}}">
+<h2>Account</h2>
+{{range $i, $a := .Data.Accounts}}
+<div class="box"><label><input type="radio" name="account" value="{{$a.Login}}" {{if eq $i 0}}checked{{end}}> {{$a.Login}}</label>
+{{range $a.Repos}}<div><label><input type="checkbox" name="repository_ids" value="{{.ID}}"> {{$a.Login}}/{{.Name}}</label></div>{{end}}
+</div>
+{{end}}
+<h2>Repository access</h2>
+<label><input type="radio" name="repository_selection" value="all" checked> All repositories</label>
+<label><input type="radio" name="repository_selection" value="selected"> Only select repositories</label>
+<p><button type="submit">Install</button></p>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "home"}}{{template "head" .}}
+<h1>Repositories</h1>
+{{range .Data.Repos}}<div class="box"><a href="/{{.FullName}}">{{.FullName}}</a>{{if .Private}} (private){{end}}</div>
+{{else}}<p>No repositories you can see.</p>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "repo"}}{{template "head" .}}
+<h1>{{.Data.FullName}}</h1>
+<p>Clone: <code>{{.Data.CloneURL}}</code></p>
+<h2>Pull requests</h2>
+{{range .Data.Pulls}}<div class="box"><a href="/{{$.Data.FullName}}/pull/{{.Number}}">#{{.Number}} {{.Title}}</a> <span class="state">{{.State}}{{if .Merged}} (merged){{end}}</span></div>
+{{else}}<p>No pull requests.</p>{{end}}
+{{if .Data.CanWrite}}
+<h2>New pull request</h2>
+<form method="post" action="/{{.Data.FullName}}/pulls" class="box">
+<label>Head branch <select name="head">{{range .Data.Branches}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Base branch <select name="base">{{range .Data.Branches}}<option value="{{.}}" {{if eq . $.Data.DefaultBranch}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+<label>Title <input type="text" name="title" required></label>
+<label>Description <textarea name="body" rows="4"></textarea></label>
+<button type="submit">Create pull request</button>
+</form>
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "pull"}}{{template "head" .}}
+{{$base := printf "/%s/pull/%d" .Data.FullName .Data.Pull.Number}}
+<p><a href="/{{.Data.FullName}}">{{.Data.FullName}}</a></p>
+<h1>{{.Data.Pull.Title}} #{{.Data.Pull.Number}}</h1>
+<p><span class="state" id="pull-state">{{if .Data.Pull.Merged}}merged{{else}}{{.Data.Pull.State}}{{end}}</span>
+{{.Data.Pull.User.Login}} wants to merge <code>{{.Data.Pull.Head.Ref}}</code> into <code>{{.Data.Pull.Base.Ref}}</code> (head {{.Data.Pull.Head.SHA}})</p>
+{{with .Data.Pull.Body}}<div class="box">{{.}}</div>{{end}}
+<h2>Labels</h2>
+<div id="labels">{{range .Data.Pull.Labels}}<span class="label">{{.Name}}</span>
+{{if $.Data.CanWrite}}<form method="post" action="{{$base}}/labels/delete" class="inline"><input type="hidden" name="name" value="{{.Name}}"><button type="submit">Remove label {{.Name}}</button></form>{{end}}
+{{else}}None yet{{end}}</div>
+{{if .Data.CanWrite}}<form method="post" action="{{$base}}/labels" class="box">
+<label>Label <input type="text" name="name" required></label>
+<button type="submit">Add label</button>
+</form>{{end}}
+<h2>Conversation</h2>
+{{range .Data.Comments}}<div class="box comment" id="issuecomment-{{.ID}}"><strong>{{.User.Login}}</strong> commented<p>{{.Body}}</p></div>
+{{else}}<p>No comments yet.</p>{{end}}
+{{if .User}}<form method="post" action="{{$base}}/comments" class="box">
+<label>Comment <textarea name="body" rows="3" required></textarea></label>
+<button type="submit">Comment</button>
+</form>{{end}}
+{{if .Data.CanWrite}}<div class="box">
+{{if eq .Data.Pull.State "open"}}
+<form method="post" action="{{$base}}/merge" class="inline"><button type="submit">Merge pull request</button></form>
+<form method="post" action="{{$base}}/state" class="inline"><input type="hidden" name="state" value="closed"><button type="submit">Close pull request</button></form>
+{{else if not .Data.Pull.Merged}}
+<form method="post" action="{{$base}}/state" class="inline"><input type="hidden" name="state" value="open"><button type="submit">Reopen pull request</button></form>
+{{end}}
+</div>{{end}}
+{{template "foot" .}}{{end}}

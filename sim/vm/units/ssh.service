@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenBSD Secure Shell server
+
+[Service]
+ExecStartPre=/bin/mkdir -p -m 0755 /run/sshd
+ExecStartPre=/usr/sbin/sshd -t
+ExecStart=/usr/sbin/sshd -D -e
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
