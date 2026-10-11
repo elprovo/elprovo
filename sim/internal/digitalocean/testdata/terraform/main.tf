@@ -110,12 +110,28 @@ resource "digitalocean_container_registry_docker_credentials" "images" {
   write         = true
 }
 
+resource "digitalocean_domain" "stagelets" {
+  name = "${var.name}.test"
+}
+
+resource "digitalocean_record" "stagelets" {
+  domain = digitalocean_domain.stagelets.id
+  type   = "A"
+  name   = "*.stagelets"
+  value  = digitalocean_reserved_ip.front.ip_address
+  ttl    = 300
+}
+
 output "public_addresses" {
   value = digitalocean_droplet.stagelet[*].ipv4_address
 }
 
 output "reserved_ip" {
   value = digitalocean_reserved_ip.front.ip_address
+}
+
+output "stagelet_record" {
+  value = digitalocean_record.stagelets.fqdn
 }
 
 output "private_addresses" {

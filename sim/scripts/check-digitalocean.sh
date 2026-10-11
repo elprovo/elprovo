@@ -17,8 +17,9 @@
 # from that snapshot.
 #
 # terraform applies sim/internal/digitalocean/testdata/terraform with the
-# official provider through OpenTofu, checks that a second plan has no changes, destroys it,
-# and checks that no machine is left.
+# official provider through OpenTofu, checks that the wildcard DNS record
+# points at the reserved IP and that a second plan has no changes, destroys
+# it, and checks that no machine or domain is left.
 #
 # Each run uses its own data directory, Docker networks and port, and
 # removes them when it ends.
@@ -116,10 +117,19 @@ check_terraform() {
 		echo "expected 2 machines after apply, found $(machines_left)" >&2
 		exit 1
 	fi
+	records="http://127.0.0.1:$port/v2/domains/stagely-sim-check.test/records?type=A&name=*.stagelets.stagely-sim-check.test"
+	if ! curl -fsS -H "Authorization: Bearer $token" "$records" | grep -q "\"data\":\"$(tofu output -raw reserved_ip)\""; then
+		echo "the wildcard record does not point at the reserved IP" >&2
+		exit 1
+	fi
 	tofu plan -detailed-exitcode -no-color
 	tofu destroy -auto-approve -no-color
 	if [ "$(machines_left)" != 0 ]; then
 		echo "machines are left after destroy" >&2
+		exit 1
+	fi
+	if curl -fs -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$port/v2/domains/stagely-sim-check.test"; then
+		echo "the domain is left after destroy" >&2
 		exit 1
 	fi
 	echo "terraform check passed"

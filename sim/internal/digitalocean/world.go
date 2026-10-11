@@ -17,6 +17,7 @@ type account struct {
 	Firewalls   []*firewall   `json:"firewalls"`
 	Snapshots   []*snapshot   `json:"snapshots"`
 	ReservedIPs []*reservedIP `json:"reserved_ips"`
+	Domains     []*domain     `json:"domains"`
 	Registry    *registry     `json:"registry,omitempty"`
 }
 

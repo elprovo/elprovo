@@ -111,6 +111,17 @@ func (s *Simulation) handler() http.Handler {
 		"POST /v2/reserved_ips/{ip}/actions":         s.postReservedIPAction,
 		"GET /v2/reserved_ips/{ip}/actions":          s.listReservedIPActions,
 		"GET /v2/reserved_ips/{ip}/actions/{action}": s.getReservedIPAction,
+
+		"GET /v2/domains":                        s.listDomains,
+		"POST /v2/domains":                       s.createDomain,
+		"GET /v2/domains/{name}":                 s.getDomain,
+		"DELETE /v2/domains/{name}":              s.deleteDomain,
+		"GET /v2/domains/{name}/records":         s.listDomainRecords,
+		"POST /v2/domains/{name}/records":        s.createDomainRecord,
+		"GET /v2/domains/{name}/records/{id}":    s.getDomainRecord,
+		"PUT /v2/domains/{name}/records/{id}":    s.updateDomainRecord,
+		"PATCH /v2/domains/{name}/records/{id}":  s.updateDomainRecord,
+		"DELETE /v2/domains/{name}/records/{id}": s.deleteDomainRecord,
 	}
 	s.addRegistryRoutes(routes)
 	mux := http.NewServeMux()
