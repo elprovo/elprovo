@@ -56,9 +56,6 @@ func (r *Runner) deploy(ctx context.Context, job protocol.Job, rep *reporter, re
 	for _, s := range spec.Secrets {
 		secretNames = append(secretNames, s.Name)
 	}
-	if err := build.CheckProject(built.Project, built.SourceDir); err != nil {
-		return fmt.Errorf("compile bundle: %w", err)
-	}
 	bundle, err := runtime.Compile(built.Project, built.Images, runtime.BundleSpec{
 		PublicService: spec.PublicService, PublicPort: spec.PublicPort, Config: spec.Config, SecretNames: secretNames,
 	})

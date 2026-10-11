@@ -29,7 +29,7 @@ The bundle is the resolved Compose project, changed so that the stagelet machine
 - Every service gets each secret name as an environment variable without a value. Compose takes the value from `/opt/stagelet/secrets.env`, which only root can read. Secret values never enter the bundle.
 - The public service publishes its port on the machine, so the gateway can reach it.
 
-The agent checks the resolved project against the supported Compose subset again before it compiles the bundle.
+The agent compiles the bundle from the resolved project that it checked against the supported Compose subset before the build.
 
 Compose files can interpolate plain config values, such as `${MODE}`, because the build resolves the project with them. Secrets reach containers only as environment variables; Compose files cannot interpolate them. [stagely-yml.md](stagely-yml.md) describes the repository side: `.stagely.yml` and the supported Compose subset.
 

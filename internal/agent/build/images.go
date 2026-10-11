@@ -33,9 +33,6 @@ type Result struct {
 	Project []byte
 	// Images maps each built service to its pushed image by digest.
 	Images map[string]string
-	// SourceDir is the directory on the worker that the project was resolved
-	// in. Every local path in Project is inside it.
-	SourceDir string
 }
 
 var (
@@ -74,13 +71,13 @@ func (s *Source) Build(ctx context.Context, m Machine, req Request) (Result, err
 		return Result{}, err
 	}
 	if len(refs) == 0 {
-		return Result{Project: project, Images: map[string]string{}, SourceDir: src}, nil
+		return Result{Project: project, Images: map[string]string{}}, nil
 	}
 	images, err := buildAndPush(ctx, m, slices.Concat([]string{"sudo"}, compose), path.Join(req.Dir, "images.json"), refs)
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Project: project, Images: images, SourceDir: src}, nil
+	return Result{Project: project, Images: images}, nil
 }
 
 func buildAndPush(ctx context.Context, m Machine, compose []string, overridePath string, refs map[string]string) (map[string]string, error) {

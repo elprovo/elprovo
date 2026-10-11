@@ -41,7 +41,7 @@ A project in Stagely has plain config values and secrets. Every service gets eac
 
 ## The supported Compose subset
 
-The subset is a security control, and Stagely checks it twice. The control plane checks the Compose files when it plans a deploy. The agent checks the resolved project on the build worker, with every variable filled in, before it builds anything, and again before it compiles the bundle. A failed check fails the deploy with an error that names the service and the field.
+The subset is a security control, and Stagely checks it twice. The control plane checks the Compose files when it plans a deploy. The agent checks the resolved project on the build worker, with every variable filled in, before it builds anything, and compiles the bundle from that checked project. A failed check fails the deploy with an error that names the service and the field.
 
 Stagely refuses a project that uses any of these, because each one gives a container access to the machine or weakens its isolation:
 
