@@ -72,6 +72,10 @@ func (s *Sim) uiHandler() http.Handler {
 	mux.HandleFunc("GET /apps/{slug}/installations/new", s.installPage)
 	mux.HandleFunc("POST /apps/{slug}/installations/new", s.installSubmit)
 
+	mux.HandleFunc("GET /new", s.newRepoPage)
+	mux.HandleFunc("POST /new", s.newRepoSubmit)
+	mux.HandleFunc("GET /orgs/{org}/people", s.peoplePage)
+	mux.HandleFunc("POST /orgs/{org}/people", s.peopleSubmit)
 	mux.HandleFunc("GET /{owner}/{repo}", s.repoPage)
 	mux.HandleFunc("POST /{owner}/{repo}/pulls", s.createPullForm)
 	mux.HandleFunc("GET /{owner}/{repo}/pull/{number}", s.pullPage)

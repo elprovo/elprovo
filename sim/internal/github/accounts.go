@@ -51,6 +51,37 @@ func (t *tx) setMember(orgLogin, userLogin, role string) error {
 	return nil
 }
 
+// removeMember removes a user from an organization. It refuses to remove the
+// last admin, as GitHub keeps at least one owner.
+func (t *tx) removeMember(orgLogin, userLogin string) error {
+	org := t.w.accountByLogin(orgLogin)
+	if org == nil || org.Type != typeOrg {
+		return fail(http.StatusNotFound, "organization %s does not exist", orgLogin)
+	}
+	u := t.w.user(userLogin)
+	if u == nil || org.role(u.ID) == "" {
+		return fail(http.StatusNotFound, "%s is not a member of %s", userLogin, orgLogin)
+	}
+	if org.lastAdmin(u.ID) {
+		return fail(http.StatusUnprocessableEntity, "%s is the last admin of %s", userLogin, orgLogin)
+	}
+	org.Members = slices.DeleteFunc(org.Members, func(m membership) bool { return m.UserID == u.ID })
+	return nil
+}
+
+// lastAdmin reports whether the user is the organization's only admin.
+func (a *account) lastAdmin(userID int64) bool {
+	if a.role(userID) != roleAdmin {
+		return false
+	}
+	for _, m := range a.Members {
+		if m.Role == roleAdmin && m.UserID != userID {
+			return false
+		}
+	}
+	return true
+}
+
 func (t *tx) setCollaborator(owner, name, login, permission string) error {
 	r := t.w.repo(owner, name)
 	if r == nil {

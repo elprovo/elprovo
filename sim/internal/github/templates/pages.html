@@ -88,13 +88,44 @@ button { cursor: pointer; padding: 5px 12px; }
 
 {{define "home"}}{{template "head" .}}
 <h1>Repositories</h1>
+{{if .User}}<p><a href="/new">New repository</a></p>{{end}}
 {{range .Data.Repos}}<div class="box"><a href="/{{.FullName}}">{{.FullName}}</a>{{if .Private}} (private){{end}}</div>
 {{else}}<p>No repositories you can see.</p>{{end}}
+{{if .Data.Orgs}}<h2>Organizations</h2>
+{{range .Data.Orgs}}<div class="box">{{.}} · <a href="/orgs/{{.}}/people">People</a></div>{{end}}{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "new_repo"}}{{template "head" .}}
+<h1>Create a new repository</h1>
+<form method="post" action="/new" class="box">
+<label>Owner <select name="owner">{{range .Data.Owners}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+<label>Repository name <input type="text" name="name" required></label>
+<label><input type="checkbox" name="private" checked> Private</label>
+<label><input type="checkbox" name="auto_init"> Add a README file</label>
+<p>Without a README, the repository starts empty, and you push your code to it.</p>
+<button type="submit">Create repository</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "people"}}{{template "head" .}}
+<h1>{{.Data.Org}} people</h1>
+{{range .Data.People}}<div class="box">{{.Login}} · <span class="state">{{.Role}}</span>
+{{if $.Data.IsAdmin}}<form method="post" action="/orgs/{{$.Data.Org}}/people" class="inline"><input type="hidden" name="action" value="remove"><input type="hidden" name="login" value="{{.Login}}"> <button type="submit">Remove {{.Login}}</button></form>{{end}}
+</div>{{end}}
+{{if .Data.IsAdmin}}
+<h2>Add a member or change a role</h2>
+<form method="post" action="/orgs/{{.Data.Org}}/people" class="box">
+<label>Login <input type="text" name="login" required></label>
+<label>Role <select name="role"><option value="member">member</option><option value="admin">admin</option></select></label>
+<button type="submit">Save member</button>
+</form>
+{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "repo"}}{{template "head" .}}
 <h1>{{.Data.FullName}}</h1>
 <p>Clone: <code>{{.Data.CloneURL}}</code></p>
+{{if not .Data.Branches}}<p id="empty-repository">This repository is empty. Push a branch to it: <code>git push {{.Data.CloneURL}} {{.Data.DefaultBranch}}</code></p>{{end}}
 <h2>Pull requests</h2>
 {{range .Data.Pulls}}<div class="box"><a href="/{{$.Data.FullName}}/pull/{{.Number}}">#{{.Number}} {{.Title}}</a> <span class="state">{{.State}}{{if .Merged}} (merged){{end}}</span></div>
 {{else}}<p>No pull requests.</p>{{end}}

@@ -18,15 +18,20 @@ func (s *Sim) home(w http.ResponseWriter, r *http.Request) {
 		userID = u.ID
 	}
 	var repos []repoSummary
+	var orgs []string
 	s.read(func(v view) {
 		for _, rp := range v.w.Repos {
 			if v.w.userRole(userID, rp) != "" {
 				repos = append(repos, repoSummary{FullName: v.fullName(rp), Private: rp.Private})
 			}
 		}
+		orgs, _ = accountsOf(v, userID)
 	})
 	slices.SortFunc(repos, func(a, b repoSummary) int { return strings.Compare(a.FullName, b.FullName) })
-	s.render(w, r, http.StatusOK, "home", "Repositories", struct{ Repos []repoSummary }{repos})
+	s.render(w, r, http.StatusOK, "home", "Repositories", struct {
+		Repos []repoSummary
+		Orgs  []string
+	}{repos, orgs})
 }
 
 type webRepo struct {

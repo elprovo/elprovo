@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/stagely-dev/stagely/sim/internal/github/gitrepo"
 )
@@ -16,6 +17,9 @@ type newRepo struct {
 	Private       bool   `json:"private"`
 	DefaultBranch string `json:"default_branch"`
 	SourceDir     string `json:"source_dir"`
+	// AutoInit commits a README when SourceDir is empty, as GitHub's
+	// auto_init does; otherwise the repository starts empty.
+	AutoInit bool `json:"auto_init"`
 }
 
 func (s *Sim) createRepo(ctx context.Context, in newRepo) (repoJSON, error) {
@@ -80,6 +84,9 @@ func (s *Sim) initRepo(ctx context.Context, dir string, in newRepo, sig gitrepo.
 	if err != nil {
 		return err
 	}
+	if in.SourceDir == "" && in.AutoInit {
+		return seedReadme(ctx, g, in, sig)
+	}
 	if in.SourceDir == "" {
 		return nil
 	}
@@ -87,6 +94,21 @@ func (s *Sim) initRepo(ctx context.Context, dir string, in newRepo, sig gitrepo.
 		return fail(http.StatusUnprocessableEntity, "source_dir %s is not a directory", in.SourceDir)
 	}
 	if _, err := g.SeedFromDir(ctx, in.SourceDir, in.DefaultBranch, "Initial commit", sig); err != nil {
+		return fmt.Errorf("seed repository: %w", err)
+	}
+	return nil
+}
+
+func seedReadme(ctx context.Context, g *gitrepo.Repo, in newRepo, sig gitrepo.Signature) error {
+	src, err := os.MkdirTemp("", "readme-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(src) }()
+	if err := os.WriteFile(filepath.Join(src, "README.md"), []byte("# "+in.Name+"\n"), 0o644); err != nil {
+		return err
+	}
+	if _, err := g.SeedFromDir(ctx, src, in.DefaultBranch, "Initial commit", sig); err != nil {
 		return fmt.Errorf("seed repository: %w", err)
 	}
 	return nil
