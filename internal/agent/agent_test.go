@@ -356,6 +356,26 @@ func TestDeployReturnsABundleThatRunsImageOnlyServicesByDigest(t *testing.T) {
 	}
 }
 
+func TestDeployReusesTheStageletMachineThatAlreadyExists(t *testing.T) {
+	host, port := healthyApp(t)
+	machines := newFakeMachines(host)
+	machines.existing[stageletMachine] = true
+	r := newRunner(t, machines)
+	s := serve(t, r)
+
+	s.push(t, protocol.TypeJob, deployJob(port))
+	payload, _ := s.await(t, protocol.TypeJobResult)
+
+	if res := payload.(protocol.JobResult); !res.OK {
+		t.Fatalf("result = %+v, want OK", res)
+	}
+	machines.mu.Lock()
+	defer machines.mu.Unlock()
+	if !slices.Equal(machines.created, []string{"stagely-build-1"}) {
+		t.Fatalf("created = %v, want only the build worker: the stagelet machine exists already", machines.created)
+	}
+}
+
 func TestDeployOutsideTheComposeSubsetFailsAtBuildAndStartsNothing(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)
@@ -667,6 +687,22 @@ func TestAbandonedJobStopsAndSendsNoResult(t *testing.T) {
 	}
 }
 
+func TestRunningJobRenewsItsLease(t *testing.T) {
+	host, port := healthyApp(t)
+	machines := newFakeMachines(host)
+	machines.block = " up --detach"
+	r := newRunner(t, machines)
+	r.RenewEvery = 10 * time.Millisecond
+	s := serve(t, r)
+
+	s.push(t, protocol.TypeJob, deployJob(port))
+	payload, _ := s.await(t, protocol.TypeLeaseRenew)
+
+	if got, want := payload.(protocol.LeaseRenew), (protocol.LeaseRenew{JobID: "op1", LeaseToken: "lt1"}); got != want {
+		t.Fatalf("lease renewal = %+v, want %+v", got, want)
+	}
+}
+
 func TestResetReappliesTheBundleWithoutBuildingOrMigrating(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)
@@ -699,6 +735,26 @@ func TestDeleteMachineRefusesAMachineTheAgentDidNotCreate(t *testing.T) {
 
 	if res := payload.(protocol.JobResult); res.OK || len(machines.deleted) != 0 {
 		t.Fatalf("result = %+v, deleted = %v; want a refusal and nothing deleted", res, machines.deleted)
+	}
+}
+
+func TestDeleteJobDeletesTheStageletMachineAndKeepsTheBuildWorkers(t *testing.T) {
+	machines := newFakeMachines("127.0.0.1")
+	machines.existing[stageletMachine] = true
+	machines.existing["stagely-build-1"] = true
+	r := newRunner(t, machines)
+	s := serve(t, r)
+
+	s.push(t, protocol.TypeJob, protocol.Job{ID: "op3", LeaseToken: "lt3", Kind: protocol.JobDelete, StageletID: "5e1a9c0b7d42"})
+	payload, _ := s.await(t, protocol.TypeJobResult)
+
+	if res := payload.(protocol.JobResult); !res.OK || res.JobID != "op3" {
+		t.Fatalf("result = %+v, want op3 OK", res)
+	}
+	machines.mu.Lock()
+	defer machines.mu.Unlock()
+	if !slices.Equal(machines.deleted, []string{stageletMachine}) {
+		t.Fatalf("deleted = %v, want only %s", machines.deleted, stageletMachine)
 	}
 }
 

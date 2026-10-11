@@ -364,8 +364,8 @@ type RouteState struct {
 
 // RouteHealth reports the reachability and app health of the gateway's
 // routes. On each session the gateway first reports every route, then only
-// the routes that are new or whose reachability or health changed. It may
-// split a report into several messages.
+// the routes that are new or whose reachability, health, error or reason
+// changed. It may split a report into several messages.
 type RouteHealth struct {
 	Routes []RouteState `json:"routes"`
 }

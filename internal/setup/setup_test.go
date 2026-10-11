@@ -2,10 +2,14 @@ package setup
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -17,6 +21,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // fakeAPI is the part of the control plane API that setup uses.
@@ -214,6 +220,165 @@ func TestUnitRunsAsItsOwnUserWithoutSecretsInIt(t *testing.T) {
 	if _, err := (service{name: "x", args: []string{"has space"}}).unit(); err == nil {
 		t.Fatal("an argument with a space was accepted")
 	}
+}
+
+func TestCloudSetupGivesTheCloudTokenToTheAgentHostAndNeverToTheGatewayHost(t *testing.T) {
+	const token = "dop_v1_4c1d0e5f00dfeed"
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	agentListener, gatewayListener, sshPort := listenOnBothLoopbacks(t)
+	api := &fakeAPI{}
+	connect := func(role string) func() {
+		return func() {
+			api.mu.Lock()
+			defer api.mu.Unlock()
+			api.clients = append(api.clients, Client{ID: role + "-1", Role: role, EnrolledAt: time.Now(), Connected: true, LastSeenAt: time.Now()})
+		}
+	}
+	agentHost := serveSSHHost(t, agentListener, writeHostKey(t, filepath.Join(work, "agent_host_ed25519")), connect("agent"))
+	gatewayHost := serveSSHHost(t, gatewayListener, writeHostKey(t, filepath.Join(work, "gateway_host_ed25519")), connect("gateway"))
+	outputs := `{"agent_address":{"value":"127.0.0.1"},"gateway_address":{"value":"::1"},"gateway_ip":{"value":"203.0.113.7"},` +
+		`"vpc_id":{"value":"vpc-1"},"stagelet_tag":{"value":"stagely-stagelet"},"registry":{"value":"registry.digitalocean.com/acme"}}`
+	files := map[string]string{
+		filepath.Join(dir, "tofu"):                   "#!/bin/sh\nif [ \"$1\" = output ]; then printf '" + outputs + "'; fi\n",
+		filepath.Join(dir, "bin", "stagely-agent"):   "agent binary",
+		filepath.Join(dir, "bin", "stagely-gateway"): "gateway binary",
+	}
+	for path, data := range files {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(data), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	do := DigitalOcean{Token: token, APIEndpoint: "https://api.digitalocean.com", Region: "fra1", RegistryName: "acme"}
+	cloud, err := do.Cloud(fstest.MapFS{"main.tf": {Data: []byte("#\n")}}, "stagelets.acme.dev")
+	if err != nil {
+		t.Fatalf("Cloud: %v", err)
+	}
+	run := Run{
+		API: api, Server: "https://stagely.example.com", Environment: "Production", StageletDomain: "stagelets.acme.dev",
+		OperatorCIDRs: []string{"198.51.100.0/24"}, Binaries: filepath.Join(dir, "bin"), Tofu: filepath.Join(dir, "tofu"), WorkDir: work,
+		SSHPort: sshPort, ReadyTimeout: 10 * time.Second, Out: io.Discard, Cloud: cloud,
+	}
+
+	if _, err := run.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if toAgent := agentHost.received(); !strings.Contains(toAgent, `DIGITALOCEAN_TOKEN="`+token+`"`) {
+		t.Fatalf("the agent host did not get the token in its environment file:\n%s", toAgent)
+	}
+	toGateway := gatewayHost.received()
+	if !strings.Contains(toGateway, "ExecStart=/usr/local/bin/stagely-gateway run") {
+		t.Fatalf("the gateway host did not get its service:\n%s", toGateway)
+	}
+	if strings.Contains(toGateway, token) {
+		t.Fatalf("the gateway host got the cloud token:\n%s", toGateway)
+	}
+}
+
+func listenOnBothLoopbacks(t *testing.T) (ipv4, ipv6 net.Listener, port string) {
+	t.Helper()
+	ipv4, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on the IPv4 loopback: %v", err)
+	}
+	t.Cleanup(func() { _ = ipv4.Close() })
+	_, port, _ = net.SplitHostPort(ipv4.Addr().String())
+	ipv6, err = (&net.ListenConfig{}).Listen(t.Context(), "tcp", net.JoinHostPort("::1", port))
+	if err != nil {
+		t.Skipf("setup reaches both hosts on one SSH port, and port %s is not free on the IPv6 loopback: %v", port, err)
+	}
+	t.Cleanup(func() { _ = ipv6.Close() })
+	return ipv4, ipv6, port
+}
+
+func writeHostKey(t *testing.T, path string) ssh.Signer {
+	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate host key: %v", err)
+	}
+	block, err := ssh.MarshalPrivateKey(key, "")
+	if err != nil {
+		t.Fatalf("encode host key: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.NewSignerFromKey(key)
+	if err != nil {
+		t.Fatalf("host key signer: %v", err)
+	}
+	return signer
+}
+
+type sshHost struct {
+	hostKey ssh.Signer
+	started func()
+
+	mu       sync.Mutex
+	commands []string
+}
+
+func serveSSHHost(t *testing.T, ln net.Listener, hostKey ssh.Signer, started func()) *sshHost {
+	t.Helper()
+	h := &sshHost{hostKey: hostKey, started: started}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go h.serveConn(conn)
+		}
+	}()
+	return h
+}
+
+func (h *sshHost) serveConn(conn net.Conn) {
+	defer func() { _ = conn.Close() }()
+	config := &ssh.ServerConfig{PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) { return nil, nil }}
+	config.AddHostKey(h.hostKey)
+	_, chans, reqs, err := ssh.NewServerConn(conn, config)
+	if err != nil {
+		return
+	}
+	go ssh.DiscardRequests(reqs)
+	for nc := range chans {
+		ch, requests, err := nc.Accept()
+		if err != nil {
+			return
+		}
+		for req := range requests {
+			if req.Type != "exec" {
+				_ = req.Reply(false, nil)
+				continue
+			}
+			_ = req.Reply(true, nil)
+			command := string(req.Payload[4:])
+			input, _ := io.ReadAll(ch)
+			h.mu.Lock()
+			h.commands = append(h.commands, command+"\n"+string(input))
+			h.mu.Unlock()
+			if strings.Contains(command, "systemctl restart") {
+				h.started()
+			}
+			_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{}))
+			_ = ch.Close()
+		}
+	}
+}
+
+func (h *sshHost) received() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return strings.Join(h.commands, "\n")
 }
 
 func TestTofuAppliesTheModuleAndReadsItsOutputs(t *testing.T) {

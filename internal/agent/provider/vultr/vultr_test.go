@@ -510,6 +510,32 @@ func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 	}
 }
 
+func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
+	p, cloud := newProvider(t, nil)
+
+	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	userData, _ := base64.StdEncoding.DecodeString(cloud.created[0].UserData)
+	if got, want := cloudConfigSections(string(userData)), []string{"ssh_deletekeys", "ssh_genkeytypes", "ssh_keys", "package_update", "packages", "bootcmd"}; !slices.Equal(got, want) {
+		t.Fatalf("user data sections = %v, want %v", got, want)
+	}
+	if !strings.Contains(string(userData), "packages:\n  - docker.io\n  - docker-compose-v2\n  - docker-buildx\nbootcmd:\n") {
+		t.Fatalf("user data installs packages other than Docker:\n%s", userData)
+	}
+}
+
+func cloudConfigSections(userData string) []string {
+	var sections []string
+	for line := range strings.Lines(userData) {
+		if key, _, found := strings.Cut(line, ":"); found && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") {
+			sections = append(sections, key)
+		}
+	}
+	return sections
+}
+
 func TestGoldenImageReplacesTheOperatingSystemAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, func(c *Config) { c.GoldenImage = "snap-1" })
 

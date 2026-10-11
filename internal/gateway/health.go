@@ -43,7 +43,9 @@ type routeCheck struct {
 // reports.
 type routeHealth struct {
 	reachable bool
+	err       string
 	healthy   bool
+	healthErr string
 }
 
 func (g *Gateway) reportRouteHealth(ctx context.Context, tick <-chan time.Time, checkNow <-chan struct{}, send func(context.Context, protocol.RouteHealth) error) error {
@@ -141,6 +143,13 @@ func requestHealthPath(ctx context.Context, client *http.Client, r routeCheck) e
 		if errors.As(err, &urlErr) {
 			err = urlErr.Err
 		}
+		// A network error names the local address, whose port changes on
+		// every request; without it the reason stays the same while the
+		// failure does.
+		var opErr *net.OpError
+		if errors.As(err, &opErr) {
+			err = opErr.Err
+		}
 		return fmt.Errorf("GET %s: %w", r.healthPath, err)
 	}
 	_ = resp.Body.Close()
@@ -155,7 +164,7 @@ func changedStates(reported map[routeKey]routeHealth, states []protocol.RouteSta
 	current := make(map[routeKey]routeHealth, len(states))
 	for _, s := range states {
 		k := routeKey{stageletID: s.StageletID, upstream: s.Upstream}
-		h := routeHealth{reachable: s.Reachable, healthy: s.Healthy}
+		h := routeHealth{reachable: s.Reachable, err: s.Error, healthy: s.Healthy, healthErr: s.HealthError}
 		current[k] = h
 		if was, ok := reported[k]; !ok || was != h {
 			changed = append(changed, s)

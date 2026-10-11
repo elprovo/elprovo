@@ -416,6 +416,36 @@ func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 	}
 }
 
+func TestNewMachineGetsOnlyItsHostKeyDockerFirewallRulesAndGuestAgentConfig(t *testing.T) {
+	p, cloud := newProvider(t, "")
+
+	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	userData := cloud.inserted[0].Metadata.Items[0].Value
+	want := []string{"ssh_deletekeys", "ssh_genkeytypes", "ssh_keys", "package_update", "packages", "bootcmd", "write_files"}
+	if got := cloudConfigSections(userData); !slices.Equal(got, want) {
+		t.Fatalf("user data sections = %v, want %v", got, want)
+	}
+	if !strings.Contains(userData, "packages:\n  - docker.io\n  - docker-compose-v2\n  - docker-buildx\nbootcmd:\n") {
+		t.Fatalf("user data installs packages other than Docker:\n%s", userData)
+	}
+	if !strings.HasSuffix(userData, "write_files:\n  - path: /etc/default/instance_configs.cfg\n    content: |\n      [InstanceSetup]\n      set_host_keys = false\n") {
+		t.Fatalf("user data writes files other than the guest agent's config:\n%s", userData)
+	}
+}
+
+func cloudConfigSections(userData string) []string {
+	var sections []string
+	for line := range strings.Lines(userData) {
+		if key, _, found := strings.Cut(line, ":"); found && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") {
+			sections = append(sections, key)
+		}
+	}
+	return sections
+}
+
 func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	p.cfg.GoldenImage = "stagely-20261001"

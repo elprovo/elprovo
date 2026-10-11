@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -104,9 +105,53 @@ func TestSessionReportsRouteHealthAfterApplyingRoutes(t *testing.T) {
 	}
 }
 
+func TestNewControlPlaneSessionReplacesTheRoutesOfTheLastOne(t *testing.T) {
+	link := &Link{}
+	gw := newLinkedGateway(link)
+	oldReceived, newReceived := make(chan protocol.Envelope, 10), make(chan protocol.Envelope, 10)
+	oldURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{StageletID: "s-old", Host: "old.stagelets.localhost", Upstream: "127.0.0.1:9"}}}, oldReceived)
+	newURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{StageletID: "s-new", Host: "new.stagelets.localhost", Upstream: "127.0.0.1:9"}}}, newReceived)
+	stopOld := serveSession(t, link, gw, oldURL)
+	if env := nextEnvelope(t, oldReceived); env.Type != protocol.TypeRoutesApplied {
+		t.Fatalf("first message of the old session = %s, want %s", env.Type, protocol.TypeRoutesApplied)
+	}
+	stopOld()
+
+	serveSession(t, link, gw, newURL)
+	if env := nextEnvelope(t, newReceived); env.Type != protocol.TypeRoutesApplied {
+		t.Fatalf("first message of the new session = %s, want %s", env.Type, protocol.TypeRoutesApplied)
+	}
+
+	if code := statusFor(gw, "old.stagelets.localhost"); code != http.StatusNotFound {
+		t.Fatalf("status on the dropped route's host = %d, want 404", code)
+	}
+	if code := statusFor(gw, "new.stagelets.localhost"); code != http.StatusUnauthorized {
+		t.Fatalf("status on the new route's host = %d, want 401 from a served stagelet", code)
+	}
+}
+
+func statusFor(gw *Gateway, stageletHost string) int {
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+stageletHost+"/", nil))
+	return rec.Code
+}
+
 // startLink connects a gateway to the control plane at url and serves the
 // session until the test ends.
 func startLink(t *testing.T, url string) *Link {
+	t.Helper()
+	link := &Link{}
+	serveSession(t, link, newLinkedGateway(link), url)
+	return link
+}
+
+func newLinkedGateway(link *Link) *Gateway {
+	return New(link, 50*time.Second, func() time.Time { return checkedAt }, slog.New(slog.DiscardHandler))
+}
+
+// serveSession connects to the control plane at url and serves the session
+// for gw through link until stop is called or the test ends.
+func serveSession(t *testing.T, link *Link, gw *Gateway, url string) (stop func()) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
@@ -114,17 +159,16 @@ func startLink(t *testing.T, url string) *Link {
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
-	link := &Link{}
-	gw := New(link, 50*time.Second, func() time.Time { return checkedAt }, slog.New(slog.DiscardHandler))
 	serveCtx, stopServe := context.WithCancel(ctx)
 	served := make(chan error, 1)
 	go func() { served <- link.Serve(gw)(serveCtx, s) }()
-	t.Cleanup(func() {
+	stop = sync.OnceFunc(func() {
 		stopServe()
 		<-served
 		_ = s.Close()
 	})
-	return link
+	t.Cleanup(stop)
+	return stop
 }
 
 func TestConfirmFailsWhenTheControlPlaneCouldNotCheckSessions(t *testing.T) {

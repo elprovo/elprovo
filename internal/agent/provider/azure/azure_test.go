@@ -419,6 +419,34 @@ func TestCreateMakesAMachineTheAgentCanDrive(t *testing.T) {
 	}
 }
 
+func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
+	p, cloud := newProvider(t)
+
+	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	osProfile := cloud.vm("stagely-a1").body["properties"].(map[string]any)["osProfile"].(map[string]any)
+	customData, _ := base64.StdEncoding.DecodeString(osProfile["customData"].(string))
+	want := []string{"ssh_deletekeys", "ssh_genkeytypes", "ssh_keys", "package_update", "packages", "bootcmd", "disable_root"}
+	if got := cloudConfigSections(string(customData)); !slices.Equal(got, want) {
+		t.Fatalf("custom data sections = %v, want %v", got, want)
+	}
+	if !strings.Contains(string(customData), "packages:\n  - docker.io\n  - docker-compose-v2\n  - docker-buildx\nbootcmd:\n") {
+		t.Fatalf("custom data installs packages other than Docker:\n%s", customData)
+	}
+}
+
+func cloudConfigSections(userData string) []string {
+	var sections []string
+	for line := range strings.Lines(userData) {
+		if key, _, found := strings.Cut(line, ":"); found && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") {
+			sections = append(sections, key)
+		}
+	}
+	return sections
+}
+
 func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t)
 	p.cfg.GoldenImage = "/subscriptions/sub-1/resourceGroups/images/providers/Microsoft.Compute/images/stagely"

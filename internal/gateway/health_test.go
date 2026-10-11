@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"cmp"
 	"context"
 	"errors"
@@ -10,7 +11,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -242,6 +245,27 @@ func TestHealthReportsOnlyRoutesThatChanged(t *testing.T) {
 	}
 }
 
+func TestHealthReportsANewReasonWhileTheAppStaysUnhealthy(t *testing.T) {
+	gw := newHealthGateway()
+	var status atomic.Int32
+	status.Store(http.StatusServiceUnavailable)
+	up := addr(startApp(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(int(status.Load())) }))
+	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: up, HealthPath: healthPath}})
+	h := startRouteHealth(t, gw)
+	h.check()
+	if first := h.next(t); len(first) != 1 || first[0].HealthError != "GET /healthz: status 503" {
+		t.Fatalf("first report = %+v, want s1 unhealthy with status 503", first)
+	}
+
+	status.Store(http.StatusInternalServerError)
+	h.check()
+	got := h.next(t)
+
+	if len(got) != 1 || !got[0].Reachable || got[0].Healthy || got[0].HealthError != "GET /healthz: status 500" {
+		t.Fatalf("report = %+v, want s1 reachable and unhealthy with status 500", got)
+	}
+}
+
 func TestHealthReportsNewUpstreamOfStagelet(t *testing.T) {
 	gw := newHealthGateway()
 	oldUp, newUp := addr(startUpstream(t)), addr(startUpstream(t))
@@ -291,5 +315,53 @@ func TestHealthReportingStopsWhenSendFails(t *testing.T) {
 
 	if !errors.Is(err, sendErr) {
 		t.Fatalf("reportRouteHealth = %v, want %v", err, sendErr)
+	}
+}
+
+// startResettingApp starts an upstream that reads each request and then
+// resets the connection.
+func startResettingApp(t *testing.T) string {
+	t.Helper()
+	var lc net.ListenConfig
+	ln, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = http.ReadRequest(bufio.NewReader(conn))
+			_ = conn.(*net.TCPConn).SetLinger(0)
+			_ = conn.Close()
+		}
+	}()
+	return ln.Addr().String()
+}
+
+func TestHealthReasonOfAResetConnectionStaysTheSameAcrossChecks(t *testing.T) {
+	gw := newHealthGateway()
+	resetting, stable := startResettingApp(t), startUpstream(t)
+	gw.SetRoutes([]protocol.Route{
+		{StageletID: "s-resetting", Host: "resetting.stagelets.localhost", Upstream: resetting, HealthPath: healthPath},
+		{StageletID: "s-stable", Host: "stable.stagelets.localhost", Upstream: addr(stable), HealthPath: healthPath},
+	})
+	h := startRouteHealth(t, gw)
+	h.check()
+	first := h.next(t)
+	if len(first) != 2 || first[0].Healthy || first[0].HealthError == "" || strings.Contains(first[0].HealthError, "127.0.0.1") {
+		t.Fatalf("first report = %+v, want s-resetting unhealthy with a reason that names no address", first)
+	}
+
+	h.check()
+	stable.Close()
+	h.check()
+	got := h.next(t)
+
+	if len(got) != 1 || got[0].StageletID != "s-stable" {
+		t.Fatalf("report = %+v, want only s-stable: the reset route's reason must not change between checks", got)
 	}
 }

@@ -49,6 +49,7 @@ type session struct {
 	stageletID  string
 	expiresAt   time.Time
 	confirmedAt time.Time
+	requests    map[*http.Request]context.CancelFunc
 }
 
 // New returns a gateway. A session older than confirmWindow since its last
@@ -89,11 +90,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.handoff(w, r, rt)
 		return
 	}
-	if !g.admitted(r, rt) {
+	ctx, done, ok := g.admit(r, rt)
+	if !ok {
 		http.Error(w, "open this stagelet through Stagely", http.StatusUnauthorized)
 		return
 	}
-	rt.proxy.ServeHTTP(w, r)
+	defer done()
+	rt.proxy.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func (g *Gateway) route(hostport string) (route, bool) {
@@ -145,7 +148,7 @@ func (g *Gateway) handoff(w http.ResponseWriter, r *http.Request, rt route) {
 	}
 	now := g.now()
 	g.mu.Lock()
-	g.sessions[res.SessionID] = session{stageletID: res.StageletID, expiresAt: res.ExpiresAt, confirmedAt: now}
+	g.sessions[res.SessionID] = session{stageletID: res.StageletID, expiresAt: res.ExpiresAt, confirmedAt: now, requests: map[*http.Request]context.CancelFunc{}}
 	g.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: res.SessionID, Path: "/", Expires: res.ExpiresAt,
@@ -154,29 +157,56 @@ func (g *Gateway) handoff(w http.ResponseWriter, r *http.Request, rt route) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (g *Gateway) admitted(r *http.Request, rt route) bool {
+// admit checks the session of r. For an admitted request, it returns a
+// context that ends when the gateway stops the session's requests, and done,
+// which the caller must call when the request ends.
+func (g *Gateway) admit(r *http.Request, rt route) (context.Context, func(), bool) {
 	c, err := r.Cookie(SessionCookie)
 	if err != nil {
-		return false
+		return nil, nil, false
 	}
-	g.mu.RLock()
-	s, ok := g.sessions[c.Value]
-	g.mu.RUnlock()
 	now := g.now()
-	return ok && s.stageletID == rt.stageletID && now.Before(s.expiresAt) && now.Sub(s.confirmedAt) <= g.confirmWindow
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	s, ok := g.sessions[c.Value]
+	if !ok || s.stageletID != rt.stageletID || !now.Before(s.expiresAt) || now.Sub(s.confirmedAt) > g.confirmWindow {
+		return nil, nil, false
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	s.requests[r] = cancel
+	return ctx, func() {
+		g.mu.Lock()
+		delete(s.requests, r)
+		g.mu.Unlock()
+		cancel()
+	}, true
+}
+
+// stopRequests ends the session's open requests. The caller holds g.mu.
+func (s session) stopRequests() {
+	for _, cancel := range s.requests {
+		cancel()
+	}
+	clear(s.requests)
 }
 
 // ConfirmSessions asks the control plane which sessions are still valid. It
 // keeps and refreshes those and forgets the rest. If the control plane is
 // unreachable, nothing is refreshed, so sessions run out within the window.
+// It ends the open requests of every session that it forgets or that ran out
+// of the window.
 func (g *Gateway) ConfirmSessions(ctx context.Context) error {
 	now := g.now()
 	g.mu.Lock()
 	ids := make([]string, 0, len(g.sessions))
 	for id, s := range g.sessions {
 		if now.After(s.expiresAt) {
+			s.stopRequests()
 			delete(g.sessions, id)
 			continue
+		}
+		if now.Sub(s.confirmedAt) > g.confirmWindow {
+			s.stopRequests()
 		}
 		ids = append(ids, id)
 	}
@@ -201,6 +231,7 @@ func (g *Gateway) ConfirmSessions(ctx context.Context) error {
 			continue
 		}
 		if !keep[id] {
+			s.stopRequests()
 			delete(g.sessions, id)
 			continue
 		}

@@ -132,8 +132,18 @@ The gateway checks each route and reports the result to the control plane in `ro
 - Then it sends `GET <health path>` to the upstream, with the stagelet's host name in the `Host` header and a 5-second timeout. The control plane sends the health path from `.stagely.yml` with each route. The app is healthy when it answers with a 2xx status. The gateway does not follow redirects, so a 3xx answer counts as unhealthy, as it does in the agent's check during a deploy. The request carries no visitor cookies, and the gateway reads at most 64 KiB of response headers and none of the body.
 - The app sees this request every 20 seconds in its logs, with the user agent `stagely-gateway`.
 - Each state holds the stagelet ID, the upstream address, whether the gateway reached it and the error if it did not, whether the app is healthy and the reason if it is not, such as `GET /healthz: status 503`, and the check time.
-- On each control plane session, the first report holds every route. After that, a report holds only new routes and routes whose reachability or health changed. A new reason alone, such as a 500 after a 503, is not reported. One message holds at most 100 routes; a larger report uses more messages.
+- On each control plane session, the first report holds every route. After that, a report holds only new routes and routes whose reachability, health, error or reason changed, such as a 500 after a 503. A reason names no network address, because the local port changes with every request. One message holds at most 100 routes; a larger report uses more messages.
 
 ## When the gateway loses the control plane
 
-The gateway asks the control plane every 20 seconds which visitor sessions are still valid. It refuses a session that it could not confirm in the last 50 seconds. Each question waits at most 10 seconds for an answer, so a lost or slow answer does not hold up the next question. When the control plane answers that it could not check the sessions, the gateway confirms none of them and revokes none, and asks again 20 seconds later. If the control plane is unreachable or keeps failing, all sessions stop within about 50 seconds, and no new visitor can enter, because only the control plane can redeem a handoff. When the control plane is back, the gateway confirms the sessions again, and the sessions that are still valid work again.
+The gateway asks the control plane every 20 seconds which visitor sessions are still valid. It refuses a session that it could not confirm in the last 50 seconds. Each question waits at most 10 seconds for an answer, so a lost or slow answer does not hold up the next question. When the control plane answers that it could not check the sessions, the gateway confirms none of them and revokes none, and asks again 20 seconds later. If the control plane is unreachable or keeps failing, the gateway refuses all sessions within about 50 seconds, and no new visitor can enter, because only the control plane can redeem a handoff. When the control plane is back, the gateway confirms the sessions again, and the sessions that are still valid work again.
+
+## Open requests
+
+Some requests stay open for a long time, such as WebSocket connections and streaming responses. The gateway ends all open requests of a session in these cases:
+
+- The control plane answers that the session is no longer valid, for example because the visitor lost access. The requests end when the answer arrives, at most about 20 seconds after the control plane revoked the session.
+- The gateway could not confirm the session in the last 50 seconds. The gateway checks this at each question, so the requests end at most 20 seconds after the 50 seconds pass.
+- The session expired. The requests end at the next question.
+
+The requests of other sessions continue.
