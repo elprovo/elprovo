@@ -14,6 +14,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v4.3.0
+        with:
+          cache: false
       - name: Package the binaries
         run: make dist
       - name: Publish the GitHub release
