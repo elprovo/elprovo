@@ -52,7 +52,7 @@ func parseFlags(args []string) (options, error) {
 	var o options
 	var extraHosts string
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	fs.StringVar(&o.controlPlane, "control-plane", "ws://localhost:8080/v1/connect", "control plane session URL")
+	fs.StringVar(&o.controlPlane, "control-plane", controlplane.SessionURL(controlplane.HostedURL), "control plane session URL")
 	fs.StringVar(&o.dataDir, "data-dir", defaultDataDir("gateway"), "directory for the gateway key and, with -acme, the certificate cache")
 	fs.StringVar(&o.enrollmentToken, "enrollment-token", os.Getenv("STAGELY_ENROLLMENT_TOKEN"), "one-time enrollment token, needed on first start; defaults to STAGELY_ENROLLMENT_TOKEN")
 	fs.StringVar(&o.listen, "listen", ":8443", "HTTPS listen address")

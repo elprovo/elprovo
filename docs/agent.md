@@ -81,7 +81,7 @@ After it connects, and every five minutes, the agent lists the machines under it
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-control-plane` | `ws://localhost:8080/v1/connect` | Control plane session URL |
+| `-control-plane` | `wss://app.stagely.dev/v1/connect` | Control plane session URL: the agent hub of Stagely's hosted control plane by default. `stagely setup` sets it to the control plane you signed in to. |
 | `-data-dir` | `~/.stagely/agent` | Agent key, SSH key, host keys and secret store |
 | `-enrollment-token` | none | One-time token, needed on the first start only |
 | `-provider` | `lima` | `lima` for local testing, `digitalocean`, `aws`, `gcp`, `hetzner`, `vultr` or `azure` |

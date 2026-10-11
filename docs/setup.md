@@ -6,7 +6,7 @@ Today it supports DigitalOcean, [AWS](#aws), [Google Cloud](#google-cloud), [Het
 
 ## Before you start
 
-- A Stagely account, and `stagely login` done against your control plane. Setup acts in the account you chose when you signed in, with your role there; creating an environment needs the admin or owner role.
+- A Stagely account, and `stagely login` done. It signs in to Stagely's hosted control plane at `https://app.stagely.dev`; pass `-server` to sign in to another control plane. Setup acts in the account you chose when you signed in, with your role there; creating an environment needs the admin or owner role.
 - OpenTofu or Terraform on `PATH` (`tofu` is preferred).
 - `stagely-agent` and `stagely-gateway` built for linux/amd64. From this repository: `make build-hosts`, which writes them to `bin/linux-amd64/` (and to `bin/linux-arm64/`), with a Linux build of `stagely` itself.
 - A DigitalOcean API token with write access, in `DIGITALOCEAN_TOKEN`. It stays on your machine and on the agent host only. For AWS, see [AWS](#aws), and for Hetzner Cloud, [Hetzner Cloud](#hetzner-cloud).
@@ -15,7 +15,7 @@ Today it supports DigitalOcean, [AWS](#aws), [Google Cloud](#google-cloud), [Het
 
 ```sh
 export DIGITALOCEAN_TOKEN=<token>
-stagely login -server https://stagely.example.com
+stagely login
 stagely setup digitalocean \
   -environment production \
   -region fra1 \
@@ -107,7 +107,7 @@ It needs Docker (for example Colima), Lima, `mkcert` (run `mkcert -install` once
 
 ```sh
 export AWS_ACCESS_KEY_ID=<access key id> AWS_SECRET_ACCESS_KEY=<secret access key>
-stagely login -server https://stagely.example.com
+stagely login
 stagely setup aws \
   -environment production \
   -region eu-central-1 \
@@ -153,7 +153,7 @@ The agent keeps the access key that setup ran with, in `/etc/stagely/stagely-age
 
 ```sh
 export GOOGLE_APPLICATION_CREDENTIALS=key.json
-stagely login -server https://stagely.example.com
+stagely login
 stagely setup gcp \
   -environment production \
   -region us-central1 \
@@ -208,7 +208,7 @@ The agent gets the key in base64 in its environment file. Machines never get it:
 ```sh
 export HCLOUD_TOKEN=<token>
 export STAGELY_REGISTRY_PASSWORD=<registry password>
-stagely login -server https://stagely.example.com
+stagely login
 stagely setup hetzner \
   -environment production \
   -location fsn1 \
@@ -298,7 +298,7 @@ Vultr's firewall does not filter VPC traffic, so each machine's user data adds i
 
 ```sh
 export ARM_TENANT_ID=<tenant id> ARM_CLIENT_ID=<client id> ARM_CLIENT_SECRET=<client secret> ARM_SUBSCRIPTION_ID=<subscription id>
-stagely login -server https://stagely.example.com
+stagely login
 stagely setup azure \
   -environment production \
   -location westeurope \

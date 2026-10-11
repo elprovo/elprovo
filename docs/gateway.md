@@ -22,7 +22,7 @@ The gateway needs its enrollment token only on the first start. After that, the 
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `-control-plane` | `ws://localhost:8080/v1/connect` | Control plane session URL |
+| `-control-plane` | `wss://app.stagely.dev/v1/connect` | Control plane session URL: the agent hub of Stagely's hosted control plane by default. `stagely setup` sets it to the control plane you signed in to. |
 | `-data-dir` | `~/.stagely/gateway` | Directory for the gateway key and, with `-acme`, the certificate cache |
 | `-enrollment-token` | none | One-time enrollment token, needed on the first start |
 | `-listen` | `:8443` | HTTPS listen address |

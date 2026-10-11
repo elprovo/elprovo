@@ -412,17 +412,11 @@ func TestTofuAppliesTheModuleAndReadsItsOutputs(t *testing.T) {
 	}
 }
 
-func TestModuleNameAndSessionURL(t *testing.T) {
+func TestModuleName(t *testing.T) {
 	for in, want := range map[string]string{"Production": "production", "Acme Prod 2": "acme-prod-2", "1st": "env-1st", "--x--": "x"} {
 		if got := moduleName(in); got != want {
 			t.Fatalf("moduleName(%q) = %q, want %q", in, got, want)
 		}
-	}
-	if got := sessionURL("https://stagely.example.com/"); got != "wss://stagely.example.com/v1/connect" {
-		t.Fatalf("sessionURL = %s", got)
-	}
-	if got := sessionURL("http://localhost:8080"); got != "ws://localhost:8080/v1/connect" {
-		t.Fatalf("sessionURL = %s", got)
 	}
 }
 

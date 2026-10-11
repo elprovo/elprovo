@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/stagely-dev/stagely/internal/controlplane"
 )
 
 // Lima is one `stagely setup lima` run. The agent runs on this Mac as a
@@ -82,7 +84,7 @@ func (l Lima) Run(ctx context.Context) (Environment, error) {
 	}
 
 	agent := launchdService{role: roleAgent, binary: "stagely-agent", keyFile: "agent.key", args: []string{
-		"-control-plane", sessionURL(l.Server), "-provider", "lima", "-machine-prefix", "stagely-" + name + "-",
+		"-control-plane", controlplane.SessionURL(l.Server), "-provider", "lima", "-machine-prefix", "stagely-" + name + "-",
 		"-registry", registry + "/" + name, "-lima-insecure-registry", registry,
 	}}
 	if err := l.installAndEnroll(ctx, accountID, env.ID, name, agent); err != nil {
@@ -196,9 +198,9 @@ func (h limaHost) Output(ctx context.Context, stdin io.Reader, command string) (
 // vmSessionURL is the agent hub's URL as a Lima VM reaches it: localhost on
 // this Mac is host.lima.internal inside the VM.
 func vmSessionURL(server string) string {
-	u, err := url.Parse(sessionURL(server))
+	u, err := url.Parse(controlplane.SessionURL(server))
 	if err != nil {
-		return sessionURL(server)
+		return controlplane.SessionURL(server)
 	}
 	if port, local := u.Port(), slices.Contains([]string{"localhost", "127.0.0.1", "::1"}, u.Hostname()); local {
 		u.Host = "host.lima.internal"

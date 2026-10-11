@@ -62,7 +62,7 @@ func main() {
 
 func run(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	controlPlane := fs.String("control-plane", "ws://localhost:8080/v1/connect", "control plane session URL")
+	controlPlane := fs.String("control-plane", controlplane.SessionURL(controlplane.HostedURL), "control plane session URL")
 	dataDir := fs.String("data-dir", defaultDataDir("agent"), "directory for the agent key and secret store")
 	enrollmentToken := fs.String("enrollment-token", os.Getenv("STAGELY_ENROLLMENT_TOKEN"), "one-time enrollment token, needed on first start; defaults to STAGELY_ENROLLMENT_TOKEN")
 	machinePrefix := fs.String("machine-prefix", "stagely-", "prefix for the names of machines the agent creates")

@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/stagely-dev/stagely/internal/controlplane"
 	"github.com/stagely-dev/stagely/internal/login"
 	"github.com/stagely-dev/stagely/internal/setup"
 	"github.com/stagely-dev/stagely/terraform"
@@ -441,7 +442,7 @@ func defaultServer(store login.Store) string {
 	if creds, err := store.Load(); err == nil {
 		return creds.Server
 	}
-	return "http://localhost:8080"
+	return controlplane.HostedURL
 }
 
 func configDir() string {

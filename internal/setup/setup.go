@@ -19,7 +19,6 @@ import (
 	"maps"
 	"net"
 	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +27,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/stagely-dev/stagely/internal/controlplane"
 	"github.com/stagely-dev/stagely/internal/sshrun"
 )
 
@@ -135,7 +135,7 @@ func (r Run) Run(ctx context.Context) (Result, error) {
 
 	agent := service{
 		name: "stagely-agent", binary: filepath.Join(r.Binaries, "stagely-agent"), keyFile: "agent.key",
-		args: append([]string{"-control-plane", sessionURL(r.Server), "-data-dir", "/var/lib/stagely-agent", "-provider", r.Cloud.Provider}, cloudArgs...),
+		args: append([]string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/stagely-agent", "-provider", r.Cloud.Provider}, cloudArgs...),
 		env:  cloudEnv,
 	}
 	hosts := []struct {
@@ -157,7 +157,7 @@ func (r Run) Run(ctx context.Context) (Result, error) {
 }
 
 func (r Run) gateway() service {
-	args := []string{"-control-plane", sessionURL(r.Server), "-data-dir", "/var/lib/stagely-gateway", "-listen", ":443", "-http-listen", ":80", "-acme"}
+	args := []string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/stagely-gateway", "-listen", ":443", "-http-listen", ":80", "-acme"}
 	if r.ACME.Email != "" {
 		args = append(args, "-acme-email", r.ACME.Email)
 	}
@@ -328,21 +328,6 @@ func moduleName(env string) string {
 		name = strings.TrimRight(name[:31], "-")
 	}
 	return name
-}
-
-// sessionURL is the WebSocket URL of the control plane's agent hub.
-func sessionURL(server string) string {
-	u, err := url.Parse(strings.TrimRight(server, "/"))
-	if err != nil {
-		return server
-	}
-	if u.Scheme == "https" {
-		u.Scheme = "wss"
-	} else {
-		u.Scheme = "ws"
-	}
-	u.Path += "/v1/connect"
-	return u.String()
 }
 
 func (r Run) printf(format string, args ...any) {
