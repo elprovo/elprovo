@@ -82,3 +82,7 @@ You need a Mac with Apple Silicon, [mise](https://mise.jdx.dev) and Docker with 
 Each command must end with exit code 0. Each simulation check must print `agent check passed`, `terraform check passed` or `image check passed`. [sim/README.md](sim/README.md) describes what each check proves.
 
 Layout and working rules: [AGENTS.md](AGENTS.md).
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).
