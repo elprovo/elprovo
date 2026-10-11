@@ -251,6 +251,47 @@ func checkServer(server string) error {
 	return nil
 }
 
+// Logout revokes the stored sign-in on the control plane, so its tokens stop
+// working everywhere, and deletes the stored credentials. When the control
+// plane does not confirm the revocation, it still deletes them and returns
+// an error that says the sign-in works until it expires.
+func Logout(ctx context.Context, store Store, client *http.Client) error {
+	creds, err := store.Load()
+	if errors.Is(err, ErrNotSignedIn) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	revokeErr := revoke(ctx, client, creds)
+	if err := store.Delete(); err != nil {
+		return err
+	}
+	if revokeErr != nil {
+		return fmt.Errorf("deleted the credentials on this machine, but the control plane did not revoke the sign-in, so its tokens work for up to an hour: %w", revokeErr)
+	}
+	return nil
+}
+
+// revoke ends the grant behind the credentials' refresh token (RFC 7009).
+func revoke(ctx context.Context, client *http.Client, c Credentials) error {
+	form := url.Values{"token": {c.RefreshToken}, "token_type_hint": {"refresh_token"}, "client_id": {c.ClientID}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Server+"/oauth/revoke", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("revoke: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Delete removes the stored credentials. Deleting nothing succeeds.
 func (s Store) Delete() error {
 	if err := os.Remove(s.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {

@@ -27,6 +27,9 @@ type fakeAuthServer struct {
 	challenge string
 	redirect  string
 	refreshes int
+	// revoked holds the token and client id of each revocation.
+	revoked      []string
+	revokeStatus int
 }
 
 func newFakeAuthServer(t *testing.T) *fakeAuthServer {
@@ -75,6 +78,15 @@ func newFakeAuthServer(t *testing.T) *fakeAuthServer {
 			}
 			f.refreshes++
 			_, _ = io.WriteString(w, `{"access_token":"access-2","refresh_token":"refresh-2","expires_in":900,"token_type":"Bearer"}`)
+		}
+	})
+	mux.HandleFunc("POST /oauth/revoke", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.revoked = append(f.revoked, r.Form.Get("token")+" "+r.Form.Get("client_id"))
+		if f.revokeStatus != 0 {
+			w.WriteHeader(f.revokeStatus)
 		}
 	})
 	mux.HandleFunc("GET /api/v1/me", func(w http.ResponseWriter, r *http.Request) {
@@ -172,5 +184,42 @@ func TestPlainHTTPWorksOnlyForLocalhost(t *testing.T) {
 		if err := checkServer(server); (err == nil) != ok {
 			t.Fatalf("checkServer(%q) = %v, want allowed %v", server, err, ok)
 		}
+	}
+}
+
+func TestLogoutRevokesTheSignInAndDeletesTheCredentials(t *testing.T) {
+	f := newFakeAuthServer(t)
+	store := Store{Path: filepath.Join(t.TempDir(), "credentials.json")}
+	if err := store.Save(Credentials{Server: f.srv.URL, ClientID: "cli-1", RefreshToken: "refresh-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Logout(context.Background(), store, f.srv.Client()); err != nil {
+		t.Fatalf("Logout: %v", err)
+	}
+
+	if _, err := store.Load(); !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("Load after Logout: err = %v, want ErrNotSignedIn", err)
+	}
+	if len(f.revoked) != 1 || f.revoked[0] != "refresh-1 cli-1" {
+		t.Fatalf("revocations = %q, want the refresh token of cli-1", f.revoked)
+	}
+}
+
+func TestLogoutDeletesTheCredentialsEvenWhenTheRevocationFails(t *testing.T) {
+	f := newFakeAuthServer(t)
+	f.revokeStatus = http.StatusServiceUnavailable
+	store := Store{Path: filepath.Join(t.TempDir(), "credentials.json")}
+	if err := store.Save(Credentials{Server: f.srv.URL, ClientID: "cli-1", RefreshToken: "refresh-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Logout(context.Background(), store, f.srv.Client())
+
+	if err == nil || !strings.Contains(err.Error(), "did not revoke") {
+		t.Fatalf("Logout err = %v, want one that says the sign-in was not revoked", err)
+	}
+	if _, err := store.Load(); !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("Load after Logout: err = %v, want ErrNotSignedIn", err)
 	}
 }

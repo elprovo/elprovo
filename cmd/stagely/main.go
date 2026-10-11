@@ -35,7 +35,7 @@ const usage = `usage:
   stagely setup vultr [flags]          bootstrap a Vultr account for an environment
   stagely setup azure [flags]          bootstrap an Azure subscription for an environment
   stagely setup lima [flags]           bootstrap the local environment on this Mac
-  stagely logout                       forget the stored sign-in`
+  stagely logout                       revoke the sign-in and forget it`
 
 func main() {
 	if len(os.Args) < 2 {
@@ -55,9 +55,7 @@ func main() {
 	case "setup":
 		err = setupCommand(ctx, os.Args[2:], store, client, os.Stdout)
 	case "logout":
-		if err = store.Delete(); err == nil {
-			fmt.Println("Signed out.")
-		}
+		err = logoutCommand(ctx, store, client, os.Stdout)
 	default:
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
@@ -66,6 +64,16 @@ func main() {
 		fmt.Fprintln(os.Stderr, "stagely:", err)
 		os.Exit(1)
 	}
+}
+
+func logoutCommand(ctx context.Context, store login.Store, client *http.Client, out io.Writer) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	if err := login.Logout(ctx, store, client); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(out, "Signed out.")
+	return nil
 }
 
 func loginCommand(ctx context.Context, args []string, store login.Store, client *http.Client, out io.Writer) error {
