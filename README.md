@@ -8,8 +8,6 @@ This repository holds the parts of Stagely that run outside the Stagely service:
 - `stagely-gateway` runs in your cloud. It serves stagelet traffic and holds no credentials.
 - `stagely` runs on your machine. It sets up your cloud account and enrolls the agent and the gateway.
 
-Status: early development, not released.
-
 | Read | To learn |
 | --- | --- |
 | [docs/setup.md](docs/setup.md) | How `stagely login` and `stagely setup` bootstrap DigitalOcean, AWS, Google Cloud, Azure, Hetzner Cloud or Vultr, or the local environment on a Mac |
@@ -25,6 +23,29 @@ Status: early development, not released.
 | [docs/local-environment.md](docs/local-environment.md) | Running stagelets as Lima VMs on a Mac |
 | [images/README.md](images/README.md) | Golden images |
 | [sim/README.md](sim/README.md) | Local simulations of GitHub, Stripe and the clouds, for development and tests |
+
+## Install
+
+Each release on the [releases page](https://github.com/stagely-dev/stagely/releases) has one archive for each platform, `stagely_<os>_<arch>.tar.gz`, for `linux` and `darwin` on `amd64` and `arm64`. Each archive holds `stagely`, `stagely-agent` and `stagely-gateway`. `checksums.txt` lists their SHA-256 sums.
+
+Download the archive for your computer to run `stagely`, and the `linux_amd64` archive for the binaries that `stagely setup` installs on your hosts:
+
+```sh
+version=v0.1.0
+curl -fsSLO "https://github.com/stagely-dev/stagely/releases/download/$version/stagely_darwin_arm64.tar.gz"
+curl -fsSLO "https://github.com/stagely-dev/stagely/releases/download/$version/stagely_linux_amd64.tar.gz"
+curl -fsSLO "https://github.com/stagely-dev/stagely/releases/download/$version/checksums.txt"
+shasum -a 256 --check --ignore-missing checksums.txt
+mkdir -p stagely-bin/linux-amd64
+tar -xzf stagely_darwin_arm64.tar.gz -C stagely-bin
+tar -xzf stagely_linux_amd64.tar.gz -C stagely-bin/linux-amd64
+```
+
+`stagely setup <cloud> -binaries stagely-bin/linux-amd64` then installs the agent and the gateway from that directory.
+
+## Release
+
+Push a tag `vX.Y.Z` on `main`. `.github/workflows/release.yml` runs `make dist`, which builds the three binaries for each platform, packs them and writes `checksums.txt`, and publishes the GitHub release with them. Tags `protocol/vX.Y.Z` version the `protocol` module and publish no binaries.
 
 ## Validate this repository
 

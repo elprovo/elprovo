@@ -40,9 +40,10 @@ make lint    # static analysis and the import rules
 make test    # unit tests for the root module and protocol
 make check   # every local quality gate: format, lint, race tests, module tidiness, vulnerabilities, build
 make test-acme  # the gateway's ACME integration test against Pebble; needs Docker, not part of make check
+make dist       # the release archives of stagely, stagely-agent and stagely-gateway for each platform, with checksums, in dist/
 ```
 
-GitHub Actions CI is disabled; `make check` is the gate. Run it before you push, and push to `main`. The targets cover all three modules: the root, `protocol` and `sim`. Do not install Go tools globally; add or bump them in `mise.toml`. 
+GitHub Actions CI is disabled; `make check` is the gate. The only workflow that runs is `.github/workflows/release.yml`: a tag `vX.Y.Z` publishes the `make dist` archives as a GitHub release. Run it before you push, and push to `main`. The targets cover all three modules: the root, `protocol` and `sim`. Do not install Go tools globally; add or bump them in `mise.toml`. 
 
 ## Dependency direction
 

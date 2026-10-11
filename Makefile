@@ -20,7 +20,7 @@ TF_MODULES := $(shell find terraform -mindepth 1 -maxdepth 1 -type d)
 # Golden image templates, one folder per cloud.
 IMAGES := $(shell find images -mindepth 1 -maxdepth 1 -type d)
 
-.PHONY: help fmt fmt-check lint test test-race test-acme mod-check vuln build build-hosts tf-check images-check check clean
+.PHONY: help fmt fmt-check lint test test-race test-acme mod-check vuln build build-hosts dist tf-check images-check check clean
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -83,7 +83,16 @@ build: ## Build stagely, stagely-agent, stagely-gateway and stagely-sim into bin
 build-hosts: ## Build stagely, stagely-agent and stagely-gateway for Linux into bin/linux-amd64/ and bin/linux-arm64/
 	for arch in amd64 arm64; do mkdir -p bin/linux-$$arch && CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -o bin/linux-$$arch/ ./cmd/stagely ./cmd/stagely-agent ./cmd/stagely-gateway || exit 1; done
 
+dist: ## Package stagely, stagely-agent and stagely-gateway for each release platform into dist/, with SHA-256 checksums
+	rm -rf dist && mkdir -p dist
+	for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
+		os=$${platform%/*}; arch=$${platform#*/}; dir=dist/stagely_$${os}_$${arch}; \
+		mkdir -p $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o $$dir/ ./cmd/stagely ./cmd/stagely-agent ./cmd/stagely-gateway || exit 1; \
+		tar -czf $$dir.tar.gz -C $$dir . && rm -rf $$dir; \
+	done
+	cd dist && shasum -a 256 *.tar.gz > checksums.txt
+
 check: fmt-check lint test test-race mod-check vuln tf-check images-check build ## Run every local quality gate
 
 clean: ## Remove build output
-	rm -rf bin
+	rm -rf bin dist
