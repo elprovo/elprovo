@@ -70,4 +70,4 @@ Within these edges:
 - No Stagely code runs on build-worker or runtime VMs. The agent drives them over SSH.
 - The control plane accepts a range of protocol versions, from its oldest to `protocol.Version`, and refuses others with a message that names the range. Until the first release `protocol.Version` stays 1. Keep message changes compatible, with new fields optional: the control plane's checks run the agent and gateway of the previous `protocol/vX.Y.Z` tag against it.
 - The agent, gateway and CLI release together under one tag.
-- This repository is public. Do not add private plans, customer data or links to private repositories.
+- This repository becomes public at release, so customers can read the code that runs next to their cloud credentials. Do not add private plans, customer data or links to private repositories.
