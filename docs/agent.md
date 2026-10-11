@@ -39,7 +39,7 @@ A reset job carries the bundle of the stagelet's last applied deploy. The agent 
 
 ## Build workers
 
-Build workers belong to the environment, not to a stagelet. The pool has a fixed size, set with `-build-workers`; workers are named `<prefix>build-1` to `<prefix>build-<size>`. A worker is created the first time a build needs it and kept for later builds, so its Docker build cache helps the next build. After each build the agent removes images older than 72 hours from the worker. When the pool shrinks, the agent deletes workers above the new size.
+Build workers belong to the environment, not to a stagelet. The pool has a fixed size, set with `-build-workers`; workers are named `<prefix>build-1` to `<prefix>build-<size>`. A worker is created the first time a build needs it and kept for later builds, so its Docker layer cache helps the next build. After each build, also a failed one, the agent signs the worker out of the registry and deletes its BuildKit cache mounts (`RUN --mount=type=cache`), because a pull request's Dockerfile can write anything to them and the next build may be of another pull request or project. The layer cache stays, because each layer is keyed by its inputs. If this cleanup fails, the agent deletes the worker, and the next build creates it again. After a successful build the agent also removes images older than 72 hours from the worker. When the pool shrinks, the agent deletes workers above the new size.
 
 ## Logs and secrets
 

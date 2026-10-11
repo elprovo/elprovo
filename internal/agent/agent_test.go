@@ -381,6 +381,79 @@ func TestDeployOutsideTheComposeSubsetFailsAtBuildAndStartsNothing(t *testing.T)
 	}
 }
 
+func TestBuildWorkerForgetsItsRegistryLoginAndCacheMountsAfterEachBuild(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolved string
+		wantOK   bool
+	}{
+		{name: "the build succeeds", resolved: resolved, wantOK: true},
+		{name: "the build fails", resolved: `{"services":{"web":{"image":"nginx","privileged":true}}}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			host, port := healthyApp(t)
+			machines := newFakeMachines(host)
+			base := machines.reply
+			machines.reply = func(machine, command string) (string, error) {
+				if strings.HasSuffix(command, "config --format json") {
+					return tt.resolved, nil
+				}
+				return base(machine, command)
+			}
+			r := newRunner(t, machines)
+			r.Registry.Credentials = func(context.Context, string, bool) (string, string, error) { return "pusher", "push-password", nil }
+			s := serve(t, r)
+
+			s.push(t, protocol.TypeJob, deployJob(port))
+			payload, _ := s.await(t, protocol.TypeJobResult)
+
+			if res := payload.(protocol.JobResult); res.OK != tt.wantOK {
+				t.Fatalf("result = %+v, want OK %v", res, tt.wantOK)
+			}
+			for _, want := range []string{
+				"stagely-build-1: sudo docker logout registry.example.com",
+				"stagely-build-1: sudo docker builder prune --force --filter type=exec.cachemount",
+			} {
+				if !machines.ran(want) {
+					t.Errorf("the build worker did not run %q", want)
+				}
+			}
+			machines.mu.Lock()
+			defer machines.mu.Unlock()
+			if slices.Contains(machines.deleted, "stagely-build-1") {
+				t.Fatal("the build worker was deleted after a cleanup that worked")
+			}
+		})
+	}
+}
+
+func TestBuildWorkerWhoseCleanupFailsIsDeleted(t *testing.T) {
+	host, port := healthyApp(t)
+	machines := newFakeMachines(host)
+	base := machines.reply
+	machines.reply = func(machine, command string) (string, error) {
+		if strings.Contains(command, "builder prune") {
+			return "", errors.New("exit status 1")
+		}
+		return base(machine, command)
+	}
+	r := newRunner(t, machines)
+	s := serve(t, r)
+
+	s.push(t, protocol.TypeJob, deployJob(port))
+	payload, _ := s.await(t, protocol.TypeJobResult)
+
+	if res := payload.(protocol.JobResult); !res.OK {
+		t.Fatalf("result = %+v, want OK: a failed cleanup does not fail the build", res)
+	}
+	machines.mu.Lock()
+	defer machines.mu.Unlock()
+	if !slices.Contains(machines.deleted, "stagely-build-1") {
+		t.Fatalf("deleted = %v, want the build worker deleted", machines.deleted)
+	}
+}
+
 func TestBuildWorkerSignsInToPushAndStageletMachineToPullOnly(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)

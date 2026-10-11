@@ -7,13 +7,19 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/stagely-dev/stagely/internal/agent/build"
 	"github.com/stagely-dev/stagely/internal/agent/runtime"
 	"github.com/stagely-dev/stagely/protocol"
 )
 
-const buildRoot = "/var/lib/stagely/builds/"
+const (
+	buildRoot = "/var/lib/stagely/builds/"
+	// workerCleanupTimeout bounds cleaning a build worker after its build,
+	// which also runs after the job was cancelled.
+	workerCleanupTimeout = 2 * time.Minute
+)
 
 // deploy builds the commit on a build worker while the stagelet's machine is
 // provisioned, then runs the compiled bundle there, runs the migration and
@@ -101,6 +107,7 @@ func (r *Runner) build(ctx context.Context, job protocol.Job, rep *reporter) (bu
 		return build.Result{}, fmt.Errorf("build worker %s: %w", worker, err)
 	}
 	m := stepMachine{machines: r.Machines, name: worker, rep: rep, step: "build"}
+	defer r.cleanBuildWorker(ctx, m)
 	rep.add("build", "agent", "building on "+worker)
 	if err := r.registryLogin(ctx, m, true); err != nil {
 		return build.Result{}, err
@@ -118,6 +125,28 @@ func (r *Runner) build(ctx context.Context, job protocol.Job, rep *reporter) (bu
 		r.Log.Warn("prune old images on build worker", "worker", worker, "error", err)
 	}
 	return res, nil
+}
+
+// cleanBuildWorker removes what a build leaves on its worker that the next
+// build, of any pull request, must not get: the registry login that can
+// push, and the BuildKit cache mounts that the build's Dockerfiles could
+// write anything to. It keeps the layer cache, whose entries are keyed by
+// their inputs. When the cleanup fails, it deletes the worker, and the next
+// build creates it again.
+func (r *Runner) cleanBuildWorker(ctx context.Context, m stepMachine) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), workerCleanupTimeout)
+	defer cancel()
+	err := r.registryLogout(ctx, m)
+	if _, pruneErr := m.Run(ctx, nil, "sudo", "docker", "builder", "prune", "--force", "--filter", "type=exec.cachemount"); pruneErr != nil {
+		err = errors.Join(err, fmt.Errorf("delete build cache mounts: %w", pruneErr))
+	}
+	if err == nil {
+		return
+	}
+	r.Log.Warn("clean build worker failed, deleting it", "worker", m.name, "error", err)
+	if err := r.deleteMachine(ctx, m.name); err != nil {
+		r.Log.Error("delete build worker after a failed cleanup", "worker", m.name, "error", err)
+	}
 }
 
 // reset reapplies the bundle of the stagelet's last applied deploy on its
@@ -232,6 +261,18 @@ func (r *Runner) registryLogin(ctx context.Context, m stepMachine, push bool) er
 	m.rep.hideValues(username, password)
 	if _, err := m.Run(ctx, strings.NewReader(password), "sudo", "docker", "login", "--username", username, "--password-stdin", host); err != nil {
 		return fmt.Errorf("sign in to registry %s: %w", host, err)
+	}
+	return nil
+}
+
+// registryLogout removes the login that registryLogin stored on the machine.
+func (r *Runner) registryLogout(ctx context.Context, m stepMachine) error {
+	if r.Registry.Credentials == nil {
+		return nil
+	}
+	host, _, _ := strings.Cut(r.Registry.Prefix, "/")
+	if _, err := m.Run(ctx, nil, "sudo", "docker", "logout", host); err != nil {
+		return fmt.Errorf("sign out of registry %s: %w", host, err)
 	}
 	return nil
 }
