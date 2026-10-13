@@ -18,31 +18,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
-// TestProviderAgainstSimulation runs a stagelet's machine lifecycle against
-// stagely-sim's Vultr simulation. As setup's module does, it makes a VPC and
+// TestProviderAgainstSimulation runs a preview's machine lifecycle against
+// elprovo-sim's Vultr simulation. As setup's module does, it makes a VPC and
 // a firewall group without rules, so instances accept nothing on their
 // public interface, and it lets only its own address in the VPC, the
-// agent's here, connect to instances there. It creates a stagelet and a
+// agent's here, connect to instances there. It creates a preview and a
 // neighbor instance in both, waits until cloud-init and Docker Compose are
-// ready, runs a Compose project on the stagelet and reaches it over the VPC.
+// ready, runs a Compose project on the preview and reaches it over the VPC.
 // The neighbor can connect out, to the internet and over the VPC, but not to
-// the stagelet's published port or SSH port, although Vultr's firewall does
-// not filter the VPC: the stagelet's own rules refuse it. A container on the
-// stagelet can't connect over the VPC or reach the metadata service. Then
+// the preview's published port or SSH port, although Vultr's firewall does
+// not filter the VPC: the preview's own rules refuse it. A container on the
+// preview can't connect over the VPC or reach the metadata service. Then
 // the test deletes both instances. It calls https://api.vultr.com with the key in VULTR_API_KEY,
 // so it must run where that name reaches a running simulation, on the
 // simulation's private network, whose address range is in
-// STAGELY_SIM_VULTR_NETWORK_RANGE. With STAGELY_SIM_VULTR_GOLDEN_IMAGE, the
+// ELPROVO_SIM_VULTR_NETWORK_RANGE. With ELPROVO_SIM_VULTR_GOLDEN_IMAGE, the
 // instances boot from that snapshot. "sim/scripts/check-vultr.sh agent" and
 // "image" set them up.
 func TestProviderAgainstSimulation(t *testing.T) {
 	key := os.Getenv("VULTR_API_KEY")
-	privateRange, err := netip.ParsePrefix(os.Getenv("STAGELY_SIM_VULTR_NETWORK_RANGE"))
+	privateRange, err := netip.ParsePrefix(os.Getenv("ELPROVO_SIM_VULTR_NETWORK_RANGE"))
 	if key == "" || err != nil {
-		t.Fatal("VULTR_API_KEY must name a key of a running simulation at api.vultr.com, and STAGELY_SIM_VULTR_NETWORK_RANGE its private network; run sim/scripts/check-vultr.sh agent")
+		t.Fatal("VULTR_API_KEY must name a key of a running simulation at api.vultr.com, and ELPROVO_SIM_VULTR_NETWORK_RANGE its private network; run sim/scripts/check-vultr.sh agent")
 	}
 	_, sshKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -51,8 +51,8 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	self := addressIn(t, privateRange)
 	cfg := Config{
 		APIURL: "https://api.vultr.com", APIKey: key, Region: "ewr", Plan: "vc2-2c-4gb", OSID: 2284,
-		GoldenImage: os.Getenv("STAGELY_SIM_VULTR_GOLDEN_IMAGE"),
-		Tag:         "stagely-sim-agent-check", HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
+		GoldenImage: os.Getenv("ELPROVO_SIM_VULTR_GOLDEN_IMAGE"),
+		Tag:         "elprovo-sim-agent-check", HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
 		Network: cloudinit.PrivateNetwork{Range: privateRange, Sources: []netip.Addr{self}},
 	}
 	setup := newAPI(cfg.APIURL, key)
@@ -74,11 +74,11 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.pollEvery = time.Second
-	stagelet, neighbor := "stagely-check-"+randomHex(t), "stagely-neighbor-"+randomHex(t)
+	preview, neighbor := "elprovo-check-"+randomHex(t), "elprovo-neighbor-"+randomHex(t)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		_ = p.Delete(ctx, stagelet)
+		_ = p.Delete(ctx, preview)
 		_ = p.Delete(ctx, neighbor)
 		_ = setup.do(ctx, http.MethodDelete, "/v2/firewalls/"+cfg.FirewallGroupID, nil, nil)
 		_ = setup.do(ctx, http.MethodDelete, "/v2/vpcs/"+cfg.VPCID, nil, nil)
@@ -91,17 +91,17 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Create(t.Context(), name); err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
 	}
-	addr, err := p.Address(t.Context(), stagelet)
+	addr, err := p.Address(t.Context(), preview)
 	if err != nil || !privateRange.Contains(netip.MustParseAddr(addr)) {
-		t.Fatalf("address = %q, %v; want the stagelet's address in the VPC %s", addr, err, privateRange)
+		t.Fatalf("address = %q, %v; want the preview's address in the VPC %s", addr, err, privateRange)
 	}
-	runComposeProject(t, p, stagelet)
-	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the stagelet") {
+	runComposeProject(t, p, preview)
+	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the preview") {
 		t.Fatalf("service on the private address answered %q", body)
 	}
 	connect := func(host, port string) error {
@@ -115,20 +115,20 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	if err := connect(self.String(), port); err != nil {
 		t.Fatalf("the neighbor can't connect out over the VPC, so its blocked connections would prove nothing: %v", err)
 	}
-	if out, err := p.machines.Output(t.Context(), stagelet, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://"+net.JoinHostPort(self.String(), port)+"/"); err == nil || !strings.Contains(err.Error(), "refused") {
-		t.Fatalf("a container on the stagelet connected over the VPC: %q, %v; want the connection refused, so containers can't reach other machines there", out, err)
+	if out, err := p.machines.Output(t.Context(), preview, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://"+net.JoinHostPort(self.String(), port)+"/"); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a container on the preview connected over the VPC: %q, %v; want the connection refused, so containers can't reach other machines there", out, err)
 	}
 	for _, port := range []string{"8080", "22"} {
 		if err := connect(addr, port); err == nil {
-			t.Fatalf("the neighbor reached the stagelet's port %s over the VPC", port)
+			t.Fatalf("the neighbor reached the preview's port %s over the VPC", port)
 		}
 	}
-	metadata, err := p.machines.Output(t.Context(), stagelet, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/v1.json")
+	metadata, err := p.machines.Output(t.Context(), preview, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/v1.json")
 	if err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Fatalf("a container asked the metadata service: %q, %v; want the connection refused, so containers can't read the user data", metadata, err)
 	}
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Delete(t.Context(), name); err != nil {
 			t.Fatalf("delete %s: %v", name, err)
 		}
@@ -222,7 +222,7 @@ func runComposeProject(t *testing.T, p *Provider, name string) {
       interval: 1s
       retries: 30
 `,
-		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the stagelet' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
+		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the preview' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
 	}
 	if _, err := p.machines.Output(t.Context(), name, nil, "mkdir", "-p", "/root/app"); err != nil {
 		t.Fatalf("make the project directory: %v", err)

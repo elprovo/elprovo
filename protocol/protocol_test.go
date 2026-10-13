@@ -17,11 +17,11 @@ func TestWireFormatIsStable(t *testing.T) {
 		{
 			name:    "deploy job",
 			msgType: TypeJob,
-			payload: Job{ID: "op1", LeaseToken: "lt", Kind: JobDeploy, StageletID: "s1", Deploy: &DeploySpec{
+			payload: Job{ID: "op1", LeaseToken: "lt", Kind: JobDeploy, PreviewID: "s1", Deploy: &DeploySpec{
 				Repository: "acme/web", Commit: "abc", SourceToken: "tok", SourceAPIURL: "https://api.github.com", ComposeFiles: []string{"compose.yml"},
 				PublicService: "web", PublicPort: 8080, HealthPath: "/healthz",
 			}},
-			want: `{"type":"job","payload":{"id":"op1","lease_token":"lt","kind":"deploy","stagelet_id":"s1","deploy":{"repository":"acme/web","commit":"abc","source_token":"tok","source_api_url":"https://api.github.com","compose_files":["compose.yml"],"public_service":"web","public_port":8080,"health_path":"/healthz"}}}`,
+			want: `{"type":"job","payload":{"id":"op1","lease_token":"lt","kind":"deploy","preview_id":"s1","deploy":{"repository":"acme/web","commit":"abc","source_token":"tok","source_api_url":"https://api.github.com","compose_files":["compose.yml"],"public_service":"web","public_port":8080,"health_path":"/healthz"}}}`,
 		},
 		{
 			name:    "job result",
@@ -32,8 +32,8 @@ func TestWireFormatIsStable(t *testing.T) {
 		{
 			name:    "routes",
 			msgType: TypeRoutes,
-			payload: Routes{Routes: []Route{{StageletID: "s1", Host: "s1.stagelets.localhost", Upstream: "192.168.64.5:8080", HealthPath: "/healthz"}}},
-			want:    `{"type":"routes","payload":{"routes":[{"stagelet_id":"s1","host":"s1.stagelets.localhost","upstream":"192.168.64.5:8080","health_path":"/healthz"}]}}`,
+			payload: Routes{Routes: []Route{{PreviewID: "s1", Host: "s1.previews.localhost", Upstream: "192.168.64.5:8080", HealthPath: "/healthz"}}},
+			want:    `{"type":"routes","payload":{"routes":[{"preview_id":"s1","host":"s1.previews.localhost","upstream":"192.168.64.5:8080","health_path":"/healthz"}]}}`,
 		},
 		{
 			name:    "auth",
@@ -44,18 +44,18 @@ func TestWireFormatIsStable(t *testing.T) {
 		{
 			name:    "deploy job with config, secrets and migration",
 			msgType: TypeJob,
-			payload: Job{ID: "op1", LeaseToken: "lt", Kind: JobDeploy, StageletID: "s1", Deploy: &DeploySpec{
+			payload: Job{ID: "op1", LeaseToken: "lt", Kind: JobDeploy, PreviewID: "s1", Deploy: &DeploySpec{
 				Repository: "acme/web", Commit: "abc", SourceToken: "tok", SourceAPIURL: "https://api.github.com", ComposeFiles: []string{"compose.yml"},
 				PublicService: "web", PublicPort: 8080, HealthPath: "/healthz", MigrationCommand: "bin/migrate",
 				Config: map[string]string{"MODE": "preview"}, Secrets: []SecretRef{{Name: "DB_PASSWORD", Key: "db"}},
 			}},
-			want: `{"type":"job","payload":{"id":"op1","lease_token":"lt","kind":"deploy","stagelet_id":"s1","deploy":{"repository":"acme/web","commit":"abc","source_token":"tok","source_api_url":"https://api.github.com","compose_files":["compose.yml"],"public_service":"web","public_port":8080,"health_path":"/healthz","migration_command":"bin/migrate","config":{"MODE":"preview"},"secrets":[{"name":"DB_PASSWORD","key":"db"}]}}}`,
+			want: `{"type":"job","payload":{"id":"op1","lease_token":"lt","kind":"deploy","preview_id":"s1","deploy":{"repository":"acme/web","commit":"abc","source_token":"tok","source_api_url":"https://api.github.com","compose_files":["compose.yml"],"public_service":"web","public_port":8080,"health_path":"/healthz","migration_command":"bin/migrate","config":{"MODE":"preview"},"secrets":[{"name":"DB_PASSWORD","key":"db"}]}}}`,
 		},
 		{
 			name:    "delete machine job",
 			msgType: TypeJob,
-			payload: Job{ID: "op3", LeaseToken: "lt", Kind: JobDeleteMachine, Machine: "stagely-old"},
-			want:    `{"type":"job","payload":{"id":"op3","lease_token":"lt","kind":"delete_machine","machine":"stagely-old"}}`,
+			payload: Job{ID: "op3", LeaseToken: "lt", Kind: JobDeleteMachine, Machine: "elprovo-old"},
+			want:    `{"type":"job","payload":{"id":"op3","lease_token":"lt","kind":"delete_machine","machine":"elprovo-old"}}`,
 		},
 		{
 			name:    "job step",
@@ -84,14 +84,14 @@ func TestWireFormatIsStable(t *testing.T) {
 		{
 			name:    "reset job with a bundle",
 			msgType: TypeJob,
-			payload: Job{ID: "op2", LeaseToken: "lt", Kind: JobReset, StageletID: "s1", Reset: &ResetSpec{Bundle: json.RawMessage(`{"services":{}}`), PublicService: "web", PublicPort: 8080, HealthPath: "/"}},
-			want:    `{"type":"job","payload":{"id":"op2","lease_token":"lt","kind":"reset","stagelet_id":"s1","reset":{"bundle":{"services":{}},"public_service":"web","public_port":8080,"health_path":"/"}}}`,
+			payload: Job{ID: "op2", LeaseToken: "lt", Kind: JobReset, PreviewID: "s1", Reset: &ResetSpec{Bundle: json.RawMessage(`{"services":{}}`), PublicService: "web", PublicPort: 8080, HealthPath: "/"}},
+			want:    `{"type":"job","payload":{"id":"op2","lease_token":"lt","kind":"reset","preview_id":"s1","reset":{"bundle":{"services":{}},"public_service":"web","public_port":8080,"health_path":"/"}}}`,
 		},
 		{
 			name:    "inventory",
 			msgType: TypeInventory,
-			payload: Inventory{Machines: []Machine{{Name: "stagely-s1", Kind: MachineRuntime, StageletID: "s1", Status: MachineReady}}},
-			want:    `{"type":"inventory","payload":{"machines":[{"name":"stagely-s1","kind":"runtime","stagelet_id":"s1","status":"ready"}]}}`,
+			payload: Inventory{Machines: []Machine{{Name: "elprovo-s1", Kind: MachineRuntime, PreviewID: "s1", Status: MachineReady}}},
+			want:    `{"type":"inventory","payload":{"machines":[{"name":"elprovo-s1","kind":"runtime","preview_id":"s1","status":"ready"}]}}`,
 		},
 		{
 			name:    "session confirmation the server could not check",
@@ -102,14 +102,14 @@ func TestWireFormatIsStable(t *testing.T) {
 		{
 			name:    "route health",
 			msgType: TypeRouteHealth,
-			payload: RouteHealth{Routes: []RouteState{{StageletID: "s1", Upstream: "10.0.0.5:8080", Reachable: false, Error: "connection refused", HealthError: "the gateway cannot reach the app", CheckedAt: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}}},
-			want:    `{"type":"route_health","payload":{"routes":[{"stagelet_id":"s1","upstream":"10.0.0.5:8080","reachable":false,"error":"connection refused","healthy":false,"health_error":"the gateway cannot reach the app","checked_at":"2026-10-10T12:00:00Z"}]}}`,
+			payload: RouteHealth{Routes: []RouteState{{PreviewID: "s1", Upstream: "10.0.0.5:8080", Reachable: false, Error: "connection refused", HealthError: "the gateway cannot reach the app", CheckedAt: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}}},
+			want:    `{"type":"route_health","payload":{"routes":[{"preview_id":"s1","upstream":"10.0.0.5:8080","reachable":false,"error":"connection refused","healthy":false,"health_error":"the gateway cannot reach the app","checked_at":"2026-10-10T12:00:00Z"}]}}`,
 		},
 		{
 			name:    "route health of a reachable, healthy app",
 			msgType: TypeRouteHealth,
-			payload: RouteHealth{Routes: []RouteState{{StageletID: "s1", Upstream: "10.0.0.5:8080", Reachable: true, Healthy: true, CheckedAt: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}}},
-			want:    `{"type":"route_health","payload":{"routes":[{"stagelet_id":"s1","upstream":"10.0.0.5:8080","reachable":true,"healthy":true,"checked_at":"2026-10-10T12:00:00Z"}]}}`,
+			payload: RouteHealth{Routes: []RouteState{{PreviewID: "s1", Upstream: "10.0.0.5:8080", Reachable: true, Healthy: true, CheckedAt: time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)}}},
+			want:    `{"type":"route_health","payload":{"routes":[{"preview_id":"s1","upstream":"10.0.0.5:8080","reachable":true,"healthy":true,"checked_at":"2026-10-10T12:00:00Z"}]}}`,
 		},
 		{
 			name:    "failed job result after the machine changed",

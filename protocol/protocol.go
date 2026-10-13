@@ -1,5 +1,5 @@
 // Package protocol defines the messages that agents and gateways exchange with
-// the Stagely control plane over one WebSocket session. The JSON encoding is a
+// the Elprovo control plane over one WebSocket session. The JSON encoding is a
 // compatibility contract: the control plane serves agents and gateways that
 // customers have not upgraded.
 package protocol
@@ -15,12 +15,12 @@ import (
 const Version = 1
 
 // SignaturePrefix is prepended to the server nonce before the client signs it.
-const SignaturePrefix = "stagely-session-v1:"
+const SignaturePrefix = "elprovo-session-v1:"
 
 // HandoffPath is where a gateway redeems a handoff. The control plane puts the
 // handoff secret in the HandoffTokenParam query parameter.
 const (
-	HandoffPath       = "/_stagely/handoff"
+	HandoffPath       = "/_elprovo/handoff"
 	HandoffTokenParam = "token"
 )
 
@@ -138,7 +138,7 @@ type Job struct {
 	ID         string      `json:"id"`
 	LeaseToken string      `json:"lease_token"`
 	Kind       JobKind     `json:"kind"`
-	StageletID string      `json:"stagelet_id,omitempty"`
+	PreviewID  string      `json:"preview_id,omitempty"`
 	Deploy     *DeploySpec `json:"deploy,omitempty"`
 	Reset      *ResetSpec  `json:"reset,omitempty"`
 	// Machine names the machine a DeleteMachine job removes.
@@ -172,7 +172,7 @@ type SecretRef struct {
 	Key  string `json:"key"`
 }
 
-// ResetSpec reapplies the bundle of the stagelet's last applied deploy on
+// ResetSpec reapplies the bundle of the preview's last applied deploy on
 // its machine, without fetching source or running the migration again.
 type ResetSpec struct {
 	Bundle        json.RawMessage `json:"bundle"`
@@ -195,7 +195,7 @@ type LeaseRenew struct {
 // Compose project a successful deploy applied, with every image named by
 // digest; it holds plain values and secret names, never secret values.
 // MachineChanged says that a deploy or reset started to apply its bundle
-// on the stagelet's machine; when such a job fails, the machine may no
+// on the preview's machine; when such a job fails, the machine may no
 // longer run the app it ran before.
 type JobResult struct {
 	JobID          string            `json:"job_id"`
@@ -283,10 +283,10 @@ const (
 // Machine is one machine the agent created in the cloud. Status is
 // MachineCreating, MachineReady or MachineDeleting.
 type Machine struct {
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	StageletID string `json:"stagelet_id,omitempty"`
-	Status     string `json:"status"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	PreviewID string `json:"preview_id,omitempty"`
+	Status    string `json:"status"`
 }
 
 // Inventory lists every machine the agent finds in the cloud with its own
@@ -295,11 +295,11 @@ type Inventory struct {
 	Machines []Machine `json:"machines"`
 }
 
-// Route maps a stagelet host name to its upstream address. HealthPath is
+// Route maps a preview host name to its upstream address. HealthPath is
 // the path, starting with /, that answers with a 2xx status while the app
 // is healthy; the gateway requests it to check the app.
 type Route struct {
-	StageletID string `json:"stagelet_id"`
+	PreviewID  string `json:"preview_id"`
 	Host       string `json:"host"`
 	Upstream   string `json:"upstream"`
 	HealthPath string `json:"health_path,omitempty"`
@@ -310,9 +310,9 @@ type Routes struct {
 	Routes []Route `json:"routes"`
 }
 
-// RoutesApplied lists the stagelets whose routes the gateway now serves.
+// RoutesApplied lists the previews whose routes the gateway now serves.
 type RoutesApplied struct {
-	StageletIDs []string `json:"stagelet_ids"`
+	PreviewIDs []string `json:"preview_ids"`
 }
 
 // HandoffExchange asks the server to redeem a visitor's handoff token.
@@ -323,12 +323,12 @@ type HandoffExchange struct {
 
 // HandoffResult answers a HandoffExchange.
 type HandoffResult struct {
-	RequestID  string    `json:"request_id"`
-	OK         bool      `json:"ok"`
-	Error      string    `json:"error,omitempty"`
-	SessionID  string    `json:"session_id,omitempty"`
-	StageletID string    `json:"stagelet_id,omitempty"`
-	ExpiresAt  time.Time `json:"expires_at,omitzero"`
+	RequestID string    `json:"request_id"`
+	OK        bool      `json:"ok"`
+	Error     string    `json:"error,omitempty"`
+	SessionID string    `json:"session_id,omitempty"`
+	PreviewID string    `json:"preview_id,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
 }
 
 // SessionConfirm asks which of the gateway's sessions are still valid.
@@ -346,14 +346,14 @@ type SessionConfirmed struct {
 	Error     string   `json:"error,omitempty"`
 }
 
-// RouteState is what the gateway found when it checked one stagelet's
+// RouteState is what the gateway found when it checked one preview's
 // route. Reachable means it opened a TCP connection to the upstream, and
 // Error says why it could not. Healthy means the app answered a request for
 // the route's health path with a 2xx status, and HealthError says why it
 // did not. Upstream names the address the gateway checked, so a state for
-// an upstream the stagelet no longer uses can be told apart.
+// an upstream the preview no longer uses can be told apart.
 type RouteState struct {
-	StageletID  string    `json:"stagelet_id"`
+	PreviewID   string    `json:"preview_id"`
 	Upstream    string    `json:"upstream"`
 	Reachable   bool      `json:"reachable"`
 	Error       string    `json:"error,omitempty"`

@@ -58,19 +58,19 @@ func TestCreateImageCommitsTheMachineAndNewInstancesBootFromIt(t *testing.T) {
 	var created struct {
 		ID string `xml:"imageId"`
 	}
-	e.mustEC2(&created, "CreateImage", "InstanceId", source, "Name", "stagely-golden",
+	e.mustEC2(&created, "CreateImage", "InstanceId", source, "Name", "elprovo-golden",
 		"TagSpecification.1.ResourceType", "image", "TagSpecification.1.Tag.1.Key", "Name", "TagSpecification.1.Tag.1.Value", "golden")
 
 	if got := e.image(created.ID); got.State != "pending" {
 		t.Fatalf("image while the machine is committed = %s, want pending", got.State)
 	}
-	if code := e.ec2Error("CreateImage", "InstanceId", source, "Name", "stagely-golden-2"); code != "IncorrectInstanceState" {
+	if code := e.ec2Error("CreateImage", "InstanceId", source, "Name", "elprovo-golden-2"); code != "IncorrectInstanceState" {
 		t.Fatalf("second image while the first is taken = %s, want IncorrectInstanceState", code)
 	}
 	release()
 	var img testImage
 	eventually(t, "the image is available", func() bool { img = e.image(created.ID); return img.State == "available" })
-	ref := "stagely-sim-aws-image:" + e.machines.spec(source).Account + "-" + img.SnapshotID
+	ref := "elprovo-sim-aws-image:" + e.machines.spec(source).Account + "-" + img.SnapshotID
 	if !e.machines.hasImage(ref) {
 		t.Fatalf("no Docker image %s behind the AMI", ref)
 	}
@@ -80,7 +80,7 @@ func TestCreateImageCommitsTheMachineAndNewInstancesBootFromIt(t *testing.T) {
 	if got := e.machines.spec(booted).Image; got != ref {
 		t.Fatalf("instance booted from %q, want %q", got, ref)
 	}
-	if code := e.ec2Error("CreateImage", "InstanceId", booted, "Name", "stagely-golden"); code != "InvalidAMIName.Duplicate" {
+	if code := e.ec2Error("CreateImage", "InstanceId", booted, "Name", "elprovo-golden"); code != "InvalidAMIName.Duplicate" {
 		t.Fatalf("image with a taken name = %s, want InvalidAMIName.Duplicate", code)
 	}
 }
@@ -104,7 +104,7 @@ func TestSnapshotOfARegisteredImageIsInUseUntilTheImageIsDeregistered(t *testing
 	e.mustEC2(&created, "CreateImage", "InstanceId", source, "Name", "to-delete")
 	var img testImage
 	eventually(t, "the image is available", func() bool { img = e.image(created.ID); return img.State == "available" })
-	ref := "stagely-sim-aws-image:" + e.machines.spec(source).Account + "-" + img.SnapshotID
+	ref := "elprovo-sim-aws-image:" + e.machines.spec(source).Account + "-" + img.SnapshotID
 
 	if code := e.ec2Error("DeleteSnapshot", "SnapshotId", img.SnapshotID); code != "InvalidSnapshot.InUse" {
 		t.Fatalf("delete the snapshot of a registered image = %s, want InvalidSnapshot.InUse", code)

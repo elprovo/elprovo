@@ -1,6 +1,6 @@
-# .stagely.yml
+# .elprovo.yml
 
-`.stagely.yml` in the root of a repository tells Stagely how to run a pull request of it as a stagelet. Stagely reads it, the Compose files it names, and the files those reference at the pull request's head commit. It does not clone the repository to do so.
+`.elprovo.yml` in the root of a repository tells Elprovo how to run a pull request of it as a preview. Elprovo reads it, the Compose files it names, and the files those reference at the pull request's head commit. It does not clone the repository to do so.
 
 ```yaml
 version: 1
@@ -26,24 +26,24 @@ migration:
 
 Unknown fields are an error.
 
-## How a stagelet runs the project
+## How a preview runs the project
 
-A build worker builds every service that has a `build` section and pushes its image. The stagelet's own machine then runs the resolved project with each built service pinned to its image digest. The stagelet's machine never receives the source, so a service can't read files from the repository at run time.
+A build worker builds every service that has a `build` section and pushes its image. The preview's own machine then runs the resolved project with each built service pinned to its image digest. The preview's machine never receives the source, so a service can't read files from the repository at run time.
 
 Relative paths resolve the way `docker compose -f` resolves them: against the directory of the first Compose file in `compose`.
 
 ## Config values and secrets
 
-A project in Stagely has plain config values and secrets. Every service gets each of them as an environment variable, and they win over values in the Compose files.
+A project in Elprovo has plain config values and secrets. Every service gets each of them as an environment variable, and they win over values in the Compose files.
 
 - Compose files can interpolate plain config values, such as `image: postgres:${POSTGRES_VERSION}`.
 - Secrets reach containers only as environment variables. Compose files can't interpolate them, and their values never leave the agent in your cloud.
 
 ## The supported Compose subset
 
-The subset is a security control, and Stagely checks it twice. The control plane checks the Compose files when it plans a deploy. The agent checks the resolved project on the build worker, with every variable filled in, before it builds anything, and compiles the bundle from that checked project. A failed check fails the deploy with an error that names the service and the field.
+The subset is a security control, and Elprovo checks it twice. The control plane checks the Compose files when it plans a deploy. The agent checks the resolved project on the build worker, with every variable filled in, before it builds anything, and compiles the bundle from that checked project. A failed check fails the deploy with an error that names the service and the field.
 
-Stagely refuses a project that uses any of these, because each one gives a container access to the machine or weakens its isolation:
+Elprovo refuses a project that uses any of these, because each one gives a container access to the machine or weakens its isolation:
 
 - `privileged: true`, also on a `post_start` or `pre_stop` hook
 - host namespaces: `network_mode`, `pid`, `ipc`, `uts`, `userns_mode`, `cgroup`
@@ -66,7 +66,7 @@ Build workers belong to the environment, so the pull requests of all its project
 
 The source itself may not contain a symbolic link that points outside the repository, because Compose and the build would follow it to the build worker's own files.
 
-Named volumes are fine. They live on the stagelet's machine and survive deploys and resets of the same stagelet.
+Named volumes are fine. They live on the preview's machine and survive deploys and resets of the same preview.
 
 ### Variables
 
@@ -80,7 +80,7 @@ Compose files can use variables from the plain config values and from the reposi
 
 ## include, extends and env_file
 
-Stagely follows these references and checks every Compose file it reaches against the same subset:
+Elprovo follows these references and checks every Compose file it reaches against the same subset:
 
 | Reference | Resolved against |
 | --- | --- |

@@ -92,7 +92,7 @@ func (t *tx) newInvoice(sub *subscription, c *customer, reason string, periodSta
 		ID:               newID("in"),
 		Object:           "invoice",
 		AccountCountry:   "US",
-		AccountName:      "Stagely",
+		AccountName:      "Elprovo",
 		AutoAdvance:      true,
 		BillingReason:    reason,
 		CollectionMethod: "charge_automatically",

@@ -1,0 +1,10 @@
+[Unit]
+Description=Simulated instance metadata service
+
+[Service]
+ExecStartPre=/usr/local/sbin/elprovo-vm-init metadata-net
+ExecStart=/usr/sbin/ip netns exec elprovo-metadata /usr/local/sbin/elprovo-vm-init metadata-serve
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

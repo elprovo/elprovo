@@ -16,8 +16,8 @@ import (
 
 // A cloud's reserved IP reaches a machine as an extra address on its public
 // interface. The cloud pushes the machine's whole list with
-// `stagely-vm-init addresses`, and the machine keeps it for later boots.
-const addressesState = "var/lib/stagely-vm/addresses.json"
+// `elprovo-vm-init addresses`, and the machine keeps it for later boots.
+const addressesState = "var/lib/elprovo-vm/addresses.json"
 
 type extraAddresses struct {
 	Addresses []string `json:"addresses"`

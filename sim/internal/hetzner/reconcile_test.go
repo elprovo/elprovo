@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func TestRestartKeepsServersWhoseMachinesExist(t *testing.T) {

@@ -1,4 +1,4 @@
-// Package setup bootstraps a cloud account for one Stagely environment: it
+// Package setup bootstraps a cloud account for one Elprovo environment: it
 // makes sure the environment exists on the control plane, applies the
 // cloud's bootstrap module, then installs the agent and the gateway on their
 // hosts over SSH and enrolls them. Running it again converges on the same
@@ -26,9 +26,9 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/controlplane"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/controlplane"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // Roles of the two daemons.
@@ -39,7 +39,7 @@ const (
 
 // Cloud is what one cloud adds to a setup run.
 type Cloud struct {
-	// Provider is the environment's provider in Stagely, such as
+	// Provider is the environment's provider in Elprovo, such as
 	// digitalocean.
 	Provider string
 	Module   fs.FS
@@ -58,14 +58,14 @@ type Cloud struct {
 	Agent func(outputs map[string]any) (args []string, env map[string]string, err error)
 }
 
-// Run is one `stagely setup <cloud>` run.
+// Run is one `elprovo setup <cloud>` run.
 type Run struct {
-	API            API
-	Server         string
-	Environment    string
-	StageletDomain string
-	OperatorCIDRs  []string
-	// Binaries holds stagely-agent and stagely-gateway built for the hosts.
+	API           API
+	Server        string
+	Environment   string
+	PreviewDomain string
+	OperatorCIDRs []string
+	// Binaries holds elprovo-agent and elprovo-gateway built for the hosts.
 	Binaries string
 	ACME     ACME
 	Tofu     string
@@ -102,7 +102,7 @@ func (r Run) Run(ctx context.Context) (Result, error) {
 		return Result{}, err
 	}
 	r.printf("Environment %s\n", r.Environment)
-	env, err := ensureEnvironment(ctx, r.API, accountID, Environment{Name: r.Environment, Provider: r.Cloud.Provider, StageletDomain: r.StageletDomain, StageletPort: 443})
+	env, err := ensureEnvironment(ctx, r.API, accountID, Environment{Name: r.Environment, Provider: r.Cloud.Provider, PreviewDomain: r.PreviewDomain, PreviewPort: 443})
 	if err != nil {
 		return Result{}, err
 	}
@@ -134,8 +134,8 @@ func (r Run) Run(ctx context.Context) (Result, error) {
 	}
 
 	agent := service{
-		name: "stagely-agent", binary: filepath.Join(r.Binaries, "stagely-agent"), keyFile: "agent.key",
-		args: append([]string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/stagely-agent", "-provider", r.Cloud.Provider}, cloudArgs...),
+		name: "elprovo-agent", binary: filepath.Join(r.Binaries, "elprovo-agent"), keyFile: "agent.key",
+		args: append([]string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/elprovo-agent", "-provider", r.Cloud.Provider}, cloudArgs...),
 		env:  cloudEnv,
 	}
 	hosts := []struct {
@@ -157,14 +157,14 @@ func (r Run) Run(ctx context.Context) (Result, error) {
 }
 
 func (r Run) gateway() service {
-	args := []string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/stagely-gateway", "-listen", ":443", "-http-listen", ":80", "-acme"}
+	args := []string{"-control-plane", controlplane.SessionURL(r.Server), "-data-dir", "/var/lib/elprovo-gateway", "-listen", ":443", "-http-listen", ":80", "-acme"}
 	if r.ACME.Email != "" {
 		args = append(args, "-acme-email", r.ACME.Email)
 	}
 	if r.ACME.DirectoryURL != "" {
 		args = append(args, "-acme-directory", r.ACME.DirectoryURL)
 	}
-	return service{name: "stagely-gateway", binary: filepath.Join(r.Binaries, "stagely-gateway"), keyFile: "gateway.key", args: args, env: map[string]string{}, bindLowPorts: true}
+	return service{name: "elprovo-gateway", binary: filepath.Join(r.Binaries, "elprovo-gateway"), keyFile: "gateway.key", args: args, env: map[string]string{}, bindLowPorts: true}
 }
 
 func (r Run) installAndEnroll(ctx context.Context, target sshrun.Target, accountID, envID, role string, svc service) error {
@@ -184,15 +184,15 @@ func (r Run) installAndEnroll(ctx context.Context, target sshrun.Target, account
 		svc.env = map[string]string{}
 	}
 	if token != "" {
-		svc.env["STAGELY_ENROLLMENT_TOKEN"] = token
+		svc.env["ELPROVO_ENROLLMENT_TOKEN"] = token
 	}
 	if role == roleGateway && r.ACME.DirectoryCA != "" {
 		ca, err := os.ReadFile(r.ACME.DirectoryCA)
 		if err != nil {
 			return fmt.Errorf("read ACME directory CA: %w", err)
 		}
-		svc.files = append(svc.files, serviceFile{path: "/etc/stagely/acme-ca.pem", data: ca, mode: "0644"})
-		svc.args = append(svc.args, "-acme-directory-ca", "/etc/stagely/acme-ca.pem")
+		svc.files = append(svc.files, serviceFile{path: "/etc/elprovo/acme-ca.pem", data: ca, mode: "0644"})
+		svc.args = append(svc.args, "-acme-directory-ca", "/etc/elprovo/acme-ca.pem")
 	}
 	before, err := clients(ctx, r.API, accountID, envID)
 	if err != nil {
@@ -215,7 +215,7 @@ func (r Run) installAndEnroll(ctx context.Context, target sshrun.Target, account
 }
 
 func (r Run) check() error {
-	missing := map[string]string{"environment": r.Environment, "stagelet domain": r.StageletDomain, "binaries directory": r.Binaries}
+	missing := map[string]string{"environment": r.Environment, "preview domain": r.PreviewDomain, "binaries directory": r.Binaries}
 	for what, v := range missing {
 		if v == "" {
 			return fmt.Errorf("setup needs a %s", what)
@@ -224,7 +224,7 @@ func (r Run) check() error {
 	if len(r.OperatorCIDRs) == 0 {
 		return errors.New("setup needs the operator addresses that may reach the hosts over SSH")
 	}
-	for _, bin := range []string{"stagely-agent", "stagely-gateway"} {
+	for _, bin := range []string{"elprovo-agent", "elprovo-gateway"} {
 		if _, err := os.Stat(filepath.Join(r.Binaries, bin)); err != nil {
 			return fmt.Errorf("no %s for the hosts in %s: %w", bin, r.Binaries, err)
 		}

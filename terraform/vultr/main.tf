@@ -1,5 +1,5 @@
 locals {
-  stagelet_tag    = var.stagelet_tag != "" ? var.stagelet_tag : "${var.name}-stagelet"
+  preview_tag     = var.preview_tag != "" ? var.preview_tag : "${var.name}-preview"
   registry_region = var.registry_region != "" ? var.registry_region : var.region
   operators = {
     for cidr in var.operator_cidrs : cidr => {
@@ -15,20 +15,20 @@ locals {
 }
 
 resource "vultr_ssh_key" "operator" {
-  name    = "${var.name}-stagely-setup"
+  name    = "${var.name}-elprovo-setup"
   ssh_key = var.ssh_public_key
 }
 
-# The hosts, stagelet machines and build workers share this VPC, and the
-# agent and the gateway reach stagelets over it. Vultr firewall groups filter
+# The hosts, preview machines and build workers share this VPC, and the
+# agent and the gateway reach previews over it. Vultr firewall groups filter
 # only inbound traffic on the public interface, so each machine filters the
 # VPC with its own iptables rules, which its user data adds on every boot:
 # the agent and the gateway reject every new connection from the VPC, and
-# stagelet machines and build workers accept new ones only from the agent and
+# preview machines and build workers accept new ones only from the agent and
 # the gateway.
 resource "vultr_vpc" "environment" {
   region         = var.region
-  description    = "${var.name}-stagely"
+  description    = "${var.name}-elprovo"
   v4_subnet      = cidrhost(var.network_range, 0)
   v4_subnet_mask = tonumber(split("/", var.network_range)[1])
 }
@@ -85,12 +85,12 @@ resource "vultr_firewall_rule" "gateway_ssh" {
   notes             = "operator"
 }
 
-# Stagelet machines and build workers accept no connections on their public
+# Preview machines and build workers accept no connections on their public
 # address, which they keep only to reach the internet: the agent and the
 # gateway reach them over the VPC. A group without rules drops all inbound
 # traffic. The agent puts every machine in this group.
-resource "vultr_firewall_group" "stagelets" {
-  description = "${var.name}-stagelets"
+resource "vultr_firewall_group" "previews" {
+  description = "${var.name}-previews"
 }
 
 # The agent's main address stays the same when the host is replaced, so the
@@ -101,7 +101,7 @@ resource "vultr_reserved_ip" "agent" {
   label   = "${var.name}-agent"
 }
 
-# Stagelet host names point at the gateway's reserved IP.
+# Preview host names point at the gateway's reserved IP.
 resource "vultr_reserved_ip" "gateway" {
   region  = var.region
   ip_type = "v4"
@@ -143,7 +143,7 @@ resource "vultr_instance" "gateway" {
   depends_on = [vultr_firewall_rule.gateway_http, vultr_firewall_rule.gateway_https, vultr_firewall_rule.gateway_ssh]
 }
 
-resource "vultr_container_registry" "stagely" {
+resource "vultr_container_registry" "elprovo" {
   name   = var.registry_name
   region = local.registry_region
   plan   = var.registry_plan

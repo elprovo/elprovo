@@ -111,7 +111,7 @@ func TestVPCRangesDoNotOverlapAndMembersBlockDeletion(t *testing.T) {
 	var created struct {
 		VPC vpcJSON `json:"vpc"`
 	}
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v2/vpcs", map[string]string{"name": "stagelets", "region": "nyc3", "ip_range": "10.200.0.0/24"}, &created)
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v2/vpcs", map[string]string{"name": "previews", "region": "nyc3", "ip_range": "10.200.0.0/24"}, &created)
 	for _, ipRange := range []string{"10.200.0.128/25", "8.8.8.0/24", "10.0.0.0/8", "10.250.0.0/29"} {
 		if status := e.call(http.MethodPost, "/v2/vpcs", map[string]string{"name": "other", "region": "nyc3", "ip_range": ipRange}, nil); status != http.StatusUnprocessableEntity {
 			t.Errorf("ip_range %s = %d, want 422", ipRange, status)
@@ -149,8 +149,8 @@ func TestVPCUpdateRenamesAndMovesTheDefault(t *testing.T) {
 	var updated struct {
 		VPC vpcJSON `json:"vpc"`
 	}
-	e.mustCall(http.StatusOK, http.MethodPatch, "/v2/vpcs/"+created.VPC.ID, map[string]any{"description": "stagelets", "default": true}, &updated)
-	if updated.VPC.Name != "a" || updated.VPC.Description != "stagelets" || !updated.VPC.Default {
+	e.mustCall(http.StatusOK, http.MethodPatch, "/v2/vpcs/"+created.VPC.ID, map[string]any{"description": "previews", "default": true}, &updated)
+	if updated.VPC.Name != "a" || updated.VPC.Description != "previews" || !updated.VPC.Default {
 		t.Fatalf("updated = %+v", updated.VPC)
 	}
 	var list struct {

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 type actionJSON struct {
@@ -95,7 +95,7 @@ func (s *Simulation) startAction(a *account, d *droplet, req actionRequest) (*ac
 		if name == "" {
 			name = fmt.Sprintf("%s-%d", d.Name, s.now().Unix())
 		}
-		ref := fmt.Sprintf("stagely-sim-do-snapshot:%s-%d", a.UUID[:8], snapID)
+		ref := fmt.Sprintf("elprovo-sim-do-snapshot:%s-%d", a.UUID[:8], snapID)
 		d.Locked = true
 		return act, func(ctx context.Context) { s.takeSnapshot(ctx, actionID, dropletID, machine, snapID, name, ref) }, nil
 	default:

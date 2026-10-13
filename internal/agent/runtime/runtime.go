@@ -1,4 +1,4 @@
-// Package runtime runs a stagelet's compiled Compose bundle on its machine:
+// Package runtime runs a preview's compiled Compose bundle on its machine:
 // it compiles the bundle from a build's resolved project, applies it with
 // images pulled by digest, runs the migration command and checks that the
 // public service answers.
@@ -18,18 +18,18 @@ import (
 	"time"
 )
 
-// Machine runs commands on a stagelet machine. Run returns the standard
+// Machine runs commands on a preview machine. Run returns the standard
 // output; Stream sends the output to the job log.
 type Machine interface {
 	Run(ctx context.Context, stdin io.Reader, args ...string) ([]byte, error)
 	Stream(ctx context.Context, stdin io.Reader, args ...string) error
 }
 
-// Paths on the stagelet machine.
+// Paths on the preview machine.
 const (
-	BundlePath  = "/opt/stagelet/compose.json"
-	SecretsPath = "/opt/stagelet/secrets.env"
-	projectName = "stagelet"
+	BundlePath  = "/opt/preview/compose.json"
+	SecretsPath = "/opt/preview/secrets.env"
+	projectName = "preview"
 )
 
 var (

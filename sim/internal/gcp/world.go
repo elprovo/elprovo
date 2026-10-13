@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
 )
 
 // world is everything the simulated project holds. It is saved as JSON after

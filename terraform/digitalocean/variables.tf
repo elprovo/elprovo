@@ -15,7 +15,7 @@ variable "name" {
 }
 
 variable "region" {
-  description = "DigitalOcean region for the hosts and the stagelets, such as fra1."
+  description = "DigitalOcean region for the hosts and the previews, such as fra1."
   type        = string
 }
 
@@ -44,21 +44,21 @@ variable "vpc_ip_range" {
 }
 
 variable "agent_user_data" {
-  description = "Cloud-init user data of the agent host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the agent host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "gateway_user_data" {
-  description = "Cloud-init user data of the gateway host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the gateway host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "ssh_public_key" {
-  description = "Public key that `stagely setup` uses to install the agent and the gateway."
+  description = "Public key that `elprovo setup` uses to install the agent and the gateway."
   type        = string
 }
 
@@ -67,8 +67,8 @@ variable "operator_cidrs" {
   type        = list(string)
 }
 
-variable "stagelet_tag" {
-  description = "Tag the agent puts on every machine it creates. The stagelet firewall applies to it. Empty means <name>-stagelet, so environments in one account keep apart."
+variable "preview_tag" {
+  description = "Tag the agent puts on every machine it creates. The preview firewall applies to it. Empty means <name>-preview, so environments in one account keep apart."
   type        = string
   default     = ""
 }
@@ -91,13 +91,13 @@ variable "registry_tier" {
 }
 
 variable "dns_domain" {
-  description = "A domain managed in DigitalOcean DNS. When set, a wildcard record for stagelet_subdomain points at the gateway."
+  description = "A domain managed in DigitalOcean DNS. When set, a wildcard record for preview_subdomain points at the gateway."
   type        = string
   default     = ""
 }
 
-variable "stagelet_subdomain" {
-  description = "Subdomain of dns_domain that stagelet host names live under, such as stagelets."
+variable "preview_subdomain" {
+  description = "Subdomain of dns_domain that preview host names live under, such as previews."
   type        = string
-  default     = "stagelets"
+  default     = "previews"
 }

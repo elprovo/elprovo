@@ -43,7 +43,7 @@ var (
 	commitPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
 )
 
-const remoteTarball = "/tmp/stagely-source.tar.gz"
+const remoteTarball = "/tmp/elprovo-source.tar.gz"
 
 // Upload replaces dir on m with the source of the commit. It refuses a
 // source with a symbolic link that resolves outside dir.
@@ -111,7 +111,7 @@ func (s *Source) download(ctx context.Context, c Commit) (string, error) {
 		return "", fmt.Errorf("download source: GitHub answered %s", resp.Status)
 	}
 
-	f, err := os.CreateTemp("", "stagely-source-*.tar.gz")
+	f, err := os.CreateTemp("", "elprovo-source-*.tar.gz")
 	if err != nil {
 		return "", fmt.Errorf("create source file: %w", err)
 	}

@@ -62,7 +62,7 @@ func TestUploadCopiesTarballAndUnpacksIt(t *testing.T) {
 	agentTemp := t.TempDir()
 	t.Setenv("TMPDIR", agentTemp)
 
-	if err := src.Upload(context.Background(), m, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit, Token: "tok"}, "/opt/stagelet/src"); err != nil {
+	if err := src.Upload(context.Background(), m, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit, Token: "tok"}, "/opt/preview/src"); err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
 
@@ -73,11 +73,11 @@ func TestUploadCopiesTarballAndUnpacksIt(t *testing.T) {
 		t.Fatalf("the agent host kept %v after the upload, want its copy of the source removed", left)
 	}
 	want := [][]string{
-		{"sudo", "rm", "-rf", "/opt/stagelet/src"},
-		{"sudo", "mkdir", "-p", "/opt/stagelet/src"},
-		{"sudo", "tar", "-xzf", "/tmp/stagely-source.tar.gz", "-C", "/opt/stagelet/src", "--strip-components=1"},
-		{"rm", "-f", "/tmp/stagely-source.tar.gz"},
-		{"sudo", "find", "/opt/stagelet/src", "-type", "l", "-exec", "realpath", "-m", "-z", "--", "{}", "+"},
+		{"sudo", "rm", "-rf", "/opt/preview/src"},
+		{"sudo", "mkdir", "-p", "/opt/preview/src"},
+		{"sudo", "tar", "-xzf", "/tmp/elprovo-source.tar.gz", "-C", "/opt/preview/src", "--strip-components=1"},
+		{"rm", "-f", "/tmp/elprovo-source.tar.gz"},
+		{"sudo", "find", "/opt/preview/src", "-type", "l", "-exec", "realpath", "-m", "-z", "--", "{}", "+"},
 	}
 	if !reflect.DeepEqual(m.runs, want) {
 		t.Fatalf("commands = %v, want %v", m.runs, want)
@@ -94,16 +94,16 @@ func TestUploadRefusesASymbolicLinkThatLeavesTheSource(t *testing.T) {
 		targets string
 		problem string
 	}{
-		{"inside the source", "/opt/stagelet/src/.env.example\x00/opt/stagelet/src\x00", ""},
-		{"a worker file", "/opt/stagelet/src/README\x00/root/.docker/config.json\x00", "symbolic link to /root/.docker/config.json"},
-		{"above the source", "/opt/stagelet\x00", "symbolic link to /opt/stagelet,"},
+		{"inside the source", "/opt/preview/src/.env.example\x00/opt/preview/src\x00", ""},
+		{"a worker file", "/opt/preview/src/README\x00/root/.docker/config.json\x00", "symbolic link to /root/.docker/config.json"},
+		{"above the source", "/opt/preview\x00", "symbolic link to /opt/preview,"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := &recordingMachine{outputs: map[string]string{"{} +": tt.targets}}
 			src := &Source{HTTP: api.Client(), MaxBytes: 1 << 20}
 
-			err := src.Upload(context.Background(), m, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit}, "/opt/stagelet/src")
+			err := src.Upload(context.Background(), m, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit}, "/opt/preview/src")
 
 			if tt.problem == "" && err != nil {
 				t.Fatalf("Upload: %v", err)
@@ -122,7 +122,7 @@ func TestUploadRejectsTarballOverLimit(t *testing.T) {
 	defer api.Close()
 	src := &Source{HTTP: api.Client(), MaxBytes: 10}
 
-	err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit}, "/opt/stagelet/src")
+	err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit}, "/opt/preview/src")
 	if err == nil || !strings.Contains(err.Error(), "larger than 10 bytes") {
 		t.Fatalf("Upload error = %v, want a size-limit error", err)
 	}
@@ -130,7 +130,7 @@ func TestUploadRejectsTarballOverLimit(t *testing.T) {
 
 func TestUploadRejectsUnsafeRepositoryName(t *testing.T) {
 	src := &Source{HTTP: http.DefaultClient, MaxBytes: 10}
-	if err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: "http://unused", Repository: "acme/../evil", SHA: commit}, "/opt/stagelet/src"); err == nil {
+	if err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: "http://unused", Repository: "acme/../evil", SHA: commit}, "/opt/preview/src"); err == nil {
 		t.Fatal("Upload accepted a repository name with path segments")
 	}
 }
@@ -142,14 +142,14 @@ func TestBuildPushesBuiltServicesAndReturnsTheirDigests(t *testing.T) {
 	defer api.Close()
 	ref := "registry.example.com/acme/acme/web/api"
 	m := &recordingMachine{outputs: map[string]string{
-		"config --format json": `{"services":{"api":{"build":{"context":"/var/lib/stagely/builds/s1/src"}},"db":{"image":"postgres:17"}}}`,
+		"config --format json": `{"services":{"api":{"build":{"context":"/var/lib/elprovo/builds/s1/src"}},"db":{"image":"postgres:17"}}}`,
 		ref + ":" + commit:     `["` + ref + `@sha256:abc"]` + "\n",
 	}}
 	src := &Source{HTTP: api.Client(), MaxBytes: 1 << 20}
 
 	res, err := src.Build(context.Background(), m, Request{
 		Source: Commit{APIURL: api.URL, Repository: "Acme/Web", SHA: commit}, ComposeFiles: []string{"compose.yml"},
-		Config: map[string]string{"MODE": "preview"}, Registry: "registry.example.com/acme", Dir: "/var/lib/stagely/builds/s1",
+		Config: map[string]string{"MODE": "preview"}, Registry: "registry.example.com/acme", Dir: "/var/lib/elprovo/builds/s1",
 	})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
@@ -158,7 +158,7 @@ func TestBuildPushesBuiltServicesAndReturnsTheirDigests(t *testing.T) {
 	if !reflect.DeepEqual(res.Images, map[string]string{"api": ref + "@sha256:abc"}) {
 		t.Fatalf("images = %v, want the api image by digest", res.Images)
 	}
-	if !strings.Contains(m.stdins["/var/lib/stagely/builds/s1/images.json"], `"image":"`+ref+":"+commit+`"`) {
+	if !strings.Contains(m.stdins["/var/lib/elprovo/builds/s1/images.json"], `"image":"`+ref+":"+commit+`"`) {
 		t.Fatalf("image names = %v, want the api image tagged with the commit", m.stdins)
 	}
 	commands := make([]string, len(m.runs))
@@ -167,8 +167,8 @@ func TestBuildPushesBuiltServicesAndReturnsTheirDigests(t *testing.T) {
 	}
 	all := strings.Join(commands, "\n")
 	for _, want := range []string{
-		"sudo -u nobody env BUILDKIT_PROGRESS=plain MODE=preview docker compose --project-name stagelet -f /var/lib/stagely/builds/s1/src/compose.yml config --format json",
-		"sudo env BUILDKIT_PROGRESS=plain MODE=preview docker compose", "build --pull api", "push api", "sudo rm -rf /var/lib/stagely/builds/s1/src",
+		"sudo -u nobody env BUILDKIT_PROGRESS=plain MODE=preview docker compose --project-name preview -f /var/lib/elprovo/builds/s1/src/compose.yml config --format json",
+		"sudo env BUILDKIT_PROGRESS=plain MODE=preview docker compose", "build --pull api", "push api", "sudo rm -rf /var/lib/elprovo/builds/s1/src",
 	} {
 		if !strings.Contains(all, want) {
 			t.Fatalf("commands =\n%s\nwant one with %q", all, want)
@@ -188,7 +188,7 @@ func TestBuildRefusesAProjectOutsideTheSubsetBeforeBuilding(t *testing.T) {
 
 	_, err := src.Build(context.Background(), m, Request{
 		Source: Commit{APIURL: api.URL, Repository: "acme/web", SHA: commit}, ComposeFiles: []string{"compose.yml"},
-		Registry: "registry.example.com/acme", Dir: "/var/lib/stagely/builds/s1",
+		Registry: "registry.example.com/acme", Dir: "/var/lib/elprovo/builds/s1",
 	})
 
 	if err == nil || !strings.Contains(err.Error(), `service api: build.context "/" is not a directory in the repository`) {
@@ -200,7 +200,7 @@ func TestBuildRefusesAProjectOutsideTheSubsetBeforeBuilding(t *testing.T) {
 			t.Fatalf("ran %q, want nothing built or pushed", command)
 		}
 	}
-	if last != "sudo rm -rf /var/lib/stagely/builds/s1/src" {
+	if last != "sudo rm -rf /var/lib/elprovo/builds/s1/src" {
 		t.Fatalf("last command = %q, want the source removed", last)
 	}
 }
@@ -215,7 +215,7 @@ func TestBuildRejectsAnInvalidRegistry(t *testing.T) {
 
 func TestUploadRejectsAnInvalidAPIURL(t *testing.T) {
 	src := &Source{HTTP: http.DefaultClient, MaxBytes: 10}
-	err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: "file:///etc", Repository: "acme/web", SHA: commit}, "/opt/stagelet/src")
+	err := src.Upload(context.Background(), &recordingMachine{}, Commit{APIURL: "file:///etc", Repository: "acme/web", SHA: commit}, "/opt/preview/src")
 	if err == nil || !strings.Contains(err.Error(), "invalid GitHub API URL") {
 		t.Fatalf("err = %v, want an invalid API URL error", err)
 	}

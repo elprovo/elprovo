@@ -35,15 +35,15 @@ variable "source_image_family" {
 
 variable "image_name" {
   type    = string
-  default = "stagely-{{timestamp}}"
+  default = "elprovo-{{timestamp}}"
 }
 
 variable "image_family" {
   type    = string
-  default = "stagely"
+  default = "elprovo"
 }
 
-source "googlecompute" "stagely" {
+source "googlecompute" "elprovo" {
   project_id              = var.project_id
   zone                    = var.zone
   machine_type            = var.machine_type
@@ -53,12 +53,12 @@ source "googlecompute" "stagely" {
   image_family            = var.image_family
   ssh_username            = "root"
   use_os_login            = false
-  tags                    = ["stagely-image-build"]
+  tags                    = ["elprovo-image-build"]
   custom_endpoints        = var.compute_endpoint == "" ? {} : { compute = var.compute_endpoint }
 }
 
 build {
-  sources = ["source.googlecompute.stagely"]
+  sources = ["source.googlecompute.elprovo"]
 
   provisioner "shell" {
     environment_vars = ["DEBIAN_FRONTEND=noninteractive"]

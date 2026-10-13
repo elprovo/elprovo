@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
 )
 
 const repositoriesPath = "/v1/projects/" + testProject + "/locations/us-central1/repositories"
@@ -24,7 +24,7 @@ func TestCreateRepositoryFinishesItsOperation(t *testing.T) {
 	e := newEnv(t)
 	var op map[string]any
 
-	e.mustCall(http.StatusOK, http.MethodPost, repositoriesPath+"?repositoryId=images", map[string]any{"format": "DOCKER", "description": "stagelets"}, &op)
+	e.mustCall(http.StatusOK, http.MethodPost, repositoriesPath+"?repositoryId=images", map[string]any{"format": "DOCKER", "description": "previews"}, &op)
 
 	if op["done"] != true || !strings.HasPrefix(op["name"].(string), "projects/"+testProject+"/locations/us-central1/operations/") {
 		t.Fatalf("create operation = %v", op)

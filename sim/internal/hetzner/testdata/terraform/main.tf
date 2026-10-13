@@ -17,20 +17,20 @@ variable "ssh_public_key" {
 
 variable "name" {
   type    = string
-  default = "stagely-sim-check"
+  default = "elprovo-sim-check"
 }
 
 provider "hcloud" {
   endpoint = var.endpoint
 }
 
-resource "hcloud_network" "stagelets" {
+resource "hcloud_network" "previews" {
   name     = var.name
   ip_range = "10.200.0.0/16"
 }
 
-resource "hcloud_network_subnet" "stagelets" {
-  network_id   = hcloud_network.stagelets.id
+resource "hcloud_network_subnet" "previews" {
+  network_id   = hcloud_network.previews.id
   type         = "cloud"
   network_zone = "eu-central"
   ip_range     = "10.200.1.0/24"
@@ -41,14 +41,14 @@ resource "hcloud_ssh_key" "agent" {
   public_key = var.ssh_public_key
 }
 
-resource "hcloud_firewall" "stagelets" {
+resource "hcloud_firewall" "previews" {
   name = var.name
 
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = [hcloud_network.stagelets.ip_range]
+    source_ips = [hcloud_network.previews.ip_range]
   }
 
   rule {
@@ -72,7 +72,7 @@ resource "hcloud_firewall" "stagelets" {
   }
 
   apply_to {
-    label_selector = "stagely-check=${var.name}"
+    label_selector = "elprovo-check=${var.name}"
   }
 }
 
@@ -83,18 +83,18 @@ resource "hcloud_primary_ip" "front" {
   auto_delete = false
 }
 
-resource "hcloud_server" "stagelet" {
+resource "hcloud_server" "preview" {
   count       = 2
   name        = "${var.name}-${count.index}"
   server_type = "cpx22"
   image       = "ubuntu-24.04"
   location    = "nbg1"
   ssh_keys    = [hcloud_ssh_key.agent.id]
-  labels      = { "stagely-check" = var.name }
+  labels      = { "elprovo-check" = var.name }
   user_data   = <<-EOT
     #cloud-config
     write_files:
-      - path: /etc/stagely-check
+      - path: /etc/elprovo-check
         content: "server ${count.index}\n"
   EOT
 
@@ -106,15 +106,15 @@ resource "hcloud_server" "stagelet" {
 
 }
 
-resource "hcloud_server_network" "stagelet" {
+resource "hcloud_server_network" "preview" {
   count      = 2
-  server_id  = hcloud_server.stagelet[count.index].id
-  network_id = hcloud_network.stagelets.id
-  depends_on = [hcloud_network_subnet.stagelets]
+  server_id  = hcloud_server.preview[count.index].id
+  network_id = hcloud_network.previews.id
+  depends_on = [hcloud_network_subnet.previews]
 }
 
 output "public_addresses" {
-  value = hcloud_server.stagelet[*].ipv4_address
+  value = hcloud_server.preview[*].ipv4_address
 }
 
 output "front_ip" {
@@ -122,5 +122,5 @@ output "front_ip" {
 }
 
 output "private_addresses" {
-  value = hcloud_server_network.stagelet[*].ip
+  value = hcloud_server_network.preview[*].ip
 }

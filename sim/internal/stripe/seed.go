@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	seedProductID = "prod_team_stagelet"
-	seedPriceID   = "price_team_stagelet"
-	seedLookupKey = "team_stagelet"
-	seedMarker    = "stagely_sim_seed"
+	seedProductID = "prod_team_preview"
+	seedPriceID   = "price_team_preview"
+	seedLookupKey = "team_preview"
+	seedMarker    = "elprovo_sim_seed"
 )
 
 type seedPrice struct {

@@ -1,4 +1,4 @@
-// Package stripe simulates the parts of the Stripe API that Stagely uses to
+// Package stripe simulates the parts of the Stripe API that Elprovo uses to
 // sell its subscription plans: customers, products and prices, Checkout
 // Sessions with a hosted payment page, subscriptions, invoices, the billing
 // portal, test clocks, and events delivered to signed webhook endpoints.
@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (

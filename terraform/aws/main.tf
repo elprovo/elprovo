@@ -1,8 +1,8 @@
 locals {
-  stagelet_group  = var.stagelet_group != "" ? var.stagelet_group : "${var.name}-stagelet"
+  preview_group   = var.preview_group != "" ? var.preview_group : "${var.name}-preview"
   registry_prefix = var.registry_prefix != "" ? var.registry_prefix : var.name
   image           = var.image != "" ? var.image : data.aws_ami.ubuntu[0].id
-  # Ubuntu AMIs let only the ubuntu user sign in over SSH; `stagely setup`
+  # Ubuntu AMIs let only the ubuntu user sign in over SSH; `elprovo setup`
   # and the agent sign in as root, which disable_root false allows.
   root_login = "disable_root: false\n"
 }
@@ -30,7 +30,7 @@ resource "aws_vpc" "environment" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "${var.name}-stagely"
+    Name = "${var.name}-elprovo"
   }
 }
 
@@ -38,11 +38,11 @@ resource "aws_internet_gateway" "environment" {
   vpc_id = aws_vpc.environment.id
 
   tags = {
-    Name = "${var.name}-stagely"
+    Name = "${var.name}-elprovo"
   }
 }
 
-# Every machine gets a public address, so stagelets reach registries and
+# Every machine gets a public address, so previews reach registries and
 # package mirrors without a NAT gateway. Security groups keep them closed.
 resource "aws_subnet" "environment" {
   vpc_id                  = aws_vpc.environment.id
@@ -51,7 +51,7 @@ resource "aws_subnet" "environment" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.name}-stagely"
+    Name = "${var.name}-elprovo"
   }
 }
 
@@ -64,7 +64,7 @@ resource "aws_route_table" "environment" {
   }
 
   tags = {
-    Name = "${var.name}-stagely"
+    Name = "${var.name}-elprovo"
   }
 }
 
@@ -74,14 +74,14 @@ resource "aws_route_table_association" "environment" {
 }
 
 resource "aws_key_pair" "operator" {
-  key_name   = "${var.name}-stagely-setup"
+  key_name   = "${var.name}-elprovo-setup"
   public_key = var.ssh_public_key
 }
 
 # The agent accepts no inbound connections except SSH from the operator.
 resource "aws_security_group" "agent" {
   name        = "${var.name}-agent"
-  description = "Stagely agent: SSH from the operator only"
+  description = "Elprovo agent: SSH from the operator only"
   vpc_id      = aws_vpc.environment.id
 
   ingress {
@@ -102,7 +102,7 @@ resource "aws_security_group" "agent" {
 # The gateway is the only host that accepts internet traffic.
 resource "aws_security_group" "gateway" {
   name        = "${var.name}-gateway"
-  description = "Stagely gateway: HTTP and HTTPS from anywhere, SSH from the operator"
+  description = "Elprovo gateway: HTTP and HTTPS from anywhere, SSH from the operator"
   vpc_id      = aws_vpc.environment.id
 
   ingress {
@@ -134,11 +134,11 @@ resource "aws_security_group" "gateway" {
   }
 }
 
-# Stagelet machines and build workers accept traffic only from the agent,
+# Preview machines and build workers accept traffic only from the agent,
 # which drives them over SSH and checks health, and from the gateway.
-resource "aws_security_group" "stagelets" {
-  name        = "${var.name}-stagelets"
-  description = "Stagely stagelet machines and build workers: traffic from the agent and the gateway only"
+resource "aws_security_group" "previews" {
+  name        = "${var.name}-previews"
+  description = "Elprovo preview machines and build workers: traffic from the agent and the gateway only"
   vpc_id      = aws_vpc.environment.id
 
   ingress {
@@ -222,8 +222,8 @@ resource "aws_eip_association" "gateway" {
 
 # ECR creates a repository on the first push only when a template with the
 # CREATE_ON_PUSH feature matches its name.
-resource "aws_ecr_repository_creation_template" "stagelets" {
+resource "aws_ecr_repository_creation_template" "previews" {
   prefix      = local.registry_prefix
-  description = "Images that Stagely build workers push for ${var.name}"
+  description = "Images that Elprovo build workers push for ${var.name}"
   applied_for = ["CREATE_ON_PUSH"]
 }

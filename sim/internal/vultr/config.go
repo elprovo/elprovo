@@ -9,7 +9,7 @@ import (
 )
 
 // defaultAPIKey has the length and alphabet of a Vultr API key.
-const defaultAPIKey = "STAGELYSIMVULTRAPIKEY000000000000001"
+const defaultAPIKey = "ELPROVOSIMVULTRAPIKEY000000000000001"
 
 type config struct {
 	enabled  bool
@@ -41,11 +41,11 @@ func registerFlags(fs *flag.FlagSet, cfg *config, apiKeys *repeatedFlag) {
 	fs.BoolVar(&cfg.enabled, "vultr", false, "run the Vultr simulation")
 	fs.StringVar(&cfg.addr, "vultr-addr", "127.0.0.1:9400", "listen address of the simulated Vultr API (api.vultr.com); instance user data runs as root in privileged containers, so expose it with care")
 	fs.Var(apiKeys, "vultr-api-key", "API key that the simulated Vultr API accepts; repeatable (default "+defaultAPIKey+")")
-	fs.StringVar(&cfg.network, "vultr-network", "stagely-sim-vultr", "Docker network for instances' private addresses; public addresses use <network>-public")
+	fs.StringVar(&cfg.network, "vultr-network", "elprovo-sim-vultr", "Docker network for instances' private addresses; public addresses use <network>-public")
 	fs.StringVar(&cfg.tlsCert, "vultr-tls-cert", "", "PEM certificate to serve the API over HTTPS with, such as one for api.vultr.com; needs -vultr-tls-key")
 	fs.StringVar(&cfg.tlsKey, "vultr-tls-key", "", "PEM private key of -vultr-tls-cert")
-	fs.StringVar(&cfg.registry.username, "vultr-registry-username", "stagely", "user name of every container registry's root user, which the registry the operator runs must accept")
-	fs.StringVar(&cfg.registry.password, "vultr-registry-password", "stagely", "password of every container registry's root user")
+	fs.StringVar(&cfg.registry.username, "vultr-registry-username", "elprovo", "user name of every container registry's root user, which the registry the operator runs must accept")
+	fs.StringVar(&cfg.registry.password, "vultr-registry-password", "elprovo", "password of every container registry's root user")
 }
 
 func (c *config) finish(apiKeys repeatedFlag) error {

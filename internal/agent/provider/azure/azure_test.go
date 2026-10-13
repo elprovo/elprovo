@@ -29,10 +29,10 @@ import (
 const (
 	testTenant   = "tenant-1"
 	testSub      = "sub-1"
-	testGroup    = "env-stagely"
-	testSubnet   = "/subscriptions/sub-1/resourceGroups/env-stagely/providers/Microsoft.Network/virtualNetworks/net/subnets/stagelets"
-	testTag      = "env-stagelet"
-	testRegistry = "/subscriptions/sub-1/resourceGroups/env-stagely/providers/Microsoft.ContainerRegistry/registries/stagelyacme"
+	testGroup    = "env-elprovo"
+	testSubnet   = "/subscriptions/sub-1/resourceGroups/env-elprovo/providers/Microsoft.Network/virtualNetworks/net/subnets/previews"
+	testTag      = "env-preview"
+	testRegistry = "/subscriptions/sub-1/resourceGroups/env-elprovo/providers/Microsoft.ContainerRegistry/registries/elprovoacme"
 )
 
 type fakeToken struct {
@@ -136,7 +136,7 @@ func (c *fakeCloud) serveRegistry(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, testRegistry)
 	switch {
 	case rest == "" && r.Method == http.MethodGet:
-		writeJSON(w, http.StatusOK, map[string]any{"properties": map[string]string{"loginServer": "stagelyacme.azurecr.io"}})
+		writeJSON(w, http.StatusOK, map[string]any{"properties": map[string]string{"loginServer": "elprovoacme.azurecr.io"}})
 	case rest == "/tokens" && r.Method == http.MethodGet:
 		var list []any
 		for name, tok := range c.registryTokens {
@@ -364,7 +364,7 @@ func newProvider(t *testing.T) (*Provider, *fakeCloud) {
 	p, err := New(Config{
 		ARMURL: server.URL, TenantID: testTenant, ClientID: "client", ClientSecret: "secret", SubscriptionID: testSub, ResourceGroup: testGroup,
 		Location: "westeurope", SubnetID: testSubnet, Size: "Standard_B2s", Image: "Canonical:ubuntu-24_04-lts:server:latest", Tag: testTag,
-		AdminUsername: "stagely", Registry: testRegistry, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		AdminUsername: "elprovo", Registry: testRegistry, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 	}, key)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -384,16 +384,16 @@ func TestCreateMakesAMachineTheAgentCanDrive(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	vm := cloud.vm("stagely-a1")
+	vm := cloud.vm("elprovo-a1")
 	props := vm.body["properties"].(map[string]any)
 	os := props["osProfile"].(map[string]any)
 	customData, _ := base64.StdEncoding.DecodeString(os["customData"].(string))
 	image := props["storageProfile"].(map[string]any)["imageReference"].(map[string]any)
-	if vm.tags["stagely"] != testTag || os["adminUsername"] != "stagely" || image["offer"] != "ubuntu-24_04-lts" || props["hardwareProfile"].(map[string]any)["vmSize"] != "Standard_B2s" {
+	if vm.tags["elprovo"] != testTag || os["adminUsername"] != "elprovo" || image["offer"] != "ubuntu-24_04-lts" || props["hardwareProfile"].(map[string]any)["vmSize"] != "Standard_B2s" {
 		t.Fatalf("virtual machine request = %+v", vm.body)
 	}
 	if !strings.Contains(string(customData), "docker-compose-v2") || !strings.HasSuffix(string(customData), "disable_root: false\n") {
@@ -404,11 +404,11 @@ func TestCreateMakesAMachineTheAgentCanDrive(t *testing.T) {
 			t.Fatalf("custom data does not keep containers from %q:\n%s", rule, customData)
 		}
 	}
-	if !strings.HasSuffix(vm.nicID, "/networkInterfaces/stagely-a1-nic") || cloud.nics[vm.nicID][tagKey] != testTag {
+	if !strings.HasSuffix(vm.nicID, "/networkInterfaces/elprovo-a1-nic") || cloud.nics[vm.nicID][tagKey] != testTag {
 		t.Fatalf("network interface %s with tags %v", vm.nicID, cloud.nics[vm.nicID])
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
@@ -422,11 +422,11 @@ func TestCreateMakesAMachineTheAgentCanDrive(t *testing.T) {
 func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
 	p, cloud := newProvider(t)
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	osProfile := cloud.vm("stagely-a1").body["properties"].(map[string]any)["osProfile"].(map[string]any)
+	osProfile := cloud.vm("elprovo-a1").body["properties"].(map[string]any)["osProfile"].(map[string]any)
 	customData, _ := base64.StdEncoding.DecodeString(osProfile["customData"].(string))
 	want := []string{"ssh_deletekeys", "ssh_genkeytypes", "ssh_keys", "package_update", "packages", "bootcmd", "disable_root"}
 	if got := cloudConfigSections(string(customData)); !slices.Equal(got, want) {
@@ -449,13 +449,13 @@ func cloudConfigSections(userData string) []string {
 
 func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t)
-	p.cfg.GoldenImage = "/subscriptions/sub-1/resourceGroups/images/providers/Microsoft.Compute/images/stagely"
+	p.cfg.GoldenImage = "/subscriptions/sub-1/resourceGroups/images/providers/Microsoft.Compute/images/elprovo"
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	props := cloud.vm("stagely-a1").body["properties"].(map[string]any)
+	props := cloud.vm("elprovo-a1").body["properties"].(map[string]any)
 	image := props["storageProfile"].(map[string]any)["imageReference"].(map[string]any)
 	customData, _ := base64.StdEncoding.DecodeString(props["osProfile"].(map[string]any)["customData"].(string))
 	if image["id"] != p.cfg.GoldenImage || image["offer"] != nil || strings.Contains(string(customData), "packages:") {
@@ -467,7 +467,7 @@ func TestCreateFailsWhenAzureFailsTheVirtualMachine(t *testing.T) {
 	p, cloud := newProvider(t)
 	cloud.failVM = true
 
-	err := p.Create(context.Background(), "stagely-a1")
+	err := p.Create(context.Background(), "elprovo-a1")
 
 	if err == nil || !strings.Contains(err.Error(), "OSProvisioningClientError") {
 		t.Fatalf("Create = %v, want the operation's error", err)
@@ -477,11 +477,11 @@ func TestCreateFailsWhenAzureFailsTheVirtualMachine(t *testing.T) {
 func TestAddressIsThePrivateAddressOfTheInterface(t *testing.T) {
 	p, _ := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatal(err)
 	}
 
-	addr, err := p.Address(ctx, "stagely-a1")
+	addr, err := p.Address(ctx, "elprovo-a1")
 
 	if err != nil || addr != "127.0.0.1" {
 		t.Fatalf("Address = %q, %v", addr, err)
@@ -491,7 +491,7 @@ func TestAddressIsThePrivateAddressOfTheInterface(t *testing.T) {
 func TestListReturnsOnlyTaggedMachinesAcrossPages(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatal(err)
 		}
@@ -503,7 +503,7 @@ func TestListReturnsOnlyTaggedMachinesAcrossPages(t *testing.T) {
 
 	names, err := p.List(ctx)
 
-	if err != nil || len(names) != 2 || !strings.HasPrefix(names[0], "stagely-a") || !strings.HasPrefix(names[1], "stagely-a") {
+	if err != nil || len(names) != 2 || !strings.HasPrefix(names[0], "elprovo-a") || !strings.HasPrefix(names[1], "elprovo-a") {
 		t.Fatalf("List = %v, %v; want the two tagged machines", names, err)
 	}
 }
@@ -511,22 +511,22 @@ func TestListReturnsOnlyTaggedMachinesAcrossPages(t *testing.T) {
 func TestDeleteWaitsUntilTheMachineIsGone(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatal(err)
 	}
-	cloud.vm("stagely-a1").deletePoll = 3
+	cloud.vm("elprovo-a1").deletePoll = 3
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
 	if len(cloud.deletedNICs) != 1 {
 		t.Fatalf("deleted interfaces = %v, want the machine's", cloud.deletedNICs)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -534,26 +534,26 @@ func TestDeleteWaitsUntilTheMachineIsGone(t *testing.T) {
 func TestDeleteFailsWhileTheMachineStillExists(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatal(err)
 	}
-	cloud.vm("stagely-a1").deletePoll = 1 << 30
+	cloud.vm("elprovo-a1").deletePoll = 1 << 30
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
 }
 
 func TestDeleteLeavesAMachineWithoutTheTag(t *testing.T) {
 	p, cloud := newProvider(t)
-	cloud.vms["stagely-a1"] = &fakeVM{tags: map[string]string{tagKey: "another-env"}, state: "Succeeded"}
+	cloud.vms["elprovo-a1"] = &fakeVM{tags: map[string]string{tagKey: "another-env"}, state: "Succeeded"}
 
-	if err := p.Delete(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
-	if vm := cloud.vm("stagely-a1"); vm == nil || vm.state != "Succeeded" {
+	if vm := cloud.vm("elprovo-a1"); vm == nil || vm.state != "Succeeded" {
 		t.Fatal("Delete touched a machine of another environment")
 	}
 }
@@ -561,7 +561,7 @@ func TestDeleteLeavesAMachineWithoutTheTag(t *testing.T) {
 func TestDeletingAMissingMachineSucceeds(t *testing.T) {
 	p, _ := newProvider(t)
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -570,7 +570,7 @@ func TestNewRefusesAnImageThatIsNotAURN(t *testing.T) {
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
 	_, err := New(Config{
 		ARMURL: "https://arm", TenantID: "t", ClientID: "c", ClientSecret: "s", SubscriptionID: "sub", ResourceGroup: "g", Location: "l",
-		SubnetID: "subnet", Size: "s", Image: "ubuntu-24-04", Tag: "t", AdminUsername: "stagely", HostKeyDir: t.TempDir(),
+		SubnetID: "subnet", Size: "s", Image: "ubuntu-24-04", Tag: "t", AdminUsername: "elprovo", HostKeyDir: t.TempDir(),
 	}, key)
 
 	if err == nil || !strings.Contains(err.Error(), "publisher:offer:sku:version") {
@@ -581,7 +581,7 @@ func TestNewRefusesAnImageThatIsNotAURN(t *testing.T) {
 func TestPullCredentialsComeFromANewPullOnlyToken(t *testing.T) {
 	p, cloud := newProvider(t)
 
-	user, password, err := p.RegistryCredentials(context.Background(), "stagelyacme.azurecr.io", false)
+	user, password, err := p.RegistryCredentials(context.Background(), "elprovoacme.azurecr.io", false)
 	if err != nil {
 		t.Fatalf("RegistryCredentials: %v", err)
 	}
@@ -598,7 +598,7 @@ func TestPullCredentialsComeFromANewPullOnlyToken(t *testing.T) {
 func TestPushCredentialsComeFromAPushToken(t *testing.T) {
 	p, cloud := newProvider(t)
 
-	user, _, err := p.RegistryCredentials(context.Background(), "stagelyacme.azurecr.io", true)
+	user, _, err := p.RegistryCredentials(context.Background(), "elprovoacme.azurecr.io", true)
 
 	if err != nil || cloud.registryTokens[user].scopeMap != "_repositories_push" {
 		t.Fatalf("RegistryCredentials = %s, %v; want a push token", user, err)
@@ -609,8 +609,8 @@ func TestEachCredentialGetsItsOwnToken(t *testing.T) {
 	p, _ := newProvider(t)
 	ctx := context.Background()
 
-	first, _, err1 := p.RegistryCredentials(ctx, "stagelyacme.azurecr.io", true)
-	second, _, err2 := p.RegistryCredentials(ctx, "stagelyacme.azurecr.io", true)
+	first, _, err1 := p.RegistryCredentials(ctx, "elprovoacme.azurecr.io", true)
+	second, _, err2 := p.RegistryCredentials(ctx, "elprovoacme.azurecr.io", true)
 
 	if err1 != nil || err2 != nil || first == second {
 		t.Fatalf("credentials from tokens %s and %s (%v, %v), want two tokens so neither replaces the other's password", first, second, err1, err2)
@@ -634,7 +634,7 @@ func TestExpiredJobTokensAreRemoved(t *testing.T) {
 	cloud.registryTokens["operator-token"] = &fakeToken{created: old}
 	cloud.registryTokens[jobTokenPrefix+"fresh"] = &fakeToken{created: time.Now()}
 
-	if _, _, err := p.RegistryCredentials(context.Background(), "stagelyacme.azurecr.io", false); err != nil {
+	if _, _, err := p.RegistryCredentials(context.Background(), "elprovoacme.azurecr.io", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -645,15 +645,15 @@ func TestExpiredJobTokensAreRemoved(t *testing.T) {
 
 func TestCreateRefusesToTakeOverAResourceWithoutTheTag(t *testing.T) {
 	p, cloud := newProvider(t)
-	nic := p.nicPath("stagely-a1")
+	nic := p.nicPath("elprovo-a1")
 	cloud.nics[nic] = map[string]string{"owner": "operator"}
 
-	err := p.Create(context.Background(), "stagely-a1")
+	err := p.Create(context.Background(), "elprovo-a1")
 
 	if err == nil || !strings.Contains(err.Error(), "does not take it over") {
 		t.Fatalf("Create = %v, want a refusal", err)
 	}
-	if cloud.nics[nic]["owner"] != "operator" || cloud.vm("stagely-a1") != nil {
+	if cloud.nics[nic]["owner"] != "operator" || cloud.vm("elprovo-a1") != nil {
 		t.Fatal("Create changed the operator's network interface or made a virtual machine")
 	}
 }

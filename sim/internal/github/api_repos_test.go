@@ -18,7 +18,7 @@ func contentsFixture(t *testing.T) (*testSim, string) {
 	ts := newTestSim(t)
 	ts.createUser("octo")
 	ts.createRepo("octo", "web", map[string]string{
-		".stagely.yml":        "services: [web]\n",
+		".elprovo.yml":        "services: [web]\n",
 		"compose/base.yml":    "services:\n  web:\n    image: nginx\n",
 		"compose/extra.yml":   "services: {}\n",
 		"docs/guide/intro.md": "hello",
@@ -49,7 +49,7 @@ func TestContentsReturnsRawBytesForRawMediaTypes(t *testing.T) {
 	ts, tok := contentsFixture(t)
 
 	for _, accept := range []string{"application/vnd.github.raw+json", "application/vnd.github.raw"} {
-		r := do(t, http.DefaultClient, http.MethodGet, ts.api.URL+"/repos/octo/web/contents/.stagely.yml", nil,
+		r := do(t, http.DefaultClient, http.MethodGet, ts.api.URL+"/repos/octo/web/contents/.elprovo.yml", nil,
 			http.Header{"Authorization": {"Bearer " + tok}, "Accept": {accept}})
 		if r.status != http.StatusOK || string(r.body) != "services: [web]\n" {
 			t.Fatalf("Accept %s: %d %q, want the raw file", accept, r.status, r.body)
@@ -75,8 +75,8 @@ func TestContentsListsADirectory(t *testing.T) {
 
 	var root []contentJSON
 	ts.call(http.MethodGet, "/repos/octo/web/contents", tok, nil).decode(t, &root)
-	if len(root) != 3 || root[0].Name != ".stagely.yml" || root[1].Type != "dir" {
-		t.Fatalf("root listing = %+v, want .stagely.yml, compose and docs", root)
+	if len(root) != 3 || root[0].Name != ".elprovo.yml" || root[1].Type != "dir" {
+		t.Fatalf("root listing = %+v, want .elprovo.yml, compose and docs", root)
 	}
 }
 
@@ -85,8 +85,8 @@ func TestContentsAnswers404ForMissingPathsAndRefs(t *testing.T) {
 
 	for _, path := range []string{
 		"/repos/octo/web/contents/missing.yml",
-		"/repos/octo/web/contents/.stagely.yml/inside-a-file",
-		"/repos/octo/web/contents/.stagely.yml?ref=no-such-branch",
+		"/repos/octo/web/contents/.elprovo.yml/inside-a-file",
+		"/repos/octo/web/contents/.elprovo.yml?ref=no-such-branch",
 	} {
 		r := ts.call(http.MethodGet, path, tok, nil)
 		var body errorBody
@@ -114,7 +114,7 @@ func TestTarballRedirectsToASignedArchiveWithTheRepoFolder(t *testing.T) {
 	}
 	wantPrefix := "octo-web-" + commit.SHA[:7] + "/"
 	names := tarNames(t, archive.body)
-	if !slices.Contains(names, wantPrefix+"compose/base.yml") || !slices.Contains(names, wantPrefix+".stagely.yml") {
+	if !slices.Contains(names, wantPrefix+"compose/base.yml") || !slices.Contains(names, wantPrefix+".elprovo.yml") {
 		t.Fatalf("archive entries = %v, want files under %s", names, wantPrefix)
 	}
 

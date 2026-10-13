@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 var checkedAt = time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
@@ -56,7 +56,7 @@ func (h *healthRun) next(t *testing.T) []protocol.RouteState {
 	select {
 	case m := <-h.sent:
 		return slices.SortedFunc(slices.Values(m.Routes), func(a, b protocol.RouteState) int {
-			return cmp.Compare(a.StageletID, b.StageletID)
+			return cmp.Compare(a.PreviewID, b.PreviewID)
 		})
 	case <-time.After(5 * time.Second):
 		t.Fatal("no route health report")
@@ -98,7 +98,7 @@ func checkOnce(t *testing.T, r routeCheck) protocol.RouteState {
 }
 
 func routeTo(upstream string) routeCheck {
-	return routeCheck{routeKey: routeKey{stageletID: "s1", upstream: upstream}, host: host, healthPath: healthPath}
+	return routeCheck{routeKey: routeKey{previewID: "s1", upstream: upstream}, host: host, healthPath: healthPath}
 }
 
 func addr(s *httptest.Server) string { return s.Listener.Addr().String() }
@@ -121,8 +121,8 @@ func TestFirstHealthReportHoldsEveryRoute(t *testing.T) {
 	gw := newHealthGateway()
 	up, down := addr(startUpstream(t)), refusingAddr(t)
 	gw.SetRoutes([]protocol.Route{
-		{StageletID: "s-down", Host: "down.stagelets.localhost", Upstream: down, HealthPath: healthPath},
-		{StageletID: "s-up", Host: "up.stagelets.localhost", Upstream: up, HealthPath: healthPath},
+		{PreviewID: "s-down", Host: "down.previews.localhost", Upstream: down, HealthPath: healthPath},
+		{PreviewID: "s-up", Host: "up.previews.localhost", Upstream: up, HealthPath: healthPath},
 	})
 	h := startRouteHealth(t, gw)
 
@@ -132,10 +132,10 @@ func TestFirstHealthReportHoldsEveryRoute(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("report = %+v, want both routes", got)
 	}
-	if s := got[0]; s.StageletID != "s-down" || s.Upstream != down || s.Reachable || s.Error == "" || s.Healthy || s.HealthError != unreachableHealthError || !s.CheckedAt.Equal(checkedAt) {
+	if s := got[0]; s.PreviewID != "s-down" || s.Upstream != down || s.Reachable || s.Error == "" || s.Healthy || s.HealthError != unreachableHealthError || !s.CheckedAt.Equal(checkedAt) {
 		t.Fatalf("down route = %+v, want unreachable and unhealthy with errors", s)
 	}
-	if want := (protocol.RouteState{StageletID: "s-up", Upstream: up, Reachable: true, Healthy: true, CheckedAt: checkedAt}); got[1] != want {
+	if want := (protocol.RouteState{PreviewID: "s-up", Upstream: up, Reachable: true, Healthy: true, CheckedAt: checkedAt}); got[1] != want {
 		t.Fatalf("up route = %+v, want %+v", got[1], want)
 	}
 }
@@ -159,7 +159,7 @@ func TestAppIsHealthyOnlyWhenItsHealthPathAnswers2xx(t *testing.T) {
 
 			got := checkOnce(t, routeTo(up))
 
-			want := protocol.RouteState{StageletID: "s1", Upstream: up, Reachable: true, Healthy: tt.healthy, HealthError: tt.healthError, CheckedAt: checkedAt}
+			want := protocol.RouteState{PreviewID: "s1", Upstream: up, Reachable: true, Healthy: tt.healthy, HealthError: tt.healthError, CheckedAt: checkedAt}
 			if got != want {
 				t.Fatalf("state = %+v, want %+v", got, want)
 			}
@@ -167,7 +167,7 @@ func TestAppIsHealthyOnlyWhenItsHealthPathAnswers2xx(t *testing.T) {
 	}
 }
 
-func TestHealthRequestAsksForTheHealthPathWithTheStageletHost(t *testing.T) {
+func TestHealthRequestAsksForTheHealthPathWithThePreviewHost(t *testing.T) {
 	requests := make(chan *http.Request, 1)
 	up := addr(startApp(t, func(w http.ResponseWriter, r *http.Request) {
 		requests <- r
@@ -206,7 +206,7 @@ func TestHealthReportsAnAppThatStopsAnsweringWhileItsPortStaysReachable(t *testi
 		defer mu.Unlock()
 		w.WriteHeader(status)
 	}))
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: up, HealthPath: healthPath}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: up, HealthPath: healthPath}})
 	h := startRouteHealth(t, gw)
 	h.check()
 	if first := h.next(t); len(first) != 1 || !first[0].Healthy {
@@ -228,8 +228,8 @@ func TestHealthReportsOnlyRoutesThatChanged(t *testing.T) {
 	gw := newHealthGateway()
 	stable, flapping := startUpstream(t), startUpstream(t)
 	gw.SetRoutes([]protocol.Route{
-		{StageletID: "s-stable", Host: "stable.stagelets.localhost", Upstream: addr(stable), HealthPath: healthPath},
-		{StageletID: "s-flapping", Host: "flapping.stagelets.localhost", Upstream: addr(flapping), HealthPath: healthPath},
+		{PreviewID: "s-stable", Host: "stable.previews.localhost", Upstream: addr(stable), HealthPath: healthPath},
+		{PreviewID: "s-flapping", Host: "flapping.previews.localhost", Upstream: addr(flapping), HealthPath: healthPath},
 	})
 	h := startRouteHealth(t, gw)
 	h.check()
@@ -240,7 +240,7 @@ func TestHealthReportsOnlyRoutesThatChanged(t *testing.T) {
 	h.check()
 	got := h.next(t)
 
-	if len(got) != 1 || got[0].StageletID != "s-flapping" || got[0].Reachable {
+	if len(got) != 1 || got[0].PreviewID != "s-flapping" || got[0].Reachable {
 		t.Fatalf("report = %+v, want only s-flapping as unreachable", got)
 	}
 }
@@ -250,7 +250,7 @@ func TestHealthReportsANewReasonWhileTheAppStaysUnhealthy(t *testing.T) {
 	var status atomic.Int32
 	status.Store(http.StatusServiceUnavailable)
 	up := addr(startApp(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(int(status.Load())) }))
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: up, HealthPath: healthPath}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: up, HealthPath: healthPath}})
 	h := startRouteHealth(t, gw)
 	h.check()
 	if first := h.next(t); len(first) != 1 || first[0].HealthError != "GET /healthz: status 503" {
@@ -266,15 +266,15 @@ func TestHealthReportsANewReasonWhileTheAppStaysUnhealthy(t *testing.T) {
 	}
 }
 
-func TestHealthReportsNewUpstreamOfStagelet(t *testing.T) {
+func TestHealthReportsNewUpstreamOfPreview(t *testing.T) {
 	gw := newHealthGateway()
 	oldUp, newUp := addr(startUpstream(t)), addr(startUpstream(t))
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: oldUp, HealthPath: healthPath}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: oldUp, HealthPath: healthPath}})
 	h := startRouteHealth(t, gw)
 	h.check()
 	h.next(t)
 
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: newUp, HealthPath: healthPath}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: newUp, HealthPath: healthPath}})
 	h.check()
 	got := h.next(t)
 
@@ -289,7 +289,7 @@ func TestLargeHealthReportIsSplitIntoBoundedMessages(t *testing.T) {
 	routes := make([]protocol.Route, 101)
 	for i := range routes {
 		id := fmt.Sprintf("s%03d", i)
-		routes[i] = protocol.Route{StageletID: id, Host: id + ".stagelets.localhost", Upstream: up}
+		routes[i] = protocol.Route{PreviewID: id, Host: id + ".previews.localhost", Upstream: up}
 	}
 	gw.SetRoutes(routes)
 	h := startRouteHealth(t, gw)
@@ -304,7 +304,7 @@ func TestLargeHealthReportIsSplitIntoBoundedMessages(t *testing.T) {
 
 func TestHealthReportingStopsWhenSendFails(t *testing.T) {
 	gw := newHealthGateway()
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: addr(startUpstream(t))}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: addr(startUpstream(t))}})
 	sendErr := errors.New("session closed")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -346,8 +346,8 @@ func TestHealthReasonOfAResetConnectionStaysTheSameAcrossChecks(t *testing.T) {
 	gw := newHealthGateway()
 	resetting, stable := startResettingApp(t), startUpstream(t)
 	gw.SetRoutes([]protocol.Route{
-		{StageletID: "s-resetting", Host: "resetting.stagelets.localhost", Upstream: resetting, HealthPath: healthPath},
-		{StageletID: "s-stable", Host: "stable.stagelets.localhost", Upstream: addr(stable), HealthPath: healthPath},
+		{PreviewID: "s-resetting", Host: "resetting.previews.localhost", Upstream: resetting, HealthPath: healthPath},
+		{PreviewID: "s-stable", Host: "stable.previews.localhost", Upstream: addr(stable), HealthPath: healthPath},
 	})
 	h := startRouteHealth(t, gw)
 	h.check()
@@ -361,7 +361,7 @@ func TestHealthReasonOfAResetConnectionStaysTheSameAcrossChecks(t *testing.T) {
 	h.check()
 	got := h.next(t)
 
-	if len(got) != 1 || got[0].StageletID != "s-stable" {
+	if len(got) != 1 || got[0].PreviewID != "s-stable" {
 		t.Fatalf("report = %+v, want only s-stable: the reset route's reason must not change between checks", got)
 	}
 }

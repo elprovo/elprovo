@@ -1,15 +1,15 @@
 locals {
-  stagelet_label = var.stagelet_label != "" ? var.stagelet_label : "stagely=${var.name}-stagelet"
+  preview_label = var.preview_label != "" ? var.preview_label : "elprovo=${var.name}-preview"
 }
 
 resource "hcloud_ssh_key" "operator" {
-  name       = "${var.name}-stagely-setup"
+  name       = "${var.name}-elprovo-setup"
   public_key = var.ssh_public_key
 }
 
 # The gateway's stable address. A primary IP is the server's own address,
 # which Hetzner configures on the server, and it outlives the server, so a
-# replaced gateway keeps the address that stagelet host names point at.
+# replaced gateway keeps the address that preview host names point at.
 resource "hcloud_primary_ip" "gateway" {
   name        = "${var.name}-gateway"
   type        = "ipv4"
@@ -59,14 +59,14 @@ data "hcloud_location" "environment" {
   name = var.location
 }
 
-# The hosts, stagelet machines and build workers share this network, and the
-# agent and the gateway reach stagelets over it. Hetzner's firewalls do not
+# The hosts, preview machines and build workers share this network, and the
+# agent and the gateway reach previews over it. Hetzner's firewalls do not
 # filter private networks, so each machine filters it with its own iptables
 # rules, which its user data adds on every boot: the agent and the gateway
-# reject every new connection from the network, and stagelet machines and
+# reject every new connection from the network, and preview machines and
 # build workers accept new ones only from the agent and the gateway.
 resource "hcloud_network" "environment" {
-  name     = "${var.name}-stagely"
+  name     = "${var.name}-elprovo"
   ip_range = var.network_range
 }
 
@@ -120,14 +120,14 @@ resource "hcloud_server_network" "gateway" {
   depends_on = [hcloud_network_subnet.environment]
 }
 
-# Stagelet machines and build workers accept no connections on their public
+# Preview machines and build workers accept no connections on their public
 # address, which they keep only to reach the internet: the agent and the
 # gateway reach them over the network. A firewall without rules drops all
 # inbound traffic. It finds them by the label the agent puts on them.
-resource "hcloud_firewall" "stagelets" {
-  name = "${var.name}-stagelets"
+resource "hcloud_firewall" "previews" {
+  name = "${var.name}-previews"
 
   apply_to {
-    label_selector = local.stagelet_label
+    label_selector = local.preview_label
   }
 }

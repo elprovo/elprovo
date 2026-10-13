@@ -1,4 +1,4 @@
-// Package cloudinit writes the cloud-init user data that Stagely gives a new
+// Package cloudinit writes the cloud-init user data that Elprovo gives a new
 // machine: an SSH host key that the creator generated, so it can pin the key
 // and never trust an unknown one, the packages the machine needs, for
 // machines that run customer containers a firewall rule that keeps those
@@ -51,7 +51,7 @@ func HostKeyConfig(hostKeyPEM string, packages ...string) (string, ssh.PublicKey
 	return b.String(), public, nil
 }
 
-// MachineConfig is HostKeyConfig for a build worker or a stagelet machine,
+// MachineConfig is HostKeyConfig for a build worker or a preview machine,
 // which run customer code in containers. Every cloud serves instance metadata,
 // including this user data and so the host key, at 169.254.169.254. On every
 // boot, before Docker starts, the machine adds a rule to Docker's DOCKER-USER
@@ -92,7 +92,7 @@ type PrivateNetwork struct {
 
 // privateChain is the iptables chain that accepts a new connection from a
 // private network only from one of its sources.
-const privateChain = "STAGELY-PRIVATE"
+const privateChain = "ELPROVO-PRIVATE"
 
 // rules returns bootcmd lines that fill privateChain and send each new
 // connection from the network in chains to it.

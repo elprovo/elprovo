@@ -1,5 +1,5 @@
 // Package vm holds the build context of the simulated cloud VM image: its
-// Dockerfile, its systemd units and the source of stagely-vm-init, which the
+// Dockerfile, its systemd units and the source of elprovo-vm-init, which the
 // image build compiles on its own, so vminit imports only the standard
 // library.
 package vm

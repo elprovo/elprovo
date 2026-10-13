@@ -9,12 +9,12 @@ variable "name" {
 }
 
 variable "region" {
-  description = "Vultr region for the hosts and the stagelets, such as fra."
+  description = "Vultr region for the hosts and the previews, such as fra."
   type        = string
 }
 
 variable "network_range" {
-  description = "Address range of the VPC that the hosts, stagelet machines and build workers share, such as 10.42.0.0/20. `stagely setup` sets it, and the hosts' user data rejects new connections from it."
+  description = "Address range of the VPC that the hosts, preview machines and build workers share, such as 10.42.0.0/20. `elprovo setup` sets it, and the hosts' user data rejects new connections from it."
   type        = string
 
   validation {
@@ -42,21 +42,21 @@ variable "gateway_plan" {
 }
 
 variable "agent_user_data" {
-  description = "Cloud-init user data of the agent host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the agent host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "gateway_user_data" {
-  description = "Cloud-init user data of the gateway host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the gateway host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "ssh_public_key" {
-  description = "Public key that `stagely setup` uses to install the agent and the gateway."
+  description = "Public key that `elprovo setup` uses to install the agent and the gateway."
   type        = string
 }
 
@@ -70,8 +70,8 @@ variable "operator_cidrs" {
   }
 }
 
-variable "stagelet_tag" {
-  description = "Tag the agent puts on every machine it creates. Empty means <name>-stagelet, so environments in one account keep apart."
+variable "preview_tag" {
+  description = "Tag the agent puts on every machine it creates. Empty means <name>-preview, so environments in one account keep apart."
   type        = string
   default     = ""
 }

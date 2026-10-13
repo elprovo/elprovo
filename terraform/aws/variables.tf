@@ -15,7 +15,7 @@ variable "name" {
 }
 
 variable "region" {
-  description = "AWS region for the hosts and the stagelets, such as eu-central-1."
+  description = "AWS region for the hosts and the previews, such as eu-central-1."
   type        = string
 }
 
@@ -26,7 +26,7 @@ variable "availability_zone" {
 }
 
 variable "image" {
-  description = "AMI of the agent and gateway hosts, and of stagelet machines without a golden image. Empty means the newest Ubuntu 24.04 AMI from Canonical."
+  description = "AMI of the agent and gateway hosts, and of preview machines without a golden image. Empty means the newest Ubuntu 24.04 AMI from Canonical."
   type        = string
   default     = ""
 }
@@ -56,21 +56,21 @@ variable "subnet_cidr" {
 }
 
 variable "agent_user_data" {
-  description = "Cloud-init user data of the agent host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the agent host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "gateway_user_data" {
-  description = "Cloud-init user data of the gateway host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the gateway host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "ssh_public_key" {
-  description = "Public key that `stagely setup` uses to install the agent and the gateway."
+  description = "Public key that `elprovo setup` uses to install the agent and the gateway."
   type        = string
 }
 
@@ -84,8 +84,8 @@ variable "operator_cidrs" {
   }
 }
 
-variable "stagelet_group" {
-  description = "Value of the stagely-group tag the agent puts on every instance it creates, and finds them by. Empty means <name>-stagelet, so environments in one account keep apart."
+variable "preview_group" {
+  description = "Value of the elprovo-group tag the agent puts on every instance it creates, and finds them by. Empty means <name>-preview, so environments in one account keep apart."
   type        = string
   default     = ""
 }

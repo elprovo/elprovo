@@ -27,7 +27,7 @@ import (
 
 const (
 	// Issuer is the iss claim of every token; the registry must expect it.
-	Issuer   = "stagely-sim"
+	Issuer   = "elprovo-sim"
 	lifetime = time.Hour
 )
 
@@ -50,7 +50,7 @@ func NewSigner(now time.Time) (*Signer, error) {
 	}
 	template := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "stagely-sim registry token signer"},
+		Subject:      pkix.Name{CommonName: "elprovo-sim registry token signer"},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.AddDate(10, 0, 0),
 		KeyUsage:     x509.KeyUsageDigitalSignature,

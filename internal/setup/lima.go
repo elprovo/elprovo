@@ -18,26 +18,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/controlplane"
+	"github.com/elprovo/elprovo/internal/controlplane"
 )
 
-// Lima is one `stagely setup lima` run. The agent runs on this Mac as a
+// Lima is one `elprovo setup lima` run. The agent runs on this Mac as a
 // launchd job, because it drives Lima. The gateway runs in its own Lima VM,
 // as it runs on its own host in a cloud: macOS does not let background
 // services that are not Apple-signed reach other machines on the local
-// network, and VMs reach each other freely. Stagelets and build workers run
+// network, and VMs reach each other freely. Previews and build workers run
 // in Lima VMs too.
 type Lima struct {
-	API            API
-	Server         string
-	Environment    string
-	StageletDomain string
-	GatewayPort    int
-	HostAddress    string
-	RegistryPort   int
-	// Binaries holds stagely-agent built for this Mac.
+	API           API
+	Server        string
+	Environment   string
+	PreviewDomain string
+	GatewayPort   int
+	HostAddress   string
+	RegistryPort  int
+	// Binaries holds elprovo-agent built for this Mac.
 	Binaries string
-	// GatewayBinary is stagely-gateway built for Linux on this Mac's CPU.
+	// GatewayBinary is elprovo-gateway built for Linux on this Mac's CPU.
 	GatewayBinary string
 	Tofu          string
 	WorkDir       string
@@ -63,7 +63,7 @@ func (l Lima) Run(ctx context.Context) (Environment, error) {
 	if err != nil {
 		return Environment{}, err
 	}
-	env, err := ensureEnvironment(ctx, l.API, accountID, Environment{Name: l.Environment, Provider: "lima", StageletDomain: l.StageletDomain, StageletPort: l.GatewayPort})
+	env, err := ensureEnvironment(ctx, l.API, accountID, Environment{Name: l.Environment, Provider: "lima", PreviewDomain: l.PreviewDomain, PreviewPort: l.GatewayPort})
 	if err != nil {
 		return Environment{}, err
 	}
@@ -71,7 +71,7 @@ func (l Lima) Run(ctx context.Context) (Environment, error) {
 	_, _ = fmt.Fprintf(l.Out, "Applying the bootstrap module in %s\n", filepath.Join(l.WorkDir, "terraform"))
 	outputs, err := Tofu{Binary: l.Tofu, Dir: filepath.Join(l.WorkDir, "terraform"), Out: l.Out}.Apply(ctx, l.Module, map[string]any{
 		"name": name, "host_address": l.HostAddress, "registry_port": l.RegistryPort,
-		"stagelet_domain": l.StageletDomain, "certificate_dir": filepath.Join(l.WorkDir, "gateway-tls"),
+		"preview_domain": l.PreviewDomain, "certificate_dir": filepath.Join(l.WorkDir, "gateway-tls"),
 	})
 	if err != nil {
 		return Environment{}, err
@@ -83,14 +83,14 @@ func (l Lima) Run(ctx context.Context) (Environment, error) {
 		return Environment{}, errors.New("the bootstrap module did not output the registry and the certificate")
 	}
 
-	agent := launchdService{role: roleAgent, binary: "stagely-agent", keyFile: "agent.key", args: []string{
-		"-control-plane", controlplane.SessionURL(l.Server), "-provider", "lima", "-machine-prefix", "stagely-" + name + "-",
+	agent := launchdService{role: roleAgent, binary: "elprovo-agent", keyFile: "agent.key", args: []string{
+		"-control-plane", controlplane.SessionURL(l.Server), "-provider", "lima", "-machine-prefix", "elprovo-" + name + "-",
 		"-registry", registry + "/" + name, "-lima-insecure-registry", registry,
 	}}
 	if err := l.installAndEnroll(ctx, accountID, env.ID, name, agent); err != nil {
 		return Environment{}, err
 	}
-	if err := l.installGateway(ctx, accountID, env.ID, "stagely-"+name+"-gateway", cert, key); err != nil {
+	if err := l.installGateway(ctx, accountID, env.ID, "elprovo-"+name+"-gateway", cert, key); err != nil {
 		return Environment{}, err
 	}
 	return env, nil
@@ -116,14 +116,14 @@ func (l Lima) installGateway(ctx context.Context, accountID, envID, vm, certFile
 	}
 	port := strconv.Itoa(l.GatewayPort)
 	svc := service{
-		name: "stagely-gateway", binary: l.GatewayBinary, keyFile: "gateway.key", env: map[string]string{},
+		name: "elprovo-gateway", binary: l.GatewayBinary, keyFile: "gateway.key", env: map[string]string{},
 		args: []string{
-			"-control-plane", vmSessionURL(l.Server), "-data-dir", "/var/lib/stagely-gateway", "-listen", ":" + port,
-			"-tls-cert", "/etc/stagely/tls.crt", "-tls-key", "/etc/stagely/tls.key",
+			"-control-plane", vmSessionURL(l.Server), "-data-dir", "/var/lib/elprovo-gateway", "-listen", ":" + port,
+			"-tls-cert", "/etc/elprovo/tls.crt", "-tls-key", "/etc/elprovo/tls.key",
 		},
 		files: []serviceFile{
-			{path: "/etc/stagely/tls.crt", data: cert, mode: "0644"},
-			{path: "/etc/stagely/tls.key", data: key, mode: "0640"},
+			{path: "/etc/elprovo/tls.crt", data: cert, mode: "0644"},
+			{path: "/etc/elprovo/tls.key", data: key, mode: "0640"},
 		},
 		bindLowPorts: l.GatewayPort < 1024,
 	}
@@ -136,9 +136,9 @@ func (l Lima) installGateway(ctx context.Context, accountID, envID, vm, certFile
 		return err
 	}
 	if token != "" {
-		svc.env["STAGELY_ENROLLMENT_TOKEN"] = token
+		svc.env["ELPROVO_ENROLLMENT_TOKEN"] = token
 	}
-	_, _ = fmt.Fprintf(l.Out, "Installing stagely-gateway in Lima VM %s\n", vm)
+	_, _ = fmt.Fprintf(l.Out, "Installing elprovo-gateway in Lima VM %s\n", vm)
 	before, err := clients(ctx, l.API, accountID, envID)
 	if err != nil {
 		return err
@@ -150,13 +150,13 @@ func (l Lima) installGateway(ctx context.Context, accountID, envID, vm, certFile
 	defer cancel()
 	id, err := waitConnected(waitCtx, l.API, accountID, envID, roleGateway, before, 2*time.Second)
 	if err != nil {
-		return fmt.Errorf("stagely-gateway: %w; see `limactl shell %s sudo journalctl -u stagely-gateway`", err, vm)
+		return fmt.Errorf("elprovo-gateway: %w; see `limactl shell %s sudo journalctl -u elprovo-gateway`", err, vm)
 	}
 	return keepOne(ctx, l.API, accountID, envID, roleGateway, id)
 }
 
 // ensureVM creates and starts the gateway's VM unless it runs. The VM is on
-// Lima's user-v2 network, where it reaches stagelet VMs. Lima forwards every
+// Lima's user-v2 network, where it reaches preview VMs. Lima forwards every
 // port the gateway listens on to the same port on this Mac's loopback
 // address.
 func (l Lima) ensureVM(ctx context.Context, vm string) error {
@@ -235,9 +235,9 @@ func (l Lima) installAndEnroll(ctx context.Context, accountID, envID, name strin
 		return err
 	}
 	if token != "" {
-		env["STAGELY_ENROLLMENT_TOKEN"] = token
+		env["ELPROVO_ENROLLMENT_TOKEN"] = token
 	}
-	label := "dev.stagely." + name + "." + d.role
+	label := "dev.elprovo." + name + "." + d.role
 	plist := launchdPlist(label, append([]string{binary, "run", "-data-dir", dataDir}, d.args...), env, filepath.Join(l.WorkDir, d.role+".log"))
 	path := filepath.Join(l.LaunchAgents, label+".plist")
 	if err := os.MkdirAll(l.LaunchAgents, 0o755); err != nil {

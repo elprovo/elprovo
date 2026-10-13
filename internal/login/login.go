@@ -1,4 +1,4 @@
-// Package login signs an operator in to a Stagely control plane through its
+// Package login signs an operator in to a Elprovo control plane through its
 // OAuth server, keeps the tokens on disk, and gives an HTTP client that
 // sends them. The CLI registers itself as a public client, uses PKCE and a
 // loopback redirect, and asks for a token for the control plane's JSON API.
@@ -31,7 +31,7 @@ const APIPath = "/api/v1"
 
 // ErrNotSignedIn means there are no stored credentials, or the grant behind
 // them has ended.
-var ErrNotSignedIn = errors.New("not signed in to Stagely; run `stagely login`")
+var ErrNotSignedIn = errors.New("not signed in to Elprovo; run `elprovo login`")
 
 // Credentials are what the CLI keeps between runs.
 type Credentials struct {
@@ -96,7 +96,7 @@ func (f Flow) Run(ctx context.Context) (Credentials, error) {
 
 func (f Flow) register(ctx context.Context, server, redirectURI string) (string, error) {
 	body, _ := json.Marshal(map[string]any{
-		"client_name": "stagely CLI", "redirect_uris": []string{redirectURI},
+		"client_name": "elprovo CLI", "redirect_uris": []string{redirectURI},
 		"grant_types": []string{"authorization_code", "refresh_token"}, "response_types": []string{"code"},
 		"token_endpoint_auth_method": "none",
 	})
@@ -162,7 +162,7 @@ func waitForCode(ctx context.Context, listener net.Listener, state, issuer strin
 		var res result
 		switch {
 		case q.Get("state") != state:
-			http.Error(w, "This sign-in link does not belong to this stagely login.", http.StatusBadRequest)
+			http.Error(w, "This sign-in link does not belong to this elprovo login.", http.StatusBadRequest)
 			return
 		case strings.TrimRight(q.Get("iss"), "/") != issuer:
 			res.err = fmt.Errorf("the redirect came from issuer %q, not %q", q.Get("iss"), issuer)
@@ -178,7 +178,7 @@ func waitForCode(ctx context.Context, listener net.Listener, state, issuer strin
 		if res.err != nil {
 			message = "Sign-in failed: " + res.err.Error()
 		}
-		_, _ = fmt.Fprintf(w, "<!doctype html><title>Stagely</title><p>%s</p>", html.EscapeString(message))
+		_, _ = fmt.Fprintf(w, "<!doctype html><title>Elprovo</title><p>%s</p>", html.EscapeString(message))
 		once.Do(func() { results <- res })
 	})}
 	go func() { _ = srv.Serve(listener) }()

@@ -47,7 +47,7 @@ func (s *session) arn(account string) string {
 // serveSTS answers STS GetCallerIdentity, which Terraform and Packer call to
 // check credentials and learn the account id, and GetFederationToken, which
 // the agent calls for temporary credentials limited to the registry. The
-// configured access key is the IAM user stagely-sim.
+// configured access key is the IAM user elprovo-sim.
 func (s *Simulation) serveSTS(w http.ResponseWriter, r *http.Request, body []byte, sc scope, failure authFailure, requestID string) {
 	if failure != 0 {
 		writeSTSError(w, requestID, stsAuthError(failure))
@@ -100,14 +100,14 @@ type callerIdentityResult struct {
 	Account string   `xml:"Account"`
 }
 
-// callerIdentity names the IAM user stagely-sim, or the federated user of a
+// callerIdentity names the IAM user elprovo-sim, or the federated user of a
 // session.
 func (s *Simulation) callerIdentity(account string, sess *session) callerIdentityResult {
 	if sess != nil {
 		return callerIdentityResult{Arn: sess.arn(account), UserID: account + ":" + sess.Name, Account: account}
 	}
 	sum := sha256.Sum256([]byte(s.cfg.accessKeyID))
-	return callerIdentityResult{Arn: "arn:aws:iam::" + account + ":user/stagely-sim", UserID: "AIDA" + strings.ToUpper(hex.EncodeToString(sum[:]))[:17], Account: account}
+	return callerIdentityResult{Arn: "arn:aws:iam::" + account + ":user/elprovo-sim", UserID: "AIDA" + strings.ToUpper(hex.EncodeToString(sum[:]))[:17], Account: account}
 }
 
 type federationTokenResult struct {

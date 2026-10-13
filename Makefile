@@ -9,8 +9,8 @@ MODULES := . protocol sim
 # answers the challenges on the ports in internal/gateway/testdata. Keep the
 # names in step with internal/gateway/acme_integration_test.go.
 PEBBLE_IMAGE := ghcr.io/letsencrypt/pebble:2.10.1
-PEBBLE_CONTAINER := stagely-pebble
-PEBBLE_HOSTS := tls-alpn.stagelets.example.com http.stagelets.example.com
+PEBBLE_CONTAINER := elprovo-pebble
+PEBBLE_HOSTS := tls-alpn.previews.example.com http.previews.example.com
 
 .DEFAULT_GOAL := help
 
@@ -58,7 +58,7 @@ test-acme: ## Run the ACME integration test against Pebble in Docker
 	i=0; until curl -fs --cacert "$$tmp/pebble.minica.pem" https://localhost:14000/dir >/dev/null; do \
 		i=$$((i + 1)); [ $$i -lt 50 ] || { echo "Pebble did not start"; exit 1; }; sleep 0.2; \
 	done; \
-	STAGELY_PEBBLE_CA="$$tmp/pebble.minica.pem" go test -tags acme -count=1 -run '^TestACME' ./internal/gateway/
+	ELPROVO_PEBBLE_CA="$$tmp/pebble.minica.pem" go test -tags acme -count=1 -run '^TestACME' ./internal/gateway/
 
 mod-check: ## Fail when go.mod or go.sum are untidy or modules fail verification
 	@set -e; for m in $(MODULES); do (cd $$m && go mod tidy -diff && go mod verify); done
@@ -68,26 +68,26 @@ vuln: ## Check dependencies for known vulnerabilities
 
 tf-check: ## Check that Terraform modules are formatted and valid
 	@set -e; tofu fmt -check -recursive terraform; \
-	mkdir -p "$${TF_PLUGIN_CACHE_DIR:=$$HOME/.cache/stagely/tofu-plugins}"; export TF_PLUGIN_CACHE_DIR; \
+	mkdir -p "$${TF_PLUGIN_CACHE_DIR:=$$HOME/.cache/elprovo/tofu-plugins}"; export TF_PLUGIN_CACHE_DIR; \
 	for m in $(TF_MODULES); do echo "validate $$m"; (cd $$m && tofu init -backend=false -input=false >/dev/null && tofu validate); done
 
 images-check: ## Check that golden image templates are formatted and valid
 	@set -e; packer fmt -check -recursive images; \
 	for i in $(IMAGES); do echo "validate $$i"; (cd $$i && packer init . >/dev/null && packer validate -var-file=check.pkrvars.hcl .); done
 
-build: ## Build stagely, stagely-agent, stagely-gateway and stagely-sim into bin/
+build: ## Build elprovo, elprovo-agent, elprovo-gateway and elprovo-sim into bin/
 	mkdir -p bin
-	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/stagely ./cmd/stagely-agent ./cmd/stagely-gateway
-	cd sim && CGO_ENABLED=0 go build -trimpath -o ../bin/ ./cmd/stagely-sim
+	CGO_ENABLED=0 go build -trimpath -o bin/ ./cmd/elprovo ./cmd/elprovo-agent ./cmd/elprovo-gateway
+	cd sim && CGO_ENABLED=0 go build -trimpath -o ../bin/ ./cmd/elprovo-sim
 
-build-hosts: ## Build stagely, stagely-agent and stagely-gateway for Linux into bin/linux-amd64/ and bin/linux-arm64/
-	for arch in amd64 arm64; do mkdir -p bin/linux-$$arch && CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -o bin/linux-$$arch/ ./cmd/stagely ./cmd/stagely-agent ./cmd/stagely-gateway || exit 1; done
+build-hosts: ## Build elprovo, elprovo-agent and elprovo-gateway for Linux into bin/linux-amd64/ and bin/linux-arm64/
+	for arch in amd64 arm64; do mkdir -p bin/linux-$$arch && CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -o bin/linux-$$arch/ ./cmd/elprovo ./cmd/elprovo-agent ./cmd/elprovo-gateway || exit 1; done
 
-dist: ## Package stagely, stagely-agent and stagely-gateway for each release platform into dist/, with SHA-256 checksums
+dist: ## Package elprovo, elprovo-agent and elprovo-gateway for each release platform into dist/, with SHA-256 checksums
 	rm -rf dist && mkdir -p dist
 	for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do \
-		os=$${platform%/*}; arch=$${platform#*/}; dir=dist/stagely_$${os}_$${arch}; \
-		mkdir -p $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o $$dir/ ./cmd/stagely ./cmd/stagely-agent ./cmd/stagely-gateway || exit 1; \
+		os=$${platform%/*}; arch=$${platform#*/}; dir=dist/elprovo_$${os}_$${arch}; \
+		mkdir -p $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -o $$dir/ ./cmd/elprovo ./cmd/elprovo-agent ./cmd/elprovo-gateway || exit 1; \
 		tar -czf $$dir.tar.gz -C $$dir . && rm -rf $$dir; \
 	done
 	cd dist && shasum -a 256 *.tar.gz > checksums.txt

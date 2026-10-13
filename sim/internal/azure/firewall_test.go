@@ -5,16 +5,16 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
-func TestStageletSubnetAdmitsOnlyTheAgentAndTheGateway(t *testing.T) {
+func TestPreviewSubnetAdmitsOnlyTheAgentAndTheGateway(t *testing.T) {
 	e := newEnv(t)
 	subnet := e.network("rg")
-	nsgID := e.nsg("rg", "stagelets",
+	nsgID := e.nsg("rg", "previews",
 		rule("from-agent-and-gateway", 100, "Inbound", "Allow", "Tcp", "*", "172.30.0.10", "172.30.0.20"),
 		rule("deny-other-inbound", 4096, "Inbound", "Deny", "*", "*", "*"))
-	e.associate("rg", "stagelets", nsgID)
+	e.associate("rg", "previews", nsgID)
 	n := e.nic("rg", "web-nic", subnet, "", "")
 
 	vm := e.createVM("rg", "web", n.ID)

@@ -50,7 +50,7 @@ func (s *Simulation) createSnapshot(r *http.Request) (int, any, error) {
 		id := newUUID()
 		snap := &snapshot{
 			ID: id, Description: req.Description, Status: "pending", OSID: inst.OSID, CreatedAt: s.now(),
-			ImageRef: fmt.Sprintf("stagely-sim-vultr-snapshot:%s-%s", a.ID[:8], id),
+			ImageRef: fmt.Sprintf("elprovo-sim-vultr-snapshot:%s-%s", a.ID[:8], id),
 		}
 		a.Snapshots = append(a.Snapshots, snap)
 		machine, out = inst.Machine, renderSnapshot(snap)

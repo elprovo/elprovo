@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// HostedURL is the URL of the control plane that Stagely runs. It serves the
+// HostedURL is the URL of the control plane that Elprovo runs. It serves the
 // console, the JSON API, MCP and the sessions of agents and gateways.
-const HostedURL = "https://app.stagely.dev"
+const HostedURL = "https://app.elprovo.com"
 
 // SessionURL returns the WebSocket URL of the agent hub of the control plane
 // at server: wss for an https server, ws otherwise.

@@ -1,4 +1,4 @@
-// Package gcp simulates the Google Cloud APIs that Stagely uses: the OAuth 2.0
+// Package gcp simulates the Google Cloud APIs that Elprovo uses: the OAuth 2.0
 // token endpoint for service account keys, Compute Engine (zones, regions,
 // machine types, images, instances, disks, networks, subnetworks, firewall
 // rules, static addresses and operations), Artifact Registry repositories,
@@ -21,9 +21,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (
@@ -136,7 +136,7 @@ func (s *Simulation) initWorld(w *world) error {
 		}
 		w.Keys = append(w.Keys, key)
 		w.Accounts = append(w.Accounts, &iamAccount{
-			Email: key.Email, UniqueID: key.ClientID, DisplayName: "stagely-sim", CreatedAt: s.now().UTC(),
+			Email: key.Email, UniqueID: key.ClientID, DisplayName: "elprovo-sim", CreatedAt: s.now().UTC(),
 		})
 	}
 	if w.Registry == nil {

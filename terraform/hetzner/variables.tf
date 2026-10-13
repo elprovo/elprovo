@@ -15,7 +15,7 @@ variable "name" {
 }
 
 variable "network_range" {
-  description = "Address range of the private network that the hosts, stagelet machines and build workers share, such as 10.42.0.0/20. `stagely setup` sets it, and the hosts' user data rejects new connections from it."
+  description = "Address range of the private network that the hosts, preview machines and build workers share, such as 10.42.0.0/20. `elprovo setup` sets it, and the hosts' user data rejects new connections from it."
   type        = string
 
   validation {
@@ -25,7 +25,7 @@ variable "network_range" {
 }
 
 variable "location" {
-  description = "Hetzner location for the hosts and the stagelets, such as fsn1."
+  description = "Hetzner location for the hosts and the previews, such as fsn1."
   type        = string
 }
 
@@ -48,21 +48,21 @@ variable "gateway_server_type" {
 }
 
 variable "agent_user_data" {
-  description = "Cloud-init user data of the agent host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the agent host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "gateway_user_data" {
-  description = "Cloud-init user data of the gateway host. `stagely setup` sets an SSH host key it pins."
+  description = "Cloud-init user data of the gateway host. `elprovo setup` sets an SSH host key it pins."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "ssh_public_key" {
-  description = "Public key that `stagely setup` uses to install the agent and the gateway."
+  description = "Public key that `elprovo setup` uses to install the agent and the gateway."
   type        = string
 }
 
@@ -71,13 +71,13 @@ variable "operator_cidrs" {
   type        = list(string)
 }
 
-variable "stagelet_label" {
-  description = "Label, as key=value, that the agent puts on every server it creates. The stagelet firewall applies to it. Empty means stagely=<name>-stagelet, so environments in one project keep apart."
+variable "preview_label" {
+  description = "Label, as key=value, that the agent puts on every server it creates. The preview firewall applies to it. Empty means elprovo=<name>-preview, so environments in one project keep apart."
   type        = string
   default     = ""
 
   validation {
-    condition     = var.stagelet_label == "" || can(regex("^[a-zA-Z0-9][-_.a-zA-Z0-9]{0,61}[a-zA-Z0-9]?=[a-zA-Z0-9]([-_.a-zA-Z0-9]{0,61}[a-zA-Z0-9])?$", var.stagelet_label))
-    error_message = "stagelet_label must be key=value with a valid Hetzner label key and value."
+    condition     = var.preview_label == "" || can(regex("^[a-zA-Z0-9][-_.a-zA-Z0-9]{0,61}[a-zA-Z0-9]?=[a-zA-Z0-9]([-_.a-zA-Z0-9]{0,61}[a-zA-Z0-9])?$", var.preview_label))
+    error_message = "preview_label must be key=value with a valid Hetzner label key and value."
   }
 }

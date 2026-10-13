@@ -19,15 +19,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/agent/build"
-	"github.com/stagely-dev/stagely/internal/agent/journal"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/agent/build"
+	"github.com/elprovo/elprovo/internal/agent/journal"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 const (
 	commit   = "0123456789abcdef0123456789abcdef01234567"
 	registry = "registry.example.com/acme"
-	resolved = `{"name":"stagelet","services":{"web":{"build":{"context":"/var/lib/stagely/builds/5e1a9c0b7d42/src"},"environment":{"MODE":"dev"}}}}`
+	resolved = `{"name":"preview","services":{"web":{"build":{"context":"/var/lib/elprovo/builds/5e1a9c0b7d42/src"},"environment":{"MODE":"dev"}}}}`
 )
 
 // fakeMachines is a cloud whose machines answer commands from a script.
@@ -244,7 +244,7 @@ func newRunnerWithJournal(t *testing.T, machines Machines, j *journal.Journal) *
 		Source:         &build.Source{HTTP: http.DefaultClient, MaxBytes: 1 << 20},
 		Secrets:        fakeSecrets{"api": "s3cr3t-token-value"},
 		Registry:       Registry{Prefix: registry, Credentials: StaticCredentials("registry-user-token", "registry-password")},
-		MachinePrefix:  "stagely-",
+		MachinePrefix:  "elprovo-",
 		BuildWorkers:   1,
 		MaxJobs:        2,
 		RenewEvery:     time.Hour,
@@ -284,7 +284,7 @@ func serve(t *testing.T, r *Runner) *fakeSession {
 }
 
 func deployJob(port int, secrets ...protocol.SecretRef) protocol.Job {
-	return protocol.Job{ID: "op1", LeaseToken: "lt1", Kind: protocol.JobDeploy, StageletID: "5e1a9c0b7d42", Deploy: &protocol.DeploySpec{
+	return protocol.Job{ID: "op1", LeaseToken: "lt1", Kind: protocol.JobDeploy, PreviewID: "5e1a9c0b7d42", Deploy: &protocol.DeploySpec{
 		Repository: "acme/web", Commit: commit, SourceAPIURL: "http://127.0.0.1:" + strconv.Itoa(port), ComposeFiles: []string{"compose.yml"}, PublicService: "web", PublicPort: port,
 		HealthPath: "/healthz", Config: map[string]string{"MODE": "preview"}, Secrets: secrets,
 	}}
@@ -317,11 +317,11 @@ func TestDeployBuildsOnAWorkerAndRunsTheBundleByDigest(t *testing.T) {
 	if res.Images["web"] != digest || !strings.Contains(string(res.Bundle), `"image":"`+digest+`"`) || !strings.Contains(string(res.Bundle), `"MODE":"preview"`) {
 		t.Fatalf("images = %v, bundle = %s; want the web image by digest with the config", res.Images, res.Bundle)
 	}
-	if !slices.Equal(machines.created, []string{"stagely-build-1", "stagely-5e1a9c0b7d42"}) && !slices.Equal(machines.created, []string{"stagely-5e1a9c0b7d42", "stagely-build-1"}) {
-		t.Fatalf("created = %v, want a build worker and the stagelet machine", machines.created)
+	if !slices.Equal(machines.created, []string{"elprovo-build-1", "elprovo-5e1a9c0b7d42"}) && !slices.Equal(machines.created, []string{"elprovo-5e1a9c0b7d42", "elprovo-build-1"}) {
+		t.Fatalf("created = %v, want a build worker and the preview machine", machines.created)
 	}
-	if !machines.ran("stagely-build-1: sudo env BUILDKIT_PROGRESS=plain MODE=preview docker compose") || !machines.ran("stagely-5e1a9c0b7d42: sudo sh -c") {
-		t.Fatal("the build did not run on the worker, or the bundle did not start on the stagelet machine")
+	if !machines.ran("elprovo-build-1: sudo env BUILDKIT_PROGRESS=plain MODE=preview docker compose") || !machines.ran("elprovo-5e1a9c0b7d42: sudo sh -c") {
+		t.Fatal("the build did not run on the worker, or the bundle did not start on the preview machine")
 	}
 	got := steps(before)
 	for _, want := range []string{"build:succeeded", "provision:succeeded", "start:succeeded", "migrate:skipped", "health:succeeded"} {
@@ -338,7 +338,7 @@ func TestDeployReturnsABundleThatRunsImageOnlyServicesByDigest(t *testing.T) {
 	machines.reply = func(machine, command string) (string, error) {
 		switch {
 		case strings.HasSuffix(command, "config --format json"):
-			return `{"services":{"web":{"build":{"context":"/var/lib/stagely/builds/5e1a9c0b7d42/src"}},"db":{"image":"postgres:17"}}}`, nil
+			return `{"services":{"web":{"build":{"context":"/var/lib/elprovo/builds/5e1a9c0b7d42/src"}},"db":{"image":"postgres:17"}}}`, nil
 		case strings.HasSuffix(command, "image inspect --format {{json .RepoDigests}} postgres:17"):
 			return `["postgres@sha256:bb"]`, nil
 		}
@@ -356,10 +356,10 @@ func TestDeployReturnsABundleThatRunsImageOnlyServicesByDigest(t *testing.T) {
 	}
 }
 
-func TestDeployReusesTheStageletMachineThatAlreadyExists(t *testing.T) {
+func TestDeployReusesThePreviewMachineThatAlreadyExists(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)
-	machines.existing[stageletMachine] = true
+	machines.existing[previewMachine] = true
 	r := newRunner(t, machines)
 	s := serve(t, r)
 
@@ -371,8 +371,8 @@ func TestDeployReusesTheStageletMachineThatAlreadyExists(t *testing.T) {
 	}
 	machines.mu.Lock()
 	defer machines.mu.Unlock()
-	if !slices.Equal(machines.created, []string{"stagely-build-1"}) {
-		t.Fatalf("created = %v, want only the build worker: the stagelet machine exists already", machines.created)
+	if !slices.Equal(machines.created, []string{"elprovo-build-1"}) {
+		t.Fatalf("created = %v, want only the build worker: the preview machine exists already", machines.created)
 	}
 }
 
@@ -432,8 +432,8 @@ func TestBuildWorkerForgetsItsRegistryLoginAndCacheMountsAfterEachBuild(t *testi
 				t.Fatalf("result = %+v, want OK %v", res, tt.wantOK)
 			}
 			for _, want := range []string{
-				"stagely-build-1: sudo docker logout registry.example.com",
-				"stagely-build-1: sudo docker builder prune --force --filter type=exec.cachemount",
+				"elprovo-build-1: sudo docker logout registry.example.com",
+				"elprovo-build-1: sudo docker builder prune --force --filter type=exec.cachemount",
 			} {
 				if !machines.ran(want) {
 					t.Errorf("the build worker did not run %q", want)
@@ -441,7 +441,7 @@ func TestBuildWorkerForgetsItsRegistryLoginAndCacheMountsAfterEachBuild(t *testi
 			}
 			machines.mu.Lock()
 			defer machines.mu.Unlock()
-			if slices.Contains(machines.deleted, "stagely-build-1") {
+			if slices.Contains(machines.deleted, "elprovo-build-1") {
 				t.Fatal("the build worker was deleted after a cleanup that worked")
 			}
 		})
@@ -469,12 +469,12 @@ func TestBuildWorkerWhoseCleanupFailsIsDeleted(t *testing.T) {
 	}
 	machines.mu.Lock()
 	defer machines.mu.Unlock()
-	if !slices.Contains(machines.deleted, "stagely-build-1") {
+	if !slices.Contains(machines.deleted, "elprovo-build-1") {
 		t.Fatalf("deleted = %v, want the build worker deleted", machines.deleted)
 	}
 }
 
-func TestBuildWorkerSignsInToPushAndStageletMachineToPullOnly(t *testing.T) {
+func TestBuildWorkerSignsInToPushAndPreviewMachineToPullOnly(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)
 	r := newRunner(t, machines)
@@ -497,11 +497,11 @@ func TestBuildWorkerSignsInToPushAndStageletMachineToPullOnly(t *testing.T) {
 	if res := payload.(protocol.JobResult); !res.OK {
 		t.Fatalf("result = %+v, want OK", res)
 	}
-	if !machines.ran("stagely-build-1: sudo docker login --username pusher --password-stdin registry.example.com") {
+	if !machines.ran("elprovo-build-1: sudo docker login --username pusher --password-stdin registry.example.com") {
 		t.Fatal("the build worker did not sign in with credentials that can push")
 	}
-	if !machines.ran("stagely-5e1a9c0b7d42: sudo docker login --username puller --password-stdin registry.example.com") {
-		t.Fatal("the stagelet machine did not sign in with pull-only credentials")
+	if !machines.ran("elprovo-5e1a9c0b7d42: sudo docker login --username puller --password-stdin registry.example.com") {
+		t.Fatal("the preview machine did not sign in with pull-only credentials")
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -540,12 +540,12 @@ func failComposeUp(machines *fakeMachines) {
 }
 
 func resetJob(port int) protocol.Job {
-	return protocol.Job{ID: "op2", LeaseToken: "lt2", Kind: protocol.JobReset, StageletID: "5e1a9c0b7d42", Reset: &protocol.ResetSpec{
+	return protocol.Job{ID: "op2", LeaseToken: "lt2", Kind: protocol.JobReset, PreviewID: "5e1a9c0b7d42", Reset: &protocol.ResetSpec{
 		Bundle: json.RawMessage(`{"services":{"web":{"image":"x@sha256:aa"}}}`), PublicService: "web", PublicPort: port, HealthPath: "/healthz",
 	}}
 }
 
-func TestFailedJobSaysWhetherItChangedTheStageletMachine(t *testing.T) {
+func TestFailedJobSaysWhetherItChangedThePreviewMachine(t *testing.T) {
 	tests := []struct {
 		name    string
 		job     func(port int) protocol.Job
@@ -557,14 +557,14 @@ func TestFailedJobSaysWhetherItChangedTheStageletMachine(t *testing.T) {
 			breakIt: func(m *fakeMachines) { m.createErr = errors.New("no capacity in fra1") },
 		},
 		{name: "deploy fails while Compose starts the app", job: func(port int) protocol.Job { return deployJob(port) }, breakIt: failComposeUp, changed: true},
-		{name: "reset fails because the machine is gone", job: resetJob, breakIt: func(m *fakeMachines) { delete(m.existing, "stagely-5e1a9c0b7d42") }},
+		{name: "reset fails because the machine is gone", job: resetJob, breakIt: func(m *fakeMachines) { delete(m.existing, "elprovo-5e1a9c0b7d42") }},
 		{name: "reset fails while Compose starts the app", job: resetJob, breakIt: failComposeUp, changed: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			host, port := healthyApp(t)
 			machines := newFakeMachines(host)
-			machines.existing["stagely-5e1a9c0b7d42"] = true
+			machines.existing["elprovo-5e1a9c0b7d42"] = true
 			tt.breakIt(machines)
 			s := serve(t, newRunner(t, machines))
 
@@ -706,7 +706,7 @@ func TestRunningJobRenewsItsLease(t *testing.T) {
 func TestResetReappliesTheBundleWithoutBuildingOrMigrating(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := newFakeMachines(host)
-	machines.existing["stagely-5e1a9c0b7d42"] = true
+	machines.existing["elprovo-5e1a9c0b7d42"] = true
 	r := newRunner(t, machines)
 	s := serve(t, r)
 
@@ -738,14 +738,14 @@ func TestDeleteMachineRefusesAMachineTheAgentDidNotCreate(t *testing.T) {
 	}
 }
 
-func TestDeleteJobDeletesTheStageletMachineAndKeepsTheBuildWorkers(t *testing.T) {
+func TestDeleteJobDeletesThePreviewMachineAndKeepsTheBuildWorkers(t *testing.T) {
 	machines := newFakeMachines("127.0.0.1")
-	machines.existing[stageletMachine] = true
-	machines.existing["stagely-build-1"] = true
+	machines.existing[previewMachine] = true
+	machines.existing["elprovo-build-1"] = true
 	r := newRunner(t, machines)
 	s := serve(t, r)
 
-	s.push(t, protocol.TypeJob, protocol.Job{ID: "op3", LeaseToken: "lt3", Kind: protocol.JobDelete, StageletID: "5e1a9c0b7d42"})
+	s.push(t, protocol.TypeJob, protocol.Job{ID: "op3", LeaseToken: "lt3", Kind: protocol.JobDelete, PreviewID: "5e1a9c0b7d42"})
 	payload, _ := s.await(t, protocol.TypeJobResult)
 
 	if res := payload.(protocol.JobResult); !res.OK || res.JobID != "op3" {
@@ -753,14 +753,14 @@ func TestDeleteJobDeletesTheStageletMachineAndKeepsTheBuildWorkers(t *testing.T)
 	}
 	machines.mu.Lock()
 	defer machines.mu.Unlock()
-	if !slices.Equal(machines.deleted, []string{stageletMachine}) {
-		t.Fatalf("deleted = %v, want only %s", machines.deleted, stageletMachine)
+	if !slices.Equal(machines.deleted, []string{previewMachine}) {
+		t.Fatalf("deleted = %v, want only %s", machines.deleted, previewMachine)
 	}
 }
 
 func TestInventoryListsOwnMachinesAndShrinksThePool(t *testing.T) {
 	machines := newFakeMachines("127.0.0.1")
-	for _, name := range []string{"stagely-5e1a9c0b7d42", "stagely-build-1", "stagely-build-2", "customer-db", "stagely-Not_Ours", "stagely-gateway"} {
+	for _, name := range []string{"elprovo-5e1a9c0b7d42", "elprovo-build-1", "elprovo-build-2", "customer-db", "elprovo-Not_Ours", "elprovo-gateway"} {
 		machines.existing[name] = true
 	}
 	r := newRunner(t, machines)
@@ -769,9 +769,9 @@ func TestInventoryListsOwnMachinesAndShrinksThePool(t *testing.T) {
 	payload, _ := s.await(t, protocol.TypeInventory)
 	got := payload.(protocol.Inventory).Machines
 	want := []protocol.Machine{
-		{Name: "stagely-5e1a9c0b7d42", Kind: protocol.MachineRuntime, StageletID: "5e1a9c0b7d42", Status: protocol.MachineReady},
-		{Name: "stagely-build-1", Kind: protocol.MachineBuildWorker, Status: protocol.MachineReady},
-		{Name: "stagely-build-2", Kind: protocol.MachineBuildWorker, Status: protocol.MachineReady},
+		{Name: "elprovo-5e1a9c0b7d42", Kind: protocol.MachineRuntime, PreviewID: "5e1a9c0b7d42", Status: protocol.MachineReady},
+		{Name: "elprovo-build-1", Kind: protocol.MachineBuildWorker, Status: protocol.MachineReady},
+		{Name: "elprovo-build-2", Kind: protocol.MachineBuildWorker, Status: protocol.MachineReady},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("inventory = %+v, want %+v", got, want)
@@ -779,30 +779,30 @@ func TestInventoryListsOwnMachinesAndShrinksThePool(t *testing.T) {
 	waitFor(t, func() bool {
 		machines.mu.Lock()
 		defer machines.mu.Unlock()
-		return slices.Equal(machines.deleted, []string{"stagely-build-2"})
+		return slices.Equal(machines.deleted, []string{"elprovo-build-2"})
 	})
 }
 
 func TestInventoryShowsMachinesThatAreBeingCreatedOrDeleted(t *testing.T) {
 	ctx := context.Background()
 	machines := newFakeMachines("127.0.0.1")
-	machines.existing["stagely-5e1a9c0b7d42"] = true
-	machines.existing["stagely-build-1"] = true
+	machines.existing["elprovo-5e1a9c0b7d42"] = true
+	machines.existing["elprovo-build-1"] = true
 	r := newRunner(t, machines)
 	s := serve(t, r)
 	s.await(t, protocol.TypeInventory)
-	if err := r.setMachineState(ctx, "stagely-5e1a9c0b7d42", protocol.MachineDeleting); err != nil {
+	if err := r.setMachineState(ctx, "elprovo-5e1a9c0b7d42", protocol.MachineDeleting); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.setMachineState(ctx, "stagely-build-1", protocol.MachineCreating); err != nil {
+	if err := r.setMachineState(ctx, "elprovo-build-1", protocol.MachineCreating); err != nil {
 		t.Fatal(err)
 	}
 
 	inv, _, err := r.inventory(ctx)
 
 	want := []protocol.Machine{
-		{Name: "stagely-5e1a9c0b7d42", Kind: protocol.MachineRuntime, StageletID: "5e1a9c0b7d42", Status: protocol.MachineDeleting},
-		{Name: "stagely-build-1", Kind: protocol.MachineBuildWorker, Status: protocol.MachineCreating},
+		{Name: "elprovo-5e1a9c0b7d42", Kind: protocol.MachineRuntime, PreviewID: "5e1a9c0b7d42", Status: protocol.MachineDeleting},
+		{Name: "elprovo-build-1", Kind: protocol.MachineBuildWorker, Status: protocol.MachineCreating},
 	}
 	if err != nil || !slices.Equal(inv.Machines, want) {
 		t.Fatalf("inventory = %+v, %v; want %+v", inv.Machines, err, want)
@@ -833,8 +833,8 @@ func TestFailedCreateDeletesTheHalfCreatedMachine(t *testing.T) {
 	machines.mu.Lock()
 	deleted := slices.Clone(machines.deleted)
 	machines.mu.Unlock()
-	if !slices.Contains(deleted, "stagely-5e1a9c0b7d42") {
-		t.Fatalf("deleted = %v, want the half-created stagely-5e1a9c0b7d42 deleted", deleted)
+	if !slices.Contains(deleted, "elprovo-5e1a9c0b7d42") {
+		t.Fatalf("deleted = %v, want the half-created elprovo-5e1a9c0b7d42 deleted", deleted)
 	}
 	if pending, _ := r.Journal.Machines(context.Background()); len(pending) != 0 {
 		t.Fatalf("journal machines = %v, want none after the cleanup", pending)
@@ -844,11 +844,11 @@ func TestFailedCreateDeletesTheHalfCreatedMachine(t *testing.T) {
 func TestRestartedAgentDeletesMachinesWithUnfinishedChanges(t *testing.T) {
 	ctx := context.Background()
 	j := openJournal(t, filepath.Join(t.TempDir(), "journal.db"))
-	if err := j.SetMachine(ctx, "stagely-s9", protocol.MachineCreating); err != nil {
+	if err := j.SetMachine(ctx, "elprovo-s9", protocol.MachineCreating); err != nil {
 		t.Fatal(err)
 	}
 	machines := newFakeMachines("127.0.0.1")
-	machines.existing["stagely-s9"] = true
+	machines.existing["elprovo-s9"] = true
 	r := newRunnerWithJournal(t, machines, j)
 
 	if err := r.Recover(ctx); err != nil {
@@ -856,8 +856,8 @@ func TestRestartedAgentDeletesMachinesWithUnfinishedChanges(t *testing.T) {
 	}
 	r.Wait()
 
-	if !slices.Equal(machines.deleted, []string{"stagely-s9"}) {
-		t.Fatalf("deleted = %v, want stagely-s9", machines.deleted)
+	if !slices.Equal(machines.deleted, []string{"elprovo-s9"}) {
+		t.Fatalf("deleted = %v, want elprovo-s9", machines.deleted)
 	}
 	if pending, _ := j.Machines(ctx); len(pending) != 0 {
 		t.Fatalf("journal machines = %v, want none", pending)
@@ -895,7 +895,7 @@ func TestRestartedAgentRunsAnAdoptedJobAgain(t *testing.T) {
 func TestRestartedAgentDropsAnAbandonedJob(t *testing.T) {
 	ctx := context.Background()
 	j := openJournal(t, filepath.Join(t.TempDir(), "journal.db"))
-	spec, _ := json.Marshal(protocol.Job{ID: "op1", LeaseToken: "lt1", Kind: protocol.JobDelete, StageletID: "5e1a9c0b7d42"})
+	spec, _ := json.Marshal(protocol.Job{ID: "op1", LeaseToken: "lt1", Kind: protocol.JobDelete, PreviewID: "5e1a9c0b7d42"})
 	if err := j.StartJob(ctx, "op1", "lt1", spec); err != nil {
 		t.Fatal(err)
 	}

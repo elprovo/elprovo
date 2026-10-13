@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	firewallState = "/var/lib/stagely-vm/firewall.json"
-	inboundChain  = "STAGELY-FIREWALL-IN"
-	outboundChain = "STAGELY-FIREWALL-OUT"
+	firewallState = "/var/lib/elprovo-vm/firewall.json"
+	inboundChain  = "ELPROVO-FIREWALL-IN"
+	outboundChain = "ELPROVO-FIREWALL-OUT"
 )
 
 type firewallPolicy struct {

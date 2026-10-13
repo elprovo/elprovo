@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -448,7 +448,7 @@ func (s *Simulation) machineSpec(w *world, i *instance, l launch) machines.Spec 
 		groupNames: groupNames(w, i), userData: string(userData),
 	}
 	return machines.Spec{
-		Name:     fmt.Sprintf("stagely-sim-aws-%s-%s", w.AccountID, i.ID),
+		Name:     fmt.Sprintf("elprovo-sim-aws-%s-%s", w.AccountID, i.ID),
 		Hostname: i.ID,
 		Cloud:    cloudLabel, Account: w.AccountID, Resource: i.ID,
 		Image: l.imageRef,

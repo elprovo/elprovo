@@ -51,7 +51,7 @@ variable "image_resource_group" {
 variable "image_name" {
   type        = string
   default     = ""
-  description = "Name of the managed image. Empty means stagely-<UTC time>."
+  description = "Name of the managed image. Empty means elprovo-<UTC time>."
 }
 
 variable "vm_size" {
@@ -60,11 +60,11 @@ variable "vm_size" {
 }
 
 locals {
-  image_name = var.image_name != "" ? var.image_name : "stagely-${formatdate("YYYYMMDDhhmmss", timestamp())}"
+  image_name = var.image_name != "" ? var.image_name : "elprovo-${formatdate("YYYYMMDDhhmmss", timestamp())}"
   build_user = "packer"
 }
 
-source "azure-arm" "stagely" {
+source "azure-arm" "elprovo" {
   metadata_host                     = var.metadata_host
   client_id                         = var.client_id
   client_secret                     = var.client_secret
@@ -80,12 +80,12 @@ source "azure-arm" "stagely" {
   managed_image_resource_group_name = var.image_resource_group
   ssh_username                      = local.build_user
   azure_tags = {
-    stagely = "image-build"
+    elprovo = "image-build"
   }
 }
 
 build {
-  sources = ["source.azure-arm.stagely"]
+  sources = ["source.azure-arm.elprovo"]
 
   provisioner "shell" {
     execute_command  = "chmod +x {{ .Path }}; {{ .Vars }} sudo -E sh -eu '{{ .Path }}'"

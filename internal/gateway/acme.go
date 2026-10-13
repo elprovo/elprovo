@@ -25,7 +25,7 @@ type ACMEConfig struct {
 	// the gateway trusts for the ACME server's own HTTPS, in addition to the
 	// system roots. Test servers such as Pebble need it.
 	DirectoryCAFile string
-	// ExtraHosts get certificates in addition to the routed stagelet hosts.
+	// ExtraHosts get certificates in addition to the routed preview hosts.
 	ExtraHosts []string
 }
 

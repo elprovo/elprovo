@@ -10,11 +10,11 @@ import (
 func TestDefaultUserAndAppSurviveARestart(t *testing.T) {
 	seed := func(c *Config) {
 		c.DefaultUser = "octo"
-		c.DefaultApp = DefaultApp{Name: "Stagely Local", WebhookURL: "http://127.0.0.1:1/hooks", CallbackURLs: []string{callbackURL}, SetupURL: setupURL}
+		c.DefaultApp = DefaultApp{Name: "Elprovo Local", WebhookURL: "http://127.0.0.1:1/hooks", CallbackURLs: []string{callbackURL}, SetupURL: setupURL}
 	}
 	ts := newTestSim(t, seed)
 	var first appCredentials
-	ts.admin(http.MethodGet, "/_sim/apps/stagely-local", nil, http.StatusOK).decode(t, &first)
+	ts.admin(http.MethodGet, "/_sim/apps/elprovo-local", nil, http.StatusOK).decode(t, &first)
 	if first.Owner != "octo" || first.WebhookSecret == "" || first.SetupURL != setupURL || first.CallbackURLs[0] != callbackURL {
 		t.Fatalf("seeded app = %+v, want owner octo with the flag values", first)
 	}
@@ -29,7 +29,7 @@ func TestDefaultUserAndAppSurviveARestart(t *testing.T) {
 		c.DefaultApp.WebhookURL = "http://127.0.0.1:2/hooks"
 	})
 	var second appCredentials
-	restarted.admin(http.MethodGet, "/_sim/apps/stagely-local", nil, http.StatusOK).decode(t, &second)
+	restarted.admin(http.MethodGet, "/_sim/apps/elprovo-local", nil, http.StatusOK).decode(t, &second)
 	if second.ID != first.ID || second.ClientID != first.ClientID || second.PrivateKey != first.PrivateKey || second.WebhookSecret != first.WebhookSecret {
 		t.Fatalf("app after restart = %+v, want the same identity and keys as %+v", second, first)
 	}

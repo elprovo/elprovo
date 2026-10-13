@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (

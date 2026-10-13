@@ -6,7 +6,7 @@ import (
 )
 
 func TestDropletMetadataFollowsDigitalOceansLayout(t *testing.T) {
-	d := &droplet{ID: 42, Name: "web-1", Region: "fra1", Tags: []string{"stagely-stagelet"}}
+	d := &droplet{ID: 42, Name: "web-1", Region: "fra1", Tags: []string{"elprovo-preview"}}
 	plan := dropletPlan{publicKeys: []string{"ssh-ed25519 AAAA one", "ssh-ed25519 BBBB two"}}
 
 	docs := dropletMetadata(d, plan, "#cloud-config\n", "10.8.0.2", "203.0.113.7")
@@ -19,7 +19,7 @@ func TestDropletMetadataFollowsDigitalOceansLayout(t *testing.T) {
 		"/metadata/v1/region":                            "fra1",
 		"/metadata/v1/interfaces/private/0/ipv4/address": "10.8.0.2",
 		"/metadata/v1/interfaces/public/0/ipv4/address":  "203.0.113.7",
-		"/metadata/v1/tags/stagely-stagelet":             "stagely-stagelet",
+		"/metadata/v1/tags/elprovo-preview":              "elprovo-preview",
 	}
 	for path, value := range want {
 		if docs[path] != value {

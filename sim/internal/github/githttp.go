@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/stagely-dev/stagely/sim/internal/github/gitrepo"
+	"github.com/elprovo/elprovo/sim/internal/github/gitrepo"
 )
 
 func gitRequestPath(path string) (owner, name, rest string, ok bool) {

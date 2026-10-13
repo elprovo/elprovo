@@ -182,7 +182,7 @@ func TestCheckoutWithTrialStartsTrialingSubscriptionWithFreeInvoice(t *testing.T
 		"invoice amount_due":       {dig(completed, "invoice", "amount_due"), float64(0)},
 		"invoice payment_intent":   {dig(completed, "invoice", "payment_intent"), nil},
 		"invoice line amount":      {dig(line, "amount"), float64(0)},
-		"invoice line description": {dig(line, "description"), "Trial period for Team Stagelet"},
+		"invoice line description": {dig(line, "description"), "Trial period for Team Preview"},
 	}
 	for name, c := range checks {
 		if c[0] != c[1] {

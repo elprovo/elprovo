@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	defaultAccessKeyID     = "AKIASTAGELYSIMULATE"
-	defaultSecretAccessKey = "stagely-sim-secret-access-key"
+	defaultAccessKeyID     = "AKIAELPROVOSIMULATE"
+	defaultSecretAccessKey = "elprovo-sim-secret-access-key"
 	defaultRegions         = "us-east-1,us-east-2,us-west-2,eu-west-1,eu-central-1"
 	instanceLimit          = 32
 )
@@ -34,7 +34,7 @@ func registerFlags(fs *flag.FlagSet, cfg *config, regions *string) {
 	fs.StringVar(&cfg.secretAccessKey, "aws-secret-access-key", defaultSecretAccessKey, "secret access key that requests must be signed with")
 	fs.StringVar(&cfg.accountID, "aws-account-id", "", "12-digit account id (default a random one, kept in the state)")
 	fs.StringVar(regions, "aws-regions", defaultRegions, "comma-separated region names; each gets a default VPC")
-	fs.StringVar(&cfg.network, "aws-network", "stagely-sim-aws", "Docker network for instances' private addresses; public addresses use <network>-public")
+	fs.StringVar(&cfg.network, "aws-network", "elprovo-sim-aws", "Docker network for instances' private addresses; public addresses use <network>-public")
 }
 
 func (c *config) finish(regions string) error {

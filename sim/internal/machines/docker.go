@@ -41,7 +41,7 @@ func (b *Backend) EnsureNetworks(ctx context.Context) error {
 		if _, err := b.docker(ctx, nil, "network", "inspect", name); err == nil {
 			continue
 		}
-		if _, err := b.docker(ctx, nil, "network", "create", "--label", "stagely-sim.network=true", name); err != nil {
+		if _, err := b.docker(ctx, nil, "network", "create", "--label", "elprovo-sim.network=true", name); err != nil {
 			if _, again := b.docker(ctx, nil, "network", "inspect", name); again != nil {
 				return err
 			}

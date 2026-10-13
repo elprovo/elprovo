@@ -6,14 +6,14 @@ import (
 )
 
 func TestParsePublishRuleReadsSelectorAndPorts(t *testing.T) {
-	rule, err := parsePublishRule("tag=stagely-gateway:443=8443,80=8081")
+	rule, err := parsePublishRule("tag=elprovo-gateway:443=8443,80=8081")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.tag != "stagely-gateway" || !maps.Equal(rule.ports, map[int]int{443: 8443, 80: 8081}) {
+	if rule.tag != "elprovo-gateway" || !maps.Equal(rule.ports, map[int]int{443: 8443, 80: 8081}) {
 		t.Fatalf("rule = %+v", rule)
 	}
-	if !rule.matches("gw-1", []string{"web", "stagely-gateway"}) || rule.matches("gw-1", []string{"web"}) {
+	if !rule.matches("gw-1", []string{"web", "elprovo-gateway"}) || rule.matches("gw-1", []string{"web"}) {
 		t.Fatal("tag rule matches the wrong droplets")
 	}
 	byName, err := parsePublishRule("name=gw-1:22=2222")
@@ -23,7 +23,7 @@ func TestParsePublishRuleReadsSelectorAndPorts(t *testing.T) {
 }
 
 func TestParsePublishRuleRejectsMalformedRules(t *testing.T) {
-	for _, value := range []string{"stagely-gateway:443=8443", "tag=:443=8443", "ip=1.2.3.4:443=8443", "tag=gw:443", "tag=gw:443=99999", "tag=gw"} {
+	for _, value := range []string{"elprovo-gateway:443=8443", "tag=:443=8443", "ip=1.2.3.4:443=8443", "tag=gw:443", "tag=gw:443=99999", "tag=gw"} {
 		if _, err := parsePublishRule(value); err == nil {
 			t.Errorf("parsePublishRule(%q) succeeded", value)
 		}
@@ -31,7 +31,7 @@ func TestParsePublishRuleRejectsMalformedRules(t *testing.T) {
 }
 
 func TestFinishFillsDefaults(t *testing.T) {
-	cfg := config{network: "stagely-sim", registry: registryConfig{endpoint: "localhost:5000"}}
+	cfg := config{network: "elprovo-sim", registry: registryConfig{endpoint: "localhost:5000"}}
 	if err := cfg.finish(nil, nil, " nyc3, fra1 "); err != nil {
 		t.Fatal(err)
 	}

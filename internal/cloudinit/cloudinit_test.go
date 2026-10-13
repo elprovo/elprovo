@@ -107,12 +107,12 @@ func TestMachineConfigOnNetworkAcceptsNewConnectionsFromTheNetworkOnlyFromItsSou
 
 	want := plain +
 		"  - iptables -C DOCKER-USER -d 10.42.0.0/20 -m conntrack --ctstate NEW -j REJECT 2>/dev/null || iptables -I DOCKER-USER -d 10.42.0.0/20 -m conntrack --ctstate NEW -j REJECT\n" +
-		"  - iptables -N STAGELY-PRIVATE 2>/dev/null || iptables -F STAGELY-PRIVATE\n" +
-		"  - iptables -A STAGELY-PRIVATE -s 10.42.0.2 -j RETURN\n" +
-		"  - iptables -A STAGELY-PRIVATE -s 10.42.0.3 -j RETURN\n" +
-		"  - iptables -A STAGELY-PRIVATE -j REJECT\n" +
-		"  - iptables -C INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE 2>/dev/null || iptables -I INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE\n" +
-		"  - iptables -C DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE 2>/dev/null || iptables -I DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE\n"
+		"  - iptables -N ELPROVO-PRIVATE 2>/dev/null || iptables -F ELPROVO-PRIVATE\n" +
+		"  - iptables -A ELPROVO-PRIVATE -s 10.42.0.2 -j RETURN\n" +
+		"  - iptables -A ELPROVO-PRIVATE -s 10.42.0.3 -j RETURN\n" +
+		"  - iptables -A ELPROVO-PRIVATE -j REJECT\n" +
+		"  - iptables -C INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE 2>/dev/null || iptables -I INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE\n" +
+		"  - iptables -C DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE 2>/dev/null || iptables -I DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE\n"
 	if err != nil || userData != want {
 		t.Fatalf("user data = %v\n%s\nwant MachineConfig's, a rule that keeps containers off the network, then rules for host ports and published ports:\n%s", err, userData, want)
 	}
@@ -128,9 +128,9 @@ func TestHostKeyConfigOnNetworkRejectsEveryNewConnectionFromTheNetwork(t *testin
 	userData, public, err := HostKeyConfigOnNetwork(keyPEM, PrivateNetwork{Range: netip.MustParsePrefix("10.42.0.0/20")})
 
 	want := plain + "bootcmd:\n" +
-		"  - iptables -N STAGELY-PRIVATE 2>/dev/null || iptables -F STAGELY-PRIVATE\n" +
-		"  - iptables -A STAGELY-PRIVATE -j REJECT\n" +
-		"  - iptables -C INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE 2>/dev/null || iptables -I INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE\n"
+		"  - iptables -N ELPROVO-PRIVATE 2>/dev/null || iptables -F ELPROVO-PRIVATE\n" +
+		"  - iptables -A ELPROVO-PRIVATE -j REJECT\n" +
+		"  - iptables -C INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE 2>/dev/null || iptables -I INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE\n"
 	if err != nil || userData != want {
 		t.Fatalf("user data = %v\n%s\nwant HostKeyConfig's, then a rule that rejects the network:\n%s", err, userData, want)
 	}

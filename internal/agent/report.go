@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 // Log limits. Lines longer than maxLineBytes are cut; a reporter holds at
@@ -24,7 +24,7 @@ const (
 
 // reporter sends one job's steps and output lines to the control plane.
 // Sending is best effort: the job's result, not its log, decides what
-// happens to the stagelet. Every line and step message passes through the
+// happens to the preview. Every line and step message passes through the
 // redactor, so secret values never leave the agent.
 type reporter struct {
 	send       func(ctx context.Context, msgType string, payload any) error

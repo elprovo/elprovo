@@ -1,10 +1,10 @@
-module github.com/stagely-dev/stagely
+module github.com/elprovo/elprovo
 
 go 1.27.2
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/stagely-dev/stagely/protocol v0.0.0
+	github.com/elprovo/elprovo/protocol v0.0.0
 	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.59.0
 )
@@ -23,4 +23,4 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 )
 
-replace github.com/stagely-dev/stagely/protocol => ./protocol
+replace github.com/elprovo/elprovo/protocol => ./protocol

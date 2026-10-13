@@ -4,15 +4,15 @@ import (
 	"flag"
 	"log/slog"
 
-	"github.com/stagely-dev/stagely/sim/internal/aws"
-	"github.com/stagely-dev/stagely/sim/internal/azure"
-	"github.com/stagely-dev/stagely/sim/internal/digitalocean"
-	"github.com/stagely-dev/stagely/sim/internal/gcp"
-	"github.com/stagely-dev/stagely/sim/internal/github"
-	"github.com/stagely-dev/stagely/sim/internal/hetzner"
-	"github.com/stagely-dev/stagely/sim/internal/machines"
-	"github.com/stagely-dev/stagely/sim/internal/stripe"
-	"github.com/stagely-dev/stagely/sim/internal/vultr"
+	"github.com/elprovo/elprovo/sim/internal/aws"
+	"github.com/elprovo/elprovo/sim/internal/azure"
+	"github.com/elprovo/elprovo/sim/internal/digitalocean"
+	"github.com/elprovo/elprovo/sim/internal/gcp"
+	"github.com/elprovo/elprovo/sim/internal/github"
+	"github.com/elprovo/elprovo/sim/internal/hetzner"
+	"github.com/elprovo/elprovo/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/stripe"
+	"github.com/elprovo/elprovo/sim/internal/vultr"
 )
 
 // registerSimulations registers each simulation's flags and returns the

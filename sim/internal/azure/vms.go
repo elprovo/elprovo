@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -560,7 +560,7 @@ func (s *Simulation) machineSpec(sub *subscription, v *vm, plan vmPlan) machines
 	}
 	docs := s.instanceMetadata(sub, v)
 	return machines.Spec{
-		Name:     "stagely-sim-az-" + sub.Account[:8] + "-" + v.VMID,
+		Name:     "elprovo-sim-az-" + sub.Account[:8] + "-" + v.VMID,
 		Hostname: host,
 		Cloud:    cloudLabel, Account: sub.Account, Resource: v.VMID,
 		Image:     plan.image,

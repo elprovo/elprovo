@@ -1,4 +1,4 @@
-// Package gcp runs stagelet machines as Compute Engine instances. The agent
+// Package gcp runs preview machines as Compute Engine instances. The agent
 // signs in with a service account key, creates each instance through the
 // Compute Engine API and hands it a host key that the agent generated, so it
 // never has to trust an unknown host key. It then drives the instance over
@@ -18,13 +18,13 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // ownerLabel is the instance label that holds the provider's tag. The agent
 // lists, and deletes, only instances that carry it.
-const ownerLabel = "stagely"
+const ownerLabel = "elprovo"
 
 // metadataBlock rejects new connections from containers to the metadata
 // server, which serves the user data and so the host key, on every boot
@@ -65,16 +65,16 @@ type Config struct {
 	MachineType string
 	// Image is a stock image; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is a Stagely golden image that already has
+	// GoldenImage, when set, is a Elprovo golden image that already has
 	// Docker, Compose and BuildKit. It replaces Image. A bare name means an
 	// image of the project.
 	GoldenImage string
 	// Subnetwork is the subnetwork the instances join, such as
-	// projects/acme/regions/us-central1/subnetworks/stagely. Empty means the
+	// projects/acme/regions/us-central1/subnetworks/elprovo. Empty means the
 	// project's default network.
 	Subnetwork string
 	// Tag is the network tag that firewall rules target, and the value of
-	// the stagely label that marks the provider's instances.
+	// the elprovo label that marks the provider's instances.
 	Tag string
 	// IAMCredentialsURL is the IAM Service Account Credentials API base URL,
 	// ending in /v1/.
@@ -205,7 +205,7 @@ func (p *Provider) instanceRequest(name, image, userData string) insertInstance 
 	if nic.Subnetwork == "" {
 		nic.Network = "global/networks/default"
 	}
-	login := "root:" + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p.machines.Signer.PublicKey()))) + " stagely-agent"
+	login := "root:" + strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p.machines.Signer.PublicKey()))) + " elprovo-agent"
 	return insertInstance{
 		Name:              name,
 		MachineType:       "zones/" + p.cfg.Zone + "/machineTypes/" + p.cfg.MachineType,

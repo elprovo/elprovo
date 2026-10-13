@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 const (
@@ -22,13 +22,13 @@ const (
 	maxHealthHeaderBytes   = 64 << 10
 	maxConcurrentChecks    = 16
 	maxStatesPerMessage    = 100
-	healthCheckUserAgent   = "stagely-gateway"
+	healthCheckUserAgent   = "elprovo-gateway"
 	unreachableHealthError = "the gateway cannot reach the app"
 )
 
 type routeKey struct {
-	stageletID string
-	upstream   string
+	previewID string
+	upstream  string
 }
 
 // routeCheck is one route to check: its key, and the host name and health
@@ -107,7 +107,7 @@ func checkRoutes(ctx context.Context, client *http.Client, routes []routeCheck, 
 // checkRoute opens a TCP connection to the route's upstream, and then asks
 // the app for its health path.
 func checkRoute(ctx context.Context, client *http.Client, r routeCheck, checkedAt time.Time) protocol.RouteState {
-	state := protocol.RouteState{StageletID: r.stageletID, Upstream: r.upstream, CheckedAt: checkedAt}
+	state := protocol.RouteState{PreviewID: r.previewID, Upstream: r.upstream, CheckedAt: checkedAt}
 	dialer := net.Dialer{Timeout: routeCheckTimeout}
 	conn, err := dialer.DialContext(ctx, "tcp", r.upstream)
 	if err != nil {
@@ -125,7 +125,7 @@ func checkRoute(ctx context.Context, client *http.Client, r routeCheck, checkedA
 }
 
 // requestHealthPath sends GET <health path> to the upstream with the
-// stagelet's host name, as a visitor's request would carry it, and accepts
+// preview's host name, as a visitor's request would carry it, and accepts
 // only a 2xx answer.
 func requestHealthPath(ctx context.Context, client *http.Client, r routeCheck) error {
 	if !strings.HasPrefix(r.healthPath, "/") {
@@ -163,7 +163,7 @@ func changedStates(reported map[routeKey]routeHealth, states []protocol.RouteSta
 	var changed []protocol.RouteState
 	current := make(map[routeKey]routeHealth, len(states))
 	for _, s := range states {
-		k := routeKey{stageletID: s.StageletID, upstream: s.Upstream}
+		k := routeKey{previewID: s.PreviewID, upstream: s.Upstream}
 		h := routeHealth{reachable: s.Reachable, err: s.Error, healthy: s.Healthy, healthErr: s.HealthError}
 		current[k] = h
 		if was, ok := reported[k]; !ok || was != h {

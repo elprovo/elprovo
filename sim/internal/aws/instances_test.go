@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func (e *testEnv) importKey(name string) {
@@ -146,9 +146,9 @@ func TestDescribeInstancesFiltersByTagAndState(t *testing.T) {
 	tagged := func(name, group string) string {
 		return e.runInstance("TagSpecification.1.ResourceType", "instance",
 			"TagSpecification.1.Tag.1.Key", "Name", "TagSpecification.1.Tag.1.Value", name,
-			"TagSpecification.1.Tag.2.Key", "stagely-group", "TagSpecification.1.Tag.2.Value", group)
+			"TagSpecification.1.Tag.2.Key", "elprovo-group", "TagSpecification.1.Tag.2.Value", group)
 	}
-	mine, other, gone := tagged("stagely-a", "env-a"), tagged("stagely-b", "env-b"), tagged("stagely-c", "env-a")
+	mine, other, gone := tagged("elprovo-a", "env-a"), tagged("elprovo-b", "env-b"), tagged("elprovo-c", "env-a")
 	for _, id := range []string{mine, other, gone} {
 		e.waitState(id, "running")
 	}
@@ -156,7 +156,7 @@ func TestDescribeInstancesFiltersByTagAndState(t *testing.T) {
 	e.waitState(gone, "terminated")
 
 	var got describeInstances
-	e.mustEC2(&got, "DescribeInstances", "Filter.1.Name", "tag:stagely-group", "Filter.1.Value.1", "env-a",
+	e.mustEC2(&got, "DescribeInstances", "Filter.1.Name", "tag:elprovo-group", "Filter.1.Value.1", "env-a",
 		"Filter.2.Name", "instance-state-name", "Filter.2.Value.1", "pending", "Filter.2.Value.2", "running")
 
 	if all := got.all(); len(all) != 1 || all[0].ID != mine {

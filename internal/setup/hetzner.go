@@ -8,7 +8,7 @@ import (
 
 // Hetzner is a Hetzner Cloud project to bootstrap. Hetzner has no managed
 // container registry, so the agent pushes to and pulls from a registry the
-// operator already has. The hosts, stagelet machines and build workers share
+// operator already has. The hosts, preview machines and build workers share
 // a private network, which Hetzner's firewalls do not filter.
 type Hetzner struct {
 	Token string
@@ -21,7 +21,7 @@ type Hetzner struct {
 	RegistryUsername string
 	RegistryPassword string
 	// GoldenImage is the id of a snapshot from images/hetzner that the agent
-	// boots stagelet machines and build workers from. Empty means the stock
+	// boots preview machines and build workers from. Empty means the stock
 	// image with cloud-init.
 	GoldenImage string
 }
@@ -39,7 +39,7 @@ func (h Hetzner) Cloud(module fs.FS) (Cloud, error) {
 		PrivateNetwork: netip.MustParsePrefix(privateNetworkRange),
 		Agent: func(o map[string]any) ([]string, map[string]string, error) {
 			values := map[string]string{}
-			for _, name := range []string{"stagelet_label", "machine_prefix", "network_id", "agent_private_ip", "gateway_private_ip"} {
+			for _, name := range []string{"preview_label", "machine_prefix", "network_id", "agent_private_ip", "gateway_private_ip"} {
 				value, err := outputString(o, name)
 				if err != nil {
 					return nil, nil, err
@@ -47,7 +47,7 @@ func (h Hetzner) Cloud(module fs.FS) (Cloud, error) {
 				values[name] = value
 			}
 			args := []string{
-				"-hcloud-api-url", h.Endpoint, "-hcloud-location", h.Location, "-hcloud-label", values["stagelet_label"],
+				"-hcloud-api-url", h.Endpoint, "-hcloud-location", h.Location, "-hcloud-label", values["preview_label"],
 				"-hcloud-network", values["network_id"], "-hcloud-network-range", privateNetworkRange,
 				"-hcloud-network-allow", values["agent_private_ip"] + "," + values["gateway_private_ip"],
 				"-machine-prefix", values["machine_prefix"], "-registry", h.Registry,
@@ -55,7 +55,7 @@ func (h Hetzner) Cloud(module fs.FS) (Cloud, error) {
 			if h.GoldenImage != "" {
 				args = append(args, "-hcloud-golden-image", h.GoldenImage)
 			}
-			env := map[string]string{"HCLOUD_TOKEN": h.Token, "STAGELY_REGISTRY_USERNAME": h.RegistryUsername, "STAGELY_REGISTRY_PASSWORD": h.RegistryPassword}
+			env := map[string]string{"HCLOUD_TOKEN": h.Token, "ELPROVO_REGISTRY_USERNAME": h.RegistryUsername, "ELPROVO_REGISTRY_PASSWORD": h.RegistryPassword}
 			return args, env, nil
 		},
 	}, nil

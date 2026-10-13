@@ -1,5 +1,5 @@
 locals {
-  stagelet_tag = var.stagelet_tag != "" ? var.stagelet_tag : "${var.name}-stagelet"
+  preview_tag = var.preview_tag != "" ? var.preview_tag : "${var.name}-preview"
   # Azure gives the operator's key to the admin user. Setup installs over SSH
   # as root, so the hosts' cloud-config keeps root logins with that key.
   agent_custom_data   = base64encode("${var.agent_user_data != "" ? var.agent_user_data : "#cloud-config\n"}disable_root: false\n")
@@ -7,12 +7,12 @@ locals {
 }
 
 resource "azurerm_resource_group" "environment" {
-  name     = "${var.name}-stagely"
+  name     = "${var.name}-elprovo"
   location = var.location
 }
 
 resource "azurerm_virtual_network" "environment" {
-  name                = "${var.name}-stagely"
+  name                = "${var.name}-elprovo"
   location            = azurerm_resource_group.environment.location
   resource_group_name = azurerm_resource_group.environment.name
   address_space       = [var.address_space]
@@ -28,15 +28,15 @@ resource "azurerm_subnet" "hosts" {
   default_outbound_access_enabled = false
 }
 
-# Stagelet machines have no public IP, so they reach registries and package
+# Preview machines have no public IP, so they reach registries and package
 # mirrors through Azure's default outbound access, which the subnet turns on
 # explicitly: networks made with API versions released after March 2026
 # get private subnets by default.
-resource "azurerm_subnet" "stagelets" {
-  name                            = "stagelets"
+resource "azurerm_subnet" "previews" {
+  name                            = "previews"
   resource_group_name             = azurerm_resource_group.environment.name
   virtual_network_name            = azurerm_virtual_network.environment.name
-  address_prefixes                = [var.stagelets_subnet]
+  address_prefixes                = [var.previews_subnet]
   default_outbound_access_enabled = true
 }
 
@@ -130,10 +130,10 @@ resource "azurerm_network_security_group" "gateway" {
   }
 }
 
-# Stagelet machines and build workers accept traffic only from the agent,
+# Preview machines and build workers accept traffic only from the agent,
 # which drives them over SSH and checks health, and from the gateway.
-resource "azurerm_network_security_group" "stagelets" {
-  name                = "${var.name}-stagelets"
+resource "azurerm_network_security_group" "previews" {
+  name                = "${var.name}-previews"
   location            = azurerm_resource_group.environment.location
   resource_group_name = azurerm_resource_group.environment.name
 
@@ -162,9 +162,9 @@ resource "azurerm_network_security_group" "stagelets" {
   }
 }
 
-resource "azurerm_subnet_network_security_group_association" "stagelets" {
-  subnet_id                 = azurerm_subnet.stagelets.id
-  network_security_group_id = azurerm_network_security_group.stagelets.id
+resource "azurerm_subnet_network_security_group_association" "previews" {
+  subnet_id                 = azurerm_subnet.previews.id
+  network_security_group_id = azurerm_network_security_group.previews.id
 }
 
 resource "azurerm_network_interface" "agent" {
@@ -264,7 +264,7 @@ resource "azurerm_linux_virtual_machine" "gateway" {
 
 # Machines sign in with short-lived passwords of repository-scoped tokens
 # that the agent makes, so the registry has no admin user.
-resource "azurerm_container_registry" "stagely" {
+resource "azurerm_container_registry" "elprovo" {
   name                = var.registry_name
   location            = azurerm_resource_group.environment.location
   resource_group_name = azurerm_resource_group.environment.name

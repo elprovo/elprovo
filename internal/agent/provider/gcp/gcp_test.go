@@ -229,7 +229,7 @@ func testKeyFile(t *testing.T, tokenURI string) []byte {
 	data, _ := json.Marshal(map[string]string{
 		"type": "service_account", "project_id": "acme", "private_key_id": "key-1",
 		"private_key":  string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})),
-		"client_email": "stagely@acme.iam.gserviceaccount.com", "token_uri": tokenURI,
+		"client_email": "elprovo@acme.iam.gserviceaccount.com", "token_uri": tokenURI,
 	})
 	return data
 }
@@ -247,7 +247,7 @@ func newProvider(t *testing.T, subnetwork string) (*Provider, *fakeCompute) {
 	p, err := New(Config{
 		ComputeURL: server.URL + "/compute/v1/", Credentials: testKeyFile(t, server.URL+"/token"), Zone: "us-central1-a",
 		MachineType: "e2-medium", Image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
-		Subnetwork: subnetwork, Tag: "acme-stagelet", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		Subnetwork: subnetwork, Tag: "acme-preview", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 		IAMCredentialsURL: server.URL + "/v1/", RegistryPushAccount: "push@acme.iam.gserviceaccount.com", RegistryPullAccount: "pull@acme.iam.gserviceaccount.com",
 	}, key)
 	if err != nil {
@@ -259,19 +259,19 @@ func newProvider(t *testing.T, subnetwork string) (*Provider, *fakeCompute) {
 }
 
 func TestCreateMakesAnInstanceTheAgentCanDrive(t *testing.T) {
-	p, cloud := newProvider(t, "projects/acme/regions/us-central1/subnetworks/stagely")
+	p, cloud := newProvider(t, "projects/acme/regions/us-central1/subnetworks/elprovo")
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	req := cloud.inserted[0]
 	items := req.Metadata.Items
-	if req.MachineType != "zones/us-central1-a/machineTypes/e2-medium" || req.Tags.Items[0] != "acme-stagelet" || req.Labels[ownerLabel] != "acme-stagelet" {
+	if req.MachineType != "zones/us-central1-a/machineTypes/e2-medium" || req.Tags.Items[0] != "acme-preview" || req.Labels[ownerLabel] != "acme-preview" {
 		t.Fatalf("insert request = %+v", req)
 	}
-	if nic := req.NetworkInterfaces[0]; nic.Subnetwork != "projects/acme/regions/us-central1/subnetworks/stagely" || nic.Network != "" || len(nic.AccessConfigs) != 1 {
+	if nic := req.NetworkInterfaces[0]; nic.Subnetwork != "projects/acme/regions/us-central1/subnetworks/elprovo" || nic.Network != "" || len(nic.AccessConfigs) != 1 {
 		t.Fatalf("network interface = %+v", nic)
 	}
 	if items[1].Key != "ssh-keys" || !strings.HasPrefix(items[1].Value, "root:ssh-ed25519 ") || items[2].Key != "block-project-ssh-keys" {
@@ -287,7 +287,7 @@ func TestCreateMakesAnInstanceTheAgentCanDrive(t *testing.T) {
 		t.Fatalf("user data = %s; want containers kept off the metadata server, with DNS inserted above that rule", userData)
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
@@ -299,7 +299,7 @@ func TestProviderSignsInOnceWithTheKeysJWT(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
 
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatalf("Create %s: %v", name, err)
 		}
@@ -312,7 +312,7 @@ func TestProviderSignsInOnceWithTheKeysJWT(t *testing.T) {
 	payload, _ := base64.RawURLEncoding.DecodeString(parts[1])
 	var claims map[string]any
 	_ = json.Unmarshal(payload, &claims)
-	if len(parts) != 3 || claims["iss"] != "stagely@acme.iam.gserviceaccount.com" || claims["scope"] != cloudPlatformScope || !strings.HasSuffix(claims["aud"].(string), "/token") {
+	if len(parts) != 3 || claims["iss"] != "elprovo@acme.iam.gserviceaccount.com" || claims["scope"] != cloudPlatformScope || !strings.HasSuffix(claims["aud"].(string), "/token") {
 		t.Fatalf("assertion claims = %v", claims)
 	}
 }
@@ -320,7 +320,7 @@ func TestProviderSignsInOnceWithTheKeysJWT(t *testing.T) {
 func TestDefaultNetworkWhenNoSubnetworkIsSet(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -332,16 +332,16 @@ func TestDefaultNetworkWhenNoSubnetworkIsSet(t *testing.T) {
 func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 	p, _ := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPublic, _ := ssh.NewPublicKey(other.Public())
-	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
-	if err := p.Run(ctx, "stagely-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
+	if err := p.Run(ctx, "elprovo-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
 		t.Fatalf("Run err = %v, want a failed handshake", err)
 	}
 }
@@ -349,28 +349,28 @@ func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 func TestListAndExistsSeeOnlyTheProvidersInstances(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.mu.Lock()
-	cloud.instances["stagely-other"] = instance{Name: "stagely-other", Status: "RUNNING", Labels: map[string]string{ownerLabel: "someone-else"}}
+	cloud.instances["elprovo-other"] = instance{Name: "elprovo-other", Status: "RUNNING", Labels: map[string]string{ownerLabel: "someone-else"}}
 	cloud.mu.Unlock()
 
 	names, err := p.List(ctx)
 
-	if err != nil || len(names) != 1 || names[0] != "stagely-a1" {
+	if err != nil || len(names) != 1 || names[0] != "elprovo-a1" {
 		t.Fatalf("List = %v, %v; want only the provider's instance", names, err)
 	}
-	if cloud.filters[0] != `labels.stagely = "acme-stagelet"` {
+	if cloud.filters[0] != `labels.elprovo = "acme-preview"` {
 		t.Fatalf("list filter = %q", cloud.filters[0])
 	}
-	if exists, err := p.Exists(ctx, "stagely-other"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-other"); err != nil || exists {
 		t.Fatalf("Exists for another owner's instance = %v, %v; want false", exists, err)
 	}
-	if err := p.Delete(ctx, "stagely-other"); err != nil {
+	if err := p.Delete(ctx, "elprovo-other"); err != nil {
 		t.Fatalf("Delete of another owner's instance: %v", err)
 	}
-	if _, ok := cloud.instances["stagely-other"]; !ok {
+	if _, ok := cloud.instances["elprovo-other"]; !ok {
 		t.Fatal("Delete removed an instance the provider did not create")
 	}
 }
@@ -378,18 +378,18 @@ func TestListAndExistsSeeOnlyTheProvidersInstances(t *testing.T) {
 func TestDeleteWaitsUntilTheInstanceIsGone(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePolls = 3
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -397,13 +397,13 @@ func TestDeleteWaitsUntilTheInstanceIsGone(t *testing.T) {
 func TestDeleteFailsWhileTheInstanceStillExists(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePolls = 1 << 30
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
 }
@@ -411,7 +411,7 @@ func TestDeleteFailsWhileTheInstanceStillExists(t *testing.T) {
 func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 	p, _ := newProvider(t, "")
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -419,7 +419,7 @@ func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 func TestNewMachineGetsOnlyItsHostKeyDockerFirewallRulesAndGuestAgentConfig(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -448,15 +448,15 @@ func cloudConfigSections(userData string) []string {
 
 func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, "")
-	p.cfg.GoldenImage = "stagely-20261001"
+	p.cfg.GoldenImage = "elprovo-20261001"
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	req := cloud.inserted[0]
 	userData := req.Metadata.Items[0].Value
-	if image := req.Disks[0].InitializeParams["sourceImage"]; image != "projects/acme/global/images/stagely-20261001" || strings.Contains(userData, "packages:") {
+	if image := req.Disks[0].InitializeParams["sourceImage"]; image != "projects/acme/global/images/elprovo-20261001" || strings.Contains(userData, "packages:") {
 		t.Fatalf("image = %s, user data installs packages = %v; want the golden image and no packages", image, strings.Contains(userData, "packages:"))
 	}
 }
@@ -492,7 +492,7 @@ func TestCredentialsMayBeBase64(t *testing.T) {
 
 	parsed, err := parseKey([]byte(base64.StdEncoding.EncodeToString(key)))
 
-	if err != nil || parsed.ClientEmail != "stagely@acme.iam.gserviceaccount.com" || parsed.ProjectID != "acme" {
+	if err != nil || parsed.ClientEmail != "elprovo@acme.iam.gserviceaccount.com" || parsed.ProjectID != "acme" {
 		t.Fatalf("parseKey(base64) = %+v, %v", parsed, err)
 	}
 	if _, err := parseKey([]byte(`{"type":"authorized_user"}`)); err == nil {

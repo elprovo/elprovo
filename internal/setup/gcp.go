@@ -27,7 +27,7 @@ type GoogleCloud struct {
 	IAMCredentialsEndpoint   string
 	RegistryName             string
 	// GoldenImage is an image from images/google-cloud that the agent boots
-	// stagelet machines and build workers from. Empty means the stock image
+	// preview machines and build workers from. Empty means the stock image
 	// with cloud-init.
 	GoldenImage string
 }
@@ -74,7 +74,7 @@ func (g GoogleCloud) Cloud(module fs.FS) (Cloud, error) {
 			for _, flag := range [][2]string{
 				{"-machine-prefix", "machine_prefix"},
 				{"-gcp-subnetwork", "subnetwork"},
-				{"-gcp-tag", "stagelet_tag"},
+				{"-gcp-tag", "preview_tag"},
 				{"-gcp-registry-push-account", "registry_push_account"},
 				{"-gcp-registry-pull-account", "registry_pull_account"},
 			} {

@@ -1,4 +1,4 @@
-// Command stagely is the operator CLI: it signs in to a Stagely control
+// Command elprovo is the operator CLI: it signs in to a Elprovo control
 // plane and bootstraps a cloud account for an environment.
 package main
 
@@ -20,23 +20,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/controlplane"
-	"github.com/stagely-dev/stagely/internal/login"
-	"github.com/stagely-dev/stagely/internal/setup"
-	"github.com/stagely-dev/stagely/terraform"
+	"github.com/elprovo/elprovo/internal/controlplane"
+	"github.com/elprovo/elprovo/internal/login"
+	"github.com/elprovo/elprovo/internal/setup"
+	"github.com/elprovo/elprovo/terraform"
 )
 
 const usage = `usage:
-  stagely login [-server URL]          sign in to a Stagely control plane in your browser
-  stagely whoami                       show who you are signed in as, and in which account
-  stagely setup digitalocean [flags]   bootstrap a DigitalOcean account for an environment
-  stagely setup aws [flags]            bootstrap an AWS account for an environment
-  stagely setup gcp [flags]            bootstrap a Google Cloud project for an environment
-  stagely setup hetzner [flags]        bootstrap a Hetzner Cloud project for an environment
-  stagely setup vultr [flags]          bootstrap a Vultr account for an environment
-  stagely setup azure [flags]          bootstrap an Azure subscription for an environment
-  stagely setup lima [flags]           bootstrap the local environment on this Mac
-  stagely logout                       revoke the sign-in and forget it`
+  elprovo login [-server URL]          sign in to a Elprovo control plane in your browser
+  elprovo whoami                       show who you are signed in as, and in which account
+  elprovo setup digitalocean [flags]   bootstrap a DigitalOcean account for an environment
+  elprovo setup aws [flags]            bootstrap an AWS account for an environment
+  elprovo setup gcp [flags]            bootstrap a Google Cloud project for an environment
+  elprovo setup hetzner [flags]        bootstrap a Hetzner Cloud project for an environment
+  elprovo setup vultr [flags]          bootstrap a Vultr account for an environment
+  elprovo setup azure [flags]          bootstrap an Azure subscription for an environment
+  elprovo setup lima [flags]           bootstrap the local environment on this Mac
+  elprovo logout                       revoke the sign-in and forget it`
 
 func main() {
 	if len(os.Args) < 2 {
@@ -62,7 +62,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "stagely:", err)
+		fmt.Fprintln(os.Stderr, "elprovo:", err)
 		os.Exit(1)
 	}
 }
@@ -125,7 +125,7 @@ func setupCommand(ctx context.Context, args []string, store login.Store, client 
 		"vultr": setupVultr, "azure": setupAzure, "lima": setupLima,
 	}
 	if len(args) == 0 || commands[args[0]] == nil {
-		return errors.New("usage: stagely setup digitalocean|aws|gcp|hetzner|vultr|azure|lima [flags]; run with -h for the flags")
+		return errors.New("usage: elprovo setup digitalocean|aws|gcp|hetzner|vultr|azure|lima [flags]; run with -h for the flags")
 	}
 	return commands[args[0]](ctx, args[1:], store, client, out)
 }
@@ -138,7 +138,7 @@ func setupDigitalOcean(ctx context.Context, args []string, store login.Store, cl
 	fs.StringVar(&do.Region, "region", "", "DigitalOcean region, such as fra1 (required)")
 	fs.StringVar(&do.RegistryName, "registry", "", "name of the DigitalOcean container registry (required)")
 	fs.BoolVar(&do.CreateRegistry, "create-registry", true, "create the registry; DigitalOcean allows one per account, so set false to use an existing one")
-	fs.StringVar(&do.DNSDomain, "dns-domain", "", "a domain in DigitalOcean DNS that holds the stagelet domain; setup then adds the wildcard record")
+	fs.StringVar(&do.DNSDomain, "dns-domain", "", "a domain in DigitalOcean DNS that holds the preview domain; setup then adds the wildcard record")
 	fs.StringVar(&do.APIEndpoint, "do-api-url", "https://api.digitalocean.com", "DigitalOcean API base URL")
 	fs.StringVar(&do.GoldenImage, "golden-image", "", "snapshot id of a golden image built from images/digitalocean; the agent boots machines from it instead of the stock image")
 	if err := fs.Parse(args); err != nil {
@@ -152,7 +152,7 @@ func setupDigitalOcean(ctx context.Context, args []string, store login.Store, cl
 	if err != nil {
 		return err
 	}
-	cloud, err := do.Cloud(module, c.run.StageletDomain)
+	cloud, err := do.Cloud(module, c.run.PreviewDomain)
 	if err != nil {
 		return err
 	}
@@ -193,8 +193,8 @@ func setupHetzner(ctx context.Context, args []string, store login.Store, client 
 	c.addFlags(fs)
 	var h setup.Hetzner
 	fs.StringVar(&h.Location, "location", "", "Hetzner location, such as fsn1 (required)")
-	fs.StringVar(&h.Registry, "registry", "", "image name prefix in your container registry, such as registry.acme.dev/stagely; Hetzner has no managed registry (required)")
-	fs.StringVar(&h.RegistryUsername, "registry-username", "", "registry user name; the password comes from STAGELY_REGISTRY_PASSWORD")
+	fs.StringVar(&h.Registry, "registry", "", "image name prefix in your container registry, such as registry.acme.dev/elprovo; Hetzner has no managed registry (required)")
+	fs.StringVar(&h.RegistryUsername, "registry-username", "", "registry user name; the password comes from ELPROVO_REGISTRY_PASSWORD")
 	fs.StringVar(&h.Endpoint, "hcloud-api-url", "https://api.hetzner.cloud/v1", "Hetzner Cloud API base URL, with the /v1 path")
 	fs.StringVar(&h.GoldenImage, "golden-image", "", "snapshot id of a golden image built from images/hetzner; the agent boots machines from it instead of the stock image")
 	if err := fs.Parse(args); err != nil {
@@ -204,7 +204,7 @@ func setupHetzner(ctx context.Context, args []string, store login.Store, client 
 	if h.Token == "" {
 		return errors.New("set HCLOUD_TOKEN to a Hetzner Cloud API token with read and write access")
 	}
-	h.RegistryPassword = os.Getenv("STAGELY_REGISTRY_PASSWORD")
+	h.RegistryPassword = os.Getenv("ELPROVO_REGISTRY_PASSWORD")
 	module, err := iofs.Sub(terraform.Hetzner, "hetzner")
 	if err != nil {
 		return err
@@ -278,7 +278,7 @@ func setupGCP(ctx context.Context, args []string, store login.Store, client *htt
 	credentials := fs.String("credentials", os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"), "service account key file (default $GOOGLE_APPLICATION_CREDENTIALS)")
 	fs.StringVar(&g.Project, "project", "", "Google Cloud project ID (default the service account key's project)")
 	fs.StringVar(&g.Region, "region", "", "Google Cloud region, such as us-central1 (required)")
-	fs.StringVar(&g.Zone, "zone", "", "zone in the region for the hosts and stagelet machines, such as us-central1-a (required)")
+	fs.StringVar(&g.Zone, "zone", "", "zone in the region for the hosts and preview machines, such as us-central1-a (required)")
 	fs.StringVar(&g.RegistryName, "registry", "", "ID of the Artifact Registry Docker repository that setup creates (required)")
 	fs.StringVar(&g.ComputeEndpoint, "gcp-compute-url", "", "Compute Engine API base URL, ending in /compute/v1/; Google's when empty")
 	fs.StringVar(&g.ArtifactRegistryEndpoint, "gcp-artifact-registry-url", "", "Artifact Registry API base URL, ending in /v1/; Google's when empty")
@@ -314,15 +314,15 @@ type cloudSetup struct {
 }
 
 func (c *cloudSetup) addFlags(fs *flag.FlagSet) {
-	fs.StringVar(&c.run.Environment, "environment", "", "environment name in Stagely; created when missing (required)")
-	fs.StringVar(&c.run.StageletDomain, "stagelet-domain", "", "domain that stagelet host names live under, such as stagelets.acme.dev (required)")
+	fs.StringVar(&c.run.Environment, "environment", "", "environment name in Elprovo; created when missing (required)")
+	fs.StringVar(&c.run.PreviewDomain, "preview-domain", "", "domain that preview host names live under, such as previews.acme.dev (required)")
 	fs.Var(&c.cidrs, "operator-cidr", "address range that may reach the hosts over SSH, such as 203.0.113.7/32; repeat for more (required)")
-	fs.StringVar(&c.run.Binaries, "binaries", "", "directory with stagely-agent and stagely-gateway built for the hosts' Linux CPU (required)")
+	fs.StringVar(&c.run.Binaries, "binaries", "", "directory with elprovo-agent and elprovo-gateway built for the hosts' Linux CPU (required)")
 	fs.StringVar(&c.run.ACME.Email, "acme-email", "", "contact email for the gateway's ACME account")
 	fs.StringVar(&c.run.ACME.DirectoryURL, "acme-directory", "", "ACME directory URL; Let's Encrypt when empty")
 	fs.StringVar(&c.run.ACME.DirectoryCA, "acme-directory-ca", "", "PEM file the gateway trusts for the ACME directory, for test servers")
 	fs.StringVar(&c.run.Tofu, "tofu", defaultTofu(), "OpenTofu or Terraform binary")
-	fs.StringVar(&c.run.WorkDir, "work-dir", "", "where setup keeps the module state and the SSH keys; keep it for later runs (default ~/.stagely/cli/setup/<environment>)")
+	fs.StringVar(&c.run.WorkDir, "work-dir", "", "where setup keeps the module state and the SSH keys; keep it for later runs (default ~/.elprovo/cli/setup/<environment>)")
 	fs.StringVar(&c.run.SSHPort, "ssh-port", "22", "SSH port of the hosts")
 }
 
@@ -346,26 +346,26 @@ func (c *cloudSetup) apply(ctx context.Context, cloud setup.Cloud, store login.S
 	}
 	_, _ = fmt.Fprintf(out, "\nEnvironment %s (%s) is ready. Its gateway is at %s.\n", res.Environment.Name, res.Environment.ID, res.GatewayIP)
 	if askForRecord {
-		_, _ = fmt.Fprintf(out, "Point *.%s at %s with an A record, so stagelet host names reach the gateway.\n", r.StageletDomain, res.GatewayIP)
+		_, _ = fmt.Fprintf(out, "Point *.%s at %s with an A record, so preview host names reach the gateway.\n", r.PreviewDomain, res.GatewayIP)
 	}
 	return nil
 }
 
 func setupLima(ctx context.Context, args []string, store login.Store, client *http.Client, out io.Writer) error {
 	if runtime.GOOS != "darwin" {
-		return errors.New("stagely setup lima runs the agent under launchd, on macOS")
+		return errors.New("elprovo setup lima runs the agent under launchd, on macOS")
 	}
 	fs := flag.NewFlagSet("setup lima", flag.ExitOnError)
 	var l setup.Lima
-	fs.StringVar(&l.Environment, "environment", "local", "environment name in Stagely; created when missing")
-	fs.StringVar(&l.StageletDomain, "stagelet-domain", "stagelets.localhost", "domain that stagelet host names live under")
+	fs.StringVar(&l.Environment, "environment", "local", "environment name in Elprovo; created when missing")
+	fs.StringVar(&l.PreviewDomain, "preview-domain", "previews.localhost", "domain that preview host names live under")
 	fs.IntVar(&l.GatewayPort, "gateway-port", 8443, "HTTPS port of the gateway on this Mac")
 	fs.StringVar(&l.HostAddress, "host-address", "host.lima.internal", "address at which Lima VMs reach this Mac")
 	fs.IntVar(&l.RegistryPort, "registry-port", 5050, "port of the local image registry; 5050 because macOS AirPlay often holds 5000")
-	fs.StringVar(&l.Binaries, "binaries", "bin", "directory with stagely-agent built for this Mac")
-	fs.StringVar(&l.GatewayBinary, "gateway-binary", filepath.Join("bin", "linux-"+runtime.GOARCH, "stagely-gateway"), "stagely-gateway built for Linux on this Mac's CPU, for the gateway's Lima VM")
+	fs.StringVar(&l.Binaries, "binaries", "bin", "directory with elprovo-agent built for this Mac")
+	fs.StringVar(&l.GatewayBinary, "gateway-binary", filepath.Join("bin", "linux-"+runtime.GOARCH, "elprovo-gateway"), "elprovo-gateway built for Linux on this Mac's CPU, for the gateway's Lima VM")
 	fs.StringVar(&l.Tofu, "tofu", defaultTofu(), "OpenTofu or Terraform binary")
-	fs.StringVar(&l.WorkDir, "work-dir", "", "where setup keeps the module state, the daemons' data and logs (default ~/.stagely/cli/setup/<environment>)")
+	fs.StringVar(&l.WorkDir, "work-dir", "", "where setup keeps the module state, the daemons' data and logs (default ~/.elprovo/cli/setup/<environment>)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -414,7 +414,7 @@ func setupLima(ctx context.Context, args []string, store login.Store, client *ht
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(out, "\nEnvironment %s (%s) runs on this Mac. Stagelets open at https://<id>.%s:%d.\n", env.Name, env.ID, l.StageletDomain, l.GatewayPort)
+	_, _ = fmt.Fprintf(out, "\nEnvironment %s (%s) runs on this Mac. Previews open at https://<id>.%s:%d.\n", env.Name, env.ID, l.PreviewDomain, l.GatewayPort)
 	return nil
 }
 
@@ -436,7 +436,7 @@ func defaultTofu() string {
 }
 
 func defaultServer(store login.Store) string {
-	if s := os.Getenv("STAGELY_SERVER"); s != "" {
+	if s := os.Getenv("ELPROVO_SERVER"); s != "" {
 		return s
 	}
 	if creds, err := store.Load(); err == nil {
@@ -446,15 +446,15 @@ func defaultServer(store login.Store) string {
 }
 
 func configDir() string {
-	if dir := os.Getenv("STAGELY_CONFIG_DIR"); dir != "" {
+	if dir := os.Getenv("ELPROVO_CONFIG_DIR"); dir != "" {
 		return dir
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "stagely: no home directory; set STAGELY_CONFIG_DIR:", err)
+		fmt.Fprintln(os.Stderr, "elprovo: no home directory; set ELPROVO_CONFIG_DIR:", err)
 		os.Exit(1)
 	}
-	return filepath.Join(home, ".stagely", "cli")
+	return filepath.Join(home, ".elprovo", "cli")
 }
 
 func openBrowser(url string) error {

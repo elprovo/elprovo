@@ -21,8 +21,8 @@ import (
 // as to a neighbor: requests from containers cross Docker's FORWARD chain, as
 // they do on a cloud VM.
 const (
-	metadataFile      = "/var/lib/stagely-vm/metadata.json"
-	metadataNamespace = "stagely-metadata"
+	metadataFile      = "/var/lib/elprovo-vm/metadata.json"
+	metadataNamespace = "elprovo-metadata"
 	metadataAddress   = "169.254.169.254"
 	// metadataPeer is the machine's end of the veth pair, which the server
 	// sends its answers to.
@@ -51,7 +51,7 @@ func metadataNetCommand(ctx context.Context, stderr io.Writer) int {
 	}
 	for _, step := range steps {
 		if out, err := exec.CommandContext(ctx, step[0], step[1:]...).CombinedOutput(); err != nil {
-			_, _ = fmt.Fprintf(stderr, "stagely-vm-init: %s: %v: %s\n", strings.Join(step, " "), err, strings.TrimSpace(string(out)))
+			_, _ = fmt.Fprintf(stderr, "elprovo-vm-init: %s: %v: %s\n", strings.Join(step, " "), err, strings.TrimSpace(string(out)))
 			return 1
 		}
 	}
@@ -64,12 +64,12 @@ func metadataNetCommand(ctx context.Context, stderr io.Writer) int {
 func metadataServeCommand(root string, stderr io.Writer) int {
 	docs, err := readMetadata(filepath.Join(root, metadataFile))
 	if err != nil {
-		_, _ = fmt.Fprintln(stderr, "stagely-vm-init:", err)
+		_, _ = fmt.Fprintln(stderr, "elprovo-vm-init:", err)
 		return 1
 	}
 	server := &http.Server{Addr: metadataAddress + ":80", Handler: docs, ReadHeaderTimeout: 5 * time.Second}
 	if err := server.ListenAndServe(); err != nil {
-		_, _ = fmt.Fprintln(stderr, "stagely-vm-init: serve instance metadata:", err)
+		_, _ = fmt.Fprintln(stderr, "elprovo-vm-init: serve instance metadata:", err)
 		return 1
 	}
 	return 0

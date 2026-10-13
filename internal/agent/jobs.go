@@ -9,19 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/agent/build"
-	"github.com/stagely-dev/stagely/internal/agent/runtime"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/agent/build"
+	"github.com/elprovo/elprovo/internal/agent/runtime"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 const (
-	buildRoot = "/var/lib/stagely/builds/"
+	buildRoot = "/var/lib/elprovo/builds/"
 	// workerCleanupTimeout bounds cleaning a build worker after its build,
 	// which also runs after the job was cancelled.
 	workerCleanupTimeout = 2 * time.Minute
 )
 
-// deploy builds the commit on a build worker while the stagelet's machine is
+// deploy builds the commit on a build worker while the preview's machine is
 // provisioned, then runs the compiled bundle there, runs the migration and
 // checks health. The result's bundle names every image by digest, and the
 // result says whether the deploy started to apply the bundle.
@@ -30,7 +30,7 @@ func (r *Runner) deploy(ctx context.Context, job protocol.Job, rep *reporter, re
 	if spec == nil {
 		return errMissingJobFields
 	}
-	name, err := r.runtimeName(job.StageletID)
+	name, err := r.runtimeName(job.PreviewID)
 	if err != nil {
 		return err
 	}
@@ -78,7 +78,7 @@ func (r *Runner) deploy(ctx context.Context, job protocol.Job, rep *reporter, re
 		return err
 	}
 	if spec.MigrationCommand == "" {
-		rep.skip(ctx, "migrate", ".stagely.yml names no migration command")
+		rep.skip(ctx, "migrate", ".elprovo.yml names no migration command")
 	} else if err := rep.step(ctx, "migrate", func(ctx context.Context) error {
 		m.step = "migrate"
 		return runtime.Migrate(ctx, m, spec.PublicService, spec.MigrationCommand)
@@ -113,7 +113,7 @@ func (r *Runner) build(ctx context.Context, job protocol.Job, rep *reporter) (bu
 	res, err := r.Source.Build(ctx, m, build.Request{
 		Source:       build.Commit{APIURL: spec.SourceAPIURL, Repository: spec.Repository, SHA: spec.Commit, Token: spec.SourceToken},
 		ComposeFiles: spec.ComposeFiles,
-		Config:       spec.Config, Registry: r.Registry.Prefix, Dir: buildRoot + job.StageletID,
+		Config:       spec.Config, Registry: r.Registry.Prefix, Dir: buildRoot + job.PreviewID,
 	})
 	if err != nil {
 		return build.Result{}, err
@@ -146,7 +146,7 @@ func (r *Runner) cleanBuildWorker(ctx context.Context, m stepMachine) {
 	}
 }
 
-// reset reapplies the bundle of the stagelet's last applied deploy on its
+// reset reapplies the bundle of the preview's last applied deploy on its
 // machine and checks health. It fetches no source and runs no migration. The
 // result says whether the reset started to apply the bundle.
 func (r *Runner) reset(ctx context.Context, job protocol.Job, rep *reporter, result *protocol.JobResult) error {
@@ -154,7 +154,7 @@ func (r *Runner) reset(ctx context.Context, job protocol.Job, rep *reporter, res
 	if spec == nil || len(spec.Bundle) == 0 {
 		return errMissingJobFields
 	}
-	name, err := r.runtimeName(job.StageletID)
+	name, err := r.runtimeName(job.PreviewID)
 	if err != nil {
 		return err
 	}
@@ -187,9 +187,9 @@ func (r *Runner) reset(ctx context.Context, job protocol.Job, rep *reporter, res
 	return nil
 }
 
-// deleteStagelet deletes the stagelet's machine and confirms it is gone.
-func (r *Runner) deleteStagelet(ctx context.Context, job protocol.Job, rep *reporter) error {
-	name, err := r.runtimeName(job.StageletID)
+// deletePreview deletes the preview's machine and confirms it is gone.
+func (r *Runner) deletePreview(ctx context.Context, job protocol.Job, rep *reporter) error {
+	name, err := r.runtimeName(job.PreviewID)
 	if err != nil {
 		return err
 	}

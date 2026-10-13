@@ -19,31 +19,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
-// TestProviderAgainstSimulation runs a stagelet's machine lifecycle against
-// stagely-sim's Hetzner Cloud simulation. As setup's module does, it makes a
-// private network and a firewall without rules on the stagelet label, so
+// TestProviderAgainstSimulation runs a preview's machine lifecycle against
+// elprovo-sim's Hetzner Cloud simulation. As setup's module does, it makes a
+// private network and a firewall without rules on the preview label, so
 // servers accept nothing on their public address, and it lets only its own
 // address on the network, the agent's here, connect to servers there. It
-// creates a stagelet server and a neighbor on the network, waits until
+// creates a preview server and a neighbor on the network, waits until
 // cloud-init and Docker Compose are ready, runs a Compose project on the
-// stagelet and reaches it over the network. The neighbor can connect out
-// over the network, but not to the stagelet's published port or SSH port,
-// although Hetzner's firewalls do not filter networks: the stagelet's own
-// rules refuse it. A container on the stagelet can't connect over the
+// preview and reaches it over the network. The neighbor can connect out
+// over the network, but not to the preview's published port or SSH port,
+// although Hetzner's firewalls do not filter networks: the preview's own
+// rules refuse it. A container on the preview can't connect over the
 // network or reach the metadata service. Then the test deletes both servers. It needs a running
-// simulation, named by STAGELY_SIM_HCLOUD_URL (with the /v1 path) and
-// STAGELY_SIM_HCLOUD_TOKEN, and the address range of its private network in
-// STAGELY_SIM_HCLOUD_NETWORK_RANGE, and must run on that network. With
-// STAGELY_SIM_HCLOUD_GOLDEN_IMAGE, the servers boot from that snapshot.
+// simulation, named by ELPROVO_SIM_HCLOUD_URL (with the /v1 path) and
+// ELPROVO_SIM_HCLOUD_TOKEN, and the address range of its private network in
+// ELPROVO_SIM_HCLOUD_NETWORK_RANGE, and must run on that network. With
+// ELPROVO_SIM_HCLOUD_GOLDEN_IMAGE, the servers boot from that snapshot.
 // "sim/scripts/check-hetzner.sh agent" and "image" set them up.
 func TestProviderAgainstSimulation(t *testing.T) {
-	apiURL, token := os.Getenv("STAGELY_SIM_HCLOUD_URL"), os.Getenv("STAGELY_SIM_HCLOUD_TOKEN")
-	privateRange, err := netip.ParsePrefix(os.Getenv("STAGELY_SIM_HCLOUD_NETWORK_RANGE"))
+	apiURL, token := os.Getenv("ELPROVO_SIM_HCLOUD_URL"), os.Getenv("ELPROVO_SIM_HCLOUD_TOKEN")
+	privateRange, err := netip.ParsePrefix(os.Getenv("ELPROVO_SIM_HCLOUD_NETWORK_RANGE"))
 	if apiURL == "" || token == "" || err != nil {
-		t.Fatal("STAGELY_SIM_HCLOUD_URL, STAGELY_SIM_HCLOUD_TOKEN and STAGELY_SIM_HCLOUD_NETWORK_RANGE must name a running simulation; run sim/scripts/check-hetzner.sh agent")
+		t.Fatal("ELPROVO_SIM_HCLOUD_URL, ELPROVO_SIM_HCLOUD_TOKEN and ELPROVO_SIM_HCLOUD_NETWORK_RANGE must name a running simulation; run sim/scripts/check-hetzner.sh agent")
 	}
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -51,12 +51,12 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	}
 	self := addressIn(t, privateRange)
 	setup := newAPI(apiURL, token)
-	label := "stagely=check-stagelet"
+	label := "elprovo=check-preview"
 	networkID := createNetwork(t, setup, privateRange)
 	closeToTheInternet(t, setup, label)
 	p, err := New(Config{
 		APIURL: apiURL, Token: token, Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04",
-		GoldenImage: os.Getenv("STAGELY_SIM_HCLOUD_GOLDEN_IMAGE"), Label: label,
+		GoldenImage: os.Getenv("ELPROVO_SIM_HCLOUD_GOLDEN_IMAGE"), Label: label,
 		NetworkID: networkID, Network: cloudinit.PrivateNetwork{Range: privateRange, Sources: []netip.Addr{self}},
 		HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
 	}, key)
@@ -64,7 +64,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.pollEvery = time.Second
-	name, neighbor := "stagely-check-"+randomHex(t), "stagely-neighbor-"+randomHex(t)
+	name, neighbor := "elprovo-check-"+randomHex(t), "elprovo-neighbor-"+randomHex(t)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -79,7 +79,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	}
 	addr, err := p.Address(t.Context(), name)
 	if err != nil || !privateRange.Contains(netip.MustParseAddr(addr)) {
-		t.Fatalf("address = %q, %v; want the stagelet's address on the network %s", addr, err, privateRange)
+		t.Fatalf("address = %q, %v; want the preview's address on the network %s", addr, err, privateRange)
 	}
 	runComposeProject(t, p, name)
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+net.JoinHostPort(addr, "8080")+"/", nil)
@@ -92,7 +92,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if !strings.Contains(string(body), "hello from the stagelet") {
+	if !strings.Contains(string(body), "hello from the preview") {
 		t.Fatalf("service answered %s: %q", resp.Status, body)
 	}
 	hostname, err := p.machines.Output(t.Context(), name, nil, "curl", "-fsS", "http://169.254.169.254/hetzner/v1/metadata/hostname")
@@ -108,11 +108,11 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		t.Fatalf("the neighbor can't connect out over the network, so its blocked connections would prove nothing: %v", err)
 	}
 	if out, err := p.machines.Output(t.Context(), name, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://"+net.JoinHostPort(self.String(), port)+"/"); err == nil || !strings.Contains(err.Error(), "refused") {
-		t.Fatalf("a container on the stagelet connected over the network: %q, %v; want the connection refused, so containers can't reach other machines there", out, err)
+		t.Fatalf("a container on the preview connected over the network: %q, %v; want the connection refused, so containers can't reach other machines there", out, err)
 	}
 	for _, port := range []string{"8080", "22"} {
 		if err := connect(addr, port); err == nil {
-			t.Fatalf("the neighbor reached the stagelet's port %s over the network", port)
+			t.Fatalf("the neighbor reached the preview's port %s over the network", port)
 		}
 	}
 	metadata, err := p.machines.Output(t.Context(), name, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/hetzner/v1/userdata")
@@ -261,7 +261,7 @@ func runComposeProject(t *testing.T, p *Provider, name string) {
       interval: 1s
       retries: 30
 `,
-		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the stagelet' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
+		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the preview' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
 	}
 	if _, err := p.machines.Output(t.Context(), name, nil, "mkdir", "-p", "/root/app"); err != nil {
 		t.Fatalf("make the project directory: %v", err)

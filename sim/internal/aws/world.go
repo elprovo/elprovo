@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
 )
 
 // world is the account's state: every resource of every region.

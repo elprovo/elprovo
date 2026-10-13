@@ -66,21 +66,21 @@ variable "subnet_cidr" {
 }
 
 variable "agent_user_data" {
-  description = "Cloud-config user data of the agent host. `stagely setup` sets an SSH host key it pins. It must not set write_files, which the module adds."
+  description = "Cloud-config user data of the agent host. `elprovo setup` sets an SSH host key it pins. It must not set write_files, which the module adds."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "gateway_user_data" {
-  description = "Cloud-config user data of the gateway host. `stagely setup` sets an SSH host key it pins. It must not set write_files, which the module adds."
+  description = "Cloud-config user data of the gateway host. `elprovo setup` sets an SSH host key it pins. It must not set write_files, which the module adds."
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "ssh_public_key" {
-  description = "Public key that `stagely setup` uses to install the agent and the gateway, as root."
+  description = "Public key that `elprovo setup` uses to install the agent and the gateway, as root."
   type        = string
 }
 
@@ -89,8 +89,8 @@ variable "operator_cidrs" {
   type        = list(string)
 }
 
-variable "stagelet_tag" {
-  description = "Network tag the agent puts on every machine it creates. The stagelet firewall rule targets it. Empty means <name>-stagelet, so environments in one project keep apart."
+variable "preview_tag" {
+  description = "Network tag the agent puts on every machine it creates. The preview firewall rule targets it. Empty means <name>-preview, so environments in one project keep apart."
   type        = string
   default     = ""
 }

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 // workerPool hands out build workers. The pool has a fixed set of names, so
@@ -126,11 +126,11 @@ func (r *Runner) inventory(ctx context.Context) (protocol.Inventory, []string, e
 	inv := protocol.Inventory{Machines: []protocol.Machine{}}
 	var extra []string
 	for _, name := range slices.Compact(names) {
-		kind, stageletID, ok := r.machineKind(name)
+		kind, previewID, ok := r.machineKind(name)
 		if !ok {
 			continue
 		}
-		inv.Machines = append(inv.Machines, protocol.Machine{Name: name, Kind: kind, StageletID: stageletID, Status: r.machineState(name)})
+		inv.Machines = append(inv.Machines, protocol.Machine{Name: name, Kind: kind, PreviewID: previewID, Status: r.machineState(name)})
 		if kind == protocol.MachineBuildWorker && workerIndex(r.MachinePrefix, name) > r.BuildWorkers {
 			extra = append(extra, name)
 		}

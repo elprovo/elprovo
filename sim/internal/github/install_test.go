@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const setupURL = "https://stagely.test/github/setup"
+const setupURL = "https://elprovo.test/github/setup"
 
 func TestInstallationFlowRedirectsToSetupURLWithState(t *testing.T) {
 	ts := newTestSim(t)

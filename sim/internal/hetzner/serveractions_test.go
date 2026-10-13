@@ -54,7 +54,7 @@ func TestSnapshotBootsNewServers(t *testing.T) {
 	}
 
 	e.mustCall(http.StatusCreated, http.MethodPost, fmt.Sprintf("/v1/servers/%d/actions/create_image", source.ID),
-		map[string]any{"type": "snapshot", "description": "stagely-golden", "labels": map[string]string{"stagely": "image"}}, &created)
+		map[string]any{"type": "snapshot", "description": "elprovo-golden", "labels": map[string]string{"elprovo": "image"}}, &created)
 
 	if created.Image.Status != "creating" || created.Image.Type != "snapshot" || created.Action.Command != "create_image" {
 		t.Fatalf("create_image answer = %+v %+v", created.Image, created.Action)
@@ -66,7 +66,7 @@ func TestSnapshotBootsNewServers(t *testing.T) {
 		Images []imageJSON `json:"images"`
 	}
 	e.mustCall(http.StatusOK, http.MethodGet, "/v1/images?type=snapshot&architecture=x86", nil, &listed)
-	if len(listed.Images) != 1 || listed.Images[0].Description != "stagely-golden" || listed.Images[0].Status != "available" ||
+	if len(listed.Images) != 1 || listed.Images[0].Description != "elprovo-golden" || listed.Images[0].Status != "available" ||
 		listed.Images[0].CreatedFrom == nil || listed.Images[0].CreatedFrom.ID != source.ID {
 		t.Fatalf("snapshots = %+v", listed.Images)
 	}

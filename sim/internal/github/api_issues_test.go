@@ -27,14 +27,14 @@ func newPullFixture(t *testing.T) pullFixture {
 func TestAppCommentIsPostedAsItsBotAndDeliveredSigned(t *testing.T) {
 	f := newPullFixture(t)
 
-	r := f.ts.call(http.MethodPost, "/repos/octo/web/issues/1/comments", f.token, map[string]string{"body": "Stagelet is ready"})
+	r := f.ts.call(http.MethodPost, "/repos/octo/web/issues/1/comments", f.token, map[string]string{"body": "Preview is ready"})
 	if r.status != http.StatusCreated {
 		t.Fatalf("create comment = %d %s", r.status, r.body)
 	}
 	var created commentJSON
 	r.decode(t, &created)
-	if created.User.Login != "stagely-dev[bot]" || created.User.Type != "Bot" || created.PerformedViaGitHubApp == nil {
-		t.Fatalf("comment author = %+v via %v, want stagely-dev[bot] through the app", created.User, created.PerformedViaGitHubApp)
+	if created.User.Login != "elprovo-dev[bot]" || created.User.Type != "Bot" || created.PerformedViaGitHubApp == nil {
+		t.Fatalf("comment author = %+v via %v, want elprovo-dev[bot] through the app", created.User, created.PerformedViaGitHubApp)
 	}
 
 	d := f.ts.hooks.wait(t, "issue_comment", "created")
@@ -50,13 +50,13 @@ func TestAppCommentIsPostedAsItsBotAndDeliveredSigned(t *testing.T) {
 
 func TestCommentsCanBeListedEditedAndDeleted(t *testing.T) {
 	f := newPullFixture(t)
-	f.ts.admin(http.MethodPost, "/_sim/repos/octo/web/issues/1/comments", map[string]string{"user": "octo", "body": "/stagely deploy"}, http.StatusCreated)
+	f.ts.admin(http.MethodPost, "/_sim/repos/octo/web/issues/1/comments", map[string]string{"user": "octo", "body": "/elprovo deploy"}, http.StatusCreated)
 	var mine commentJSON
 	f.ts.call(http.MethodPost, "/repos/octo/web/issues/1/comments", f.token, map[string]string{"body": "Deploying"}).decode(t, &mine)
 
 	var list []commentJSON
 	f.ts.call(http.MethodGet, "/repos/octo/web/issues/1/comments", f.token, nil).decode(t, &list)
-	if len(list) != 2 || list[0].Body != "/stagely deploy" || list[0].AuthorAssociation != "OWNER" {
+	if len(list) != 2 || list[0].Body != "/elprovo deploy" || list[0].AuthorAssociation != "OWNER" {
 		t.Fatalf("comments = %+v, want octo's command first, then the app's", list)
 	}
 
@@ -98,26 +98,26 @@ func TestLabelsAreAddedAndRemovedWithWebhooks(t *testing.T) {
 	f := newPullFixture(t)
 
 	var labels []labelJSON
-	r := f.ts.call(http.MethodPost, "/repos/octo/web/issues/1/labels", f.token, map[string][]string{"labels": {"stagelet"}})
+	r := f.ts.call(http.MethodPost, "/repos/octo/web/issues/1/labels", f.token, map[string][]string{"labels": {"preview"}})
 	r.decode(t, &labels)
-	if r.status != http.StatusOK || len(labels) != 1 || labels[0].Name != "stagelet" {
-		t.Fatalf("add label = %d %s, want [stagelet]", r.status, r.body)
+	if r.status != http.StatusOK || len(labels) != 1 || labels[0].Name != "preview" {
+		t.Fatalf("add label = %d %s, want [preview]", r.status, r.body)
 	}
 	var labeled pullRequestEvent
 	f.ts.hooks.wait(t, "pull_request", "labeled").decode(t, &labeled)
-	if labeled.Label == nil || labeled.Label.Name != "stagelet" || labeled.Sender.Login != "stagely-dev[bot]" {
-		t.Fatalf("labeled event label %v sender %s, want stagelet by the bot", labeled.Label, labeled.Sender.Login)
+	if labeled.Label == nil || labeled.Label.Name != "preview" || labeled.Sender.Login != "elprovo-dev[bot]" {
+		t.Fatalf("labeled event label %v sender %s, want preview by the bot", labeled.Label, labeled.Sender.Login)
 	}
 
 	f.ts.call(http.MethodGet, "/repos/octo/web/issues/1/labels", f.token, nil).decode(t, &labels)
 	if len(labels) != 1 {
 		t.Fatalf("labels = %+v, want one", labels)
 	}
-	if r := f.ts.call(http.MethodDelete, "/repos/octo/web/issues/1/labels/stagelet", f.token, nil); r.status != http.StatusOK {
+	if r := f.ts.call(http.MethodDelete, "/repos/octo/web/issues/1/labels/preview", f.token, nil); r.status != http.StatusOK {
 		t.Fatalf("remove label = %d %s", r.status, r.body)
 	}
 	f.ts.hooks.wait(t, "pull_request", "unlabeled")
-	if r := f.ts.call(http.MethodDelete, "/repos/octo/web/issues/1/labels/stagelet", f.token, nil); r.status != http.StatusNotFound {
+	if r := f.ts.call(http.MethodDelete, "/repos/octo/web/issues/1/labels/preview", f.token, nil); r.status != http.StatusNotFound {
 		t.Fatalf("remove a label that is not set = %d, want 404", r.status)
 	}
 
@@ -139,7 +139,7 @@ func TestStatusesAndDeploymentsHonorRequiredContexts(t *testing.T) {
 		map[string]string{"state": "failure", "context": "ci", "target_url": "https://ci.example/1"})
 	var st statusJSON
 	r.decode(t, &st)
-	if r.status != http.StatusCreated || st.State != "failure" || st.Context != "ci" || st.Creator.Login != "stagely-dev[bot]" {
+	if r.status != http.StatusCreated || st.State != "failure" || st.Context != "ci" || st.Creator.Login != "elprovo-dev[bot]" {
 		t.Fatalf("create status = %d %s", r.status, r.body)
 	}
 	if r := f.ts.call(http.MethodPost, "/repos/octo/web/statuses/"+sha, f.token, map[string]string{"state": "bogus"}); r.status != http.StatusUnprocessableEntity {
@@ -159,10 +159,10 @@ func TestStatusesAndDeploymentsHonorRequiredContexts(t *testing.T) {
 	}
 
 	r = f.ts.call(http.MethodPost, fmt.Sprintf("/repos/octo/web/deployments/%d/statuses", dep.ID), f.token,
-		map[string]string{"state": "success", "environment_url": "https://pr-1.stagely.dev"})
+		map[string]string{"state": "success", "environment_url": "https://pr-1.elprovo.com"})
 	var ds deploymentStatusJSON
 	r.decode(t, &ds)
-	if r.status != http.StatusCreated || ds.State != "success" || ds.EnvironmentURL != "https://pr-1.stagely.dev" || ds.Environment != "pr-1" {
+	if r.status != http.StatusCreated || ds.State != "success" || ds.EnvironmentURL != "https://pr-1.elprovo.com" || ds.Environment != "pr-1" {
 		t.Fatalf("create deployment status = %d %s", r.status, r.body)
 	}
 }

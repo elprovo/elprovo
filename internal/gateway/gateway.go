@@ -1,4 +1,4 @@
-// Package gateway serves stagelet traffic. It routes each stagelet host name
+// Package gateway serves preview traffic. It routes each preview host name
 // to its upstream, admits visitors through single-use handoffs, and drops any
 // session it could not re-confirm with the control plane recently.
 package gateway
@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
-// SessionCookie holds the visitor's session on a stagelet host.
-const SessionCookie = "__Host-stagely_session"
+// SessionCookie holds the visitor's session on a preview host.
+const SessionCookie = "__Host-elprovo_session"
 
 // ControlPlane redeems handoffs and confirms sessions.
 type ControlPlane interface {
@@ -26,7 +26,7 @@ type ControlPlane interface {
 	ConfirmSessions(ctx context.Context, ids []string) ([]string, error)
 }
 
-// Gateway is the HTTP handler for all stagelet hosts.
+// Gateway is the HTTP handler for all preview hosts.
 type Gateway struct {
 	cp            ControlPlane
 	confirmWindow time.Duration
@@ -39,14 +39,14 @@ type Gateway struct {
 }
 
 type route struct {
-	stageletID string
+	previewID  string
 	upstream   string
 	healthPath string
 	proxy      *httputil.ReverseProxy
 }
 
 type session struct {
-	stageletID  string
+	previewID   string
 	expiresAt   time.Time
 	confirmedAt time.Time
 	requests    map[*http.Request]context.CancelFunc
@@ -70,18 +70,18 @@ func New(cp ControlPlane, confirmWindow time.Duration, now func() time.Time, log
 	}
 }
 
-// SetRoutes replaces the route table and returns the stagelets it now serves.
+// SetRoutes replaces the route table and returns the previews it now serves.
 func (g *Gateway) SetRoutes(routes []protocol.Route) []string {
 	table := make(map[string]route, len(routes))
 	applied := make([]string, 0, len(routes))
 	for _, r := range routes {
 		target := &url.URL{Scheme: "http", Host: r.Upstream}
 		if _, _, err := net.SplitHostPort(r.Upstream); err != nil {
-			g.log.Warn("skipping route with invalid upstream", "stagelet_id", r.StageletID, "upstream", r.Upstream)
+			g.log.Warn("skipping route with invalid upstream", "preview_id", r.PreviewID, "upstream", r.Upstream)
 			continue
 		}
-		table[strings.ToLower(r.Host)] = route{stageletID: r.StageletID, upstream: r.Upstream, healthPath: r.HealthPath, proxy: newProxy(target)}
-		applied = append(applied, r.StageletID)
+		table[strings.ToLower(r.Host)] = route{previewID: r.PreviewID, upstream: r.Upstream, healthPath: r.HealthPath, proxy: newProxy(target)}
+		applied = append(applied, r.PreviewID)
 	}
 	g.mu.Lock()
 	g.routes = table
@@ -92,7 +92,7 @@ func (g *Gateway) SetRoutes(routes []protocol.Route) []string {
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rt, ok := g.route(r.Host)
 	if !ok {
-		http.Error(w, "unknown stagelet", http.StatusNotFound)
+		http.Error(w, "unknown preview", http.StatusNotFound)
 		return
 	}
 	if r.URL.Path == protocol.HandoffPath {
@@ -101,7 +101,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, done, ok := g.admit(r, rt)
 	if !ok {
-		http.Error(w, "open this stagelet through Stagely", http.StatusUnauthorized)
+		http.Error(w, "open this preview through Elprovo", http.StatusUnauthorized)
 		return
 	}
 	defer done()
@@ -129,7 +129,7 @@ func (g *Gateway) routeChecks() []routeCheck {
 	seen := make(map[routeKey]bool, len(g.routes))
 	checks := make([]routeCheck, 0, len(g.routes))
 	for host, rt := range g.routes {
-		k := routeKey{stageletID: rt.stageletID, upstream: rt.upstream}
+		k := routeKey{previewID: rt.previewID, upstream: rt.upstream}
 		if !seen[k] {
 			seen[k] = true
 			checks = append(checks, routeCheck{routeKey: k, host: host, healthPath: rt.healthPath})
@@ -148,16 +148,16 @@ func (g *Gateway) handoff(w http.ResponseWriter, r *http.Request, rt route) {
 	res, err := g.cp.ExchangeHandoff(ctx, r.URL.Query().Get(protocol.HandoffTokenParam))
 	if err != nil {
 		g.log.Warn("handoff exchange failed", "error", err)
-		http.Error(w, "Stagely is unreachable, try again", http.StatusServiceUnavailable)
+		http.Error(w, "Elprovo is unreachable, try again", http.StatusServiceUnavailable)
 		return
 	}
-	if !res.OK || res.StageletID != rt.stageletID {
+	if !res.OK || res.PreviewID != rt.previewID {
 		http.Error(w, "handoff rejected", http.StatusForbidden)
 		return
 	}
 	now := g.now()
 	g.mu.Lock()
-	g.sessions[res.SessionID] = session{stageletID: res.StageletID, expiresAt: res.ExpiresAt, confirmedAt: now, requests: map[*http.Request]context.CancelFunc{}}
+	g.sessions[res.SessionID] = session{previewID: res.PreviewID, expiresAt: res.ExpiresAt, confirmedAt: now, requests: map[*http.Request]context.CancelFunc{}}
 	g.mu.Unlock()
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: res.SessionID, Path: "/", Expires: res.ExpiresAt,
@@ -178,7 +178,7 @@ func (g *Gateway) admit(r *http.Request, rt route) (context.Context, func(), boo
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	s, ok := g.sessions[c.Value]
-	if !ok || s.stageletID != rt.stageletID || !now.Before(s.expiresAt) || now.Sub(s.confirmedAt) > g.confirmWindow {
+	if !ok || s.previewID != rt.previewID || !now.Before(s.expiresAt) || now.Sub(s.confirmedAt) > g.confirmWindow {
 		return nil, nil, false
 	}
 	ctx, cancel := context.WithCancel(r.Context())

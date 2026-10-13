@@ -3,7 +3,7 @@ package aws
 import (
 	"context"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // reconcile matches stored instances with the machines Docker has, after a

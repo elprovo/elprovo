@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -284,7 +284,7 @@ func (s *Simulation) machineSpec(a *account, p instancePlan) machines.Spec {
 		vpcID = inst.VPCs[0]
 	}
 	return machines.Spec{
-		Name:     fmt.Sprintf("stagely-sim-vultr-%s-%s", a.ID[:8], inst.ID),
+		Name:     fmt.Sprintf("elprovo-sim-vultr-%s-%s", a.ID[:8], inst.ID),
 		Hostname: inst.Hostname,
 		Cloud:    cloudLabel, Account: a.ID, Resource: inst.ID,
 		Image:    p.imageRef,

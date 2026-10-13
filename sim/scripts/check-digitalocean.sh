@@ -36,8 +36,8 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-check-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9390}
+network="elprovo-sim-check-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9390}
 token="dop_v1_check_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 sim_pid=""
 
@@ -46,7 +46,7 @@ account() {
 }
 
 machines_left() {
-	docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | wc -l | tr -d ' '
 }
 
 cleanup() {
@@ -57,10 +57,10 @@ cleanup() {
 	fi
 	docker rm --force "$network-agent" "$network-packer" >/dev/null 2>&1 || true
 	if [ -n "$(account)" ]; then
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-do-snapshot:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-do-snapshot:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
 	fi
 	if [ -n "$(account)" ]; then
-		docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	if [ "$status" -ne 0 ] && [ -f "$work/sim.log" ]; then
@@ -74,8 +74,8 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 start_simulation() {
-	(cd "$repo/sim" && go build -o "$work/stagely-sim" ./cmd/stagely-sim)
-	"$work/stagely-sim" -digitalocean -data-dir "$work/data" -do-network "$network" \
+	(cd "$repo/sim" && go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
+	"$work/elprovo-sim" -digitalocean -data-dir "$work/data" -do-network "$network" \
 		-do-addr ":$port" -do-token "$token" >"$work/sim.log" 2>&1 &
 	sim_pid=$!
 	tries=0
@@ -93,8 +93,8 @@ check_agent() {
 	arch=$(docker version --format '{{.Server.Arch}}')
 	(cd "$repo" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags simdocker \
 		-o "$work/provider.test" ./internal/agent/provider/digitalocean)
-	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
-		-e STAGELY_SIM_DO_URL="http://stagely-sim-host:$port" -e STAGELY_SIM_DO_TOKEN="$token" -e STAGELY_SIM_DO_GOLDEN_IMAGE="${golden_image:-}" \
+	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
+		-e ELPROVO_SIM_DO_URL="http://elprovo-sim-host:$port" -e ELPROVO_SIM_DO_TOKEN="$token" -e ELPROVO_SIM_DO_GOLDEN_IMAGE="${golden_image:-}" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	docker start --attach "$network-agent"
@@ -107,7 +107,7 @@ check_agent() {
 
 check_terraform() {
 	cp -R "$repo/sim/internal/digitalocean/testdata/terraform" "$work/tf"
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
 	TF_VAR_ssh_public_key=$(cat "$work/key.pub")
 	export TF_IN_AUTOMATION=1 TF_INPUT=0 TF_VAR_api_endpoint="http://127.0.0.1:$port" TF_VAR_token="$token" TF_VAR_ssh_public_key
 	cd "$work/tf"
@@ -117,7 +117,7 @@ check_terraform() {
 		echo "expected 2 machines after apply, found $(machines_left)" >&2
 		exit 1
 	fi
-	records="http://127.0.0.1:$port/v2/domains/stagely-sim-check.test/records?type=A&name=*.stagelets.stagely-sim-check.test"
+	records="http://127.0.0.1:$port/v2/domains/elprovo-sim-check.test/records?type=A&name=*.previews.elprovo-sim-check.test"
 	if ! curl -fsS -H "Authorization: Bearer $token" "$records" | grep -q "\"data\":\"$(tofu output -raw reserved_ip)\""; then
 		echo "the wildcard record does not point at the reserved IP" >&2
 		exit 1
@@ -128,7 +128,7 @@ check_terraform() {
 		echo "machines are left after destroy" >&2
 		exit 1
 	fi
-	if curl -fs -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$port/v2/domains/stagely-sim-check.test"; then
+	if curl -fs -o /dev/null -H "Authorization: Bearer $token" "http://127.0.0.1:$port/v2/domains/elprovo-sim-check.test"; then
 		echo "the domain is left after destroy" >&2
 		exit 1
 	fi
@@ -136,13 +136,13 @@ check_terraform() {
 }
 
 check_image() {
-	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
+	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
 		-e DIGITALOCEAN_TOKEN="$token" -w /images --entrypoint sh hashicorp/packer:1.16.1 \
-		-c "packer init . && packer build -color=false -var region=nyc3 -var api_url=http://stagely-sim-host:$port -var snapshot_name=stagely-image-check ." >/dev/null
+		-c "packer init . && packer build -color=false -var region=nyc3 -var api_url=http://elprovo-sim-host:$port -var snapshot_name=elprovo-image-check ." >/dev/null
 	docker cp "$repo/images/digitalocean/." "$network-packer:/images/"
 	docker start --attach "$network-packer"
 	golden_image=$(curl -fs -H "Authorization: Bearer $token" "http://127.0.0.1:$port/v2/images?private=true" |
-		python3 -c 'import json, sys; print(next(i["id"] for i in json.load(sys.stdin)["images"] if i["name"] == "stagely-image-check"))')
+		python3 -c 'import json, sys; print(next(i["id"] for i in json.load(sys.stdin)["images"] if i["name"] == "elprovo-image-check"))')
 	if [ "$(machines_left)" != 0 ]; then
 		echo "Packer left its build droplet" >&2
 		exit 1

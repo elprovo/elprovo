@@ -8,7 +8,7 @@ import (
 func TestRegistryHandsOutItsAdminCredentials(t *testing.T) {
 	e := newEnv(t)
 	e.mustCall(http.StatusCreated, http.MethodPut, groupPath("rg")+apiVersion, map[string]any{"location": "westeurope"}, nil)
-	path := resourcePath("rg", typeRegistry, "StagelyAcme")
+	path := resourcePath("rg", typeRegistry, "ElprovoAcme")
 	var reg struct {
 		Properties struct {
 			LoginServer string `json:"loginServer"`
@@ -19,7 +19,7 @@ func TestRegistryHandsOutItsAdminCredentials(t *testing.T) {
 		"location": "westeurope", "sku": map[string]string{"name": "Basic"}, "properties": map[string]any{"adminUserEnabled": true},
 	}, &reg)
 
-	if reg.Properties.LoginServer != "stagelyacme.azurecr.io" {
+	if reg.Properties.LoginServer != "elprovoacme.azurecr.io" {
 		t.Fatalf("login server = %q", reg.Properties.LoginServer)
 	}
 	var creds struct {
@@ -29,7 +29,7 @@ func TestRegistryHandsOutItsAdminCredentials(t *testing.T) {
 		} `json:"passwords"`
 	}
 	e.mustCall(http.StatusOK, http.MethodPost, path+"/listCredentials"+apiVersion, nil, &creds)
-	if creds.Username != "StagelyAcme" || len(creds.Passwords) != 2 || creds.Passwords[0].Value != "registry-secret" {
+	if creds.Username != "ElprovoAcme" || len(creds.Passwords) != 2 || creds.Passwords[0].Value != "registry-secret" {
 		t.Fatalf("credentials = %+v", creds)
 	}
 }
@@ -37,7 +37,7 @@ func TestRegistryHandsOutItsAdminCredentials(t *testing.T) {
 func TestRegistryWithoutAdminUserHasNoCredentials(t *testing.T) {
 	e := newEnv(t)
 	e.mustCall(http.StatusCreated, http.MethodPut, groupPath("rg")+apiVersion, map[string]any{"location": "westeurope"}, nil)
-	path := resourcePath("rg", typeRegistry, "stagelyacme")
+	path := resourcePath("rg", typeRegistry, "elprovoacme")
 	e.mustCall(http.StatusCreated, http.MethodPut, path+apiVersion, map[string]any{"location": "westeurope", "sku": map[string]string{"name": "Basic"}}, nil)
 
 	e.mustFail(http.StatusBadRequest, "UnAuthorizedForCredentialOperations", http.MethodPost, path+"/listCredentials"+apiVersion, nil)
@@ -46,13 +46,13 @@ func TestRegistryWithoutAdminUserHasNoCredentials(t *testing.T) {
 func TestTokenCredentialsCarryTheirExpiry(t *testing.T) {
 	e := newEnv(t)
 	e.mustCall(http.StatusCreated, http.MethodPut, groupPath("rg")+apiVersion, map[string]any{"location": "westeurope"}, nil)
-	path := resourcePath("rg", typeRegistry, "stagelyacme")
+	path := resourcePath("rg", typeRegistry, "elprovoacme")
 	e.mustCall(http.StatusCreated, http.MethodPut, path+apiVersion, map[string]any{"location": "westeurope", "sku": map[string]string{"name": "Basic"}}, nil)
 	e.mustCall(http.StatusOK, http.MethodGet, path+"/scopeMaps/_repositories_pull"+apiVersion, nil, nil)
-	tokenID := resourcePath("rg", typeRegistry, "stagelyacme") + "/tokens/stagely-pull"
+	tokenID := resourcePath("rg", typeRegistry, "elprovoacme") + "/tokens/elprovo-pull"
 
 	e.wait(e.mustCall(http.StatusCreated, http.MethodPut, tokenID+apiVersion, map[string]any{
-		"properties": map[string]any{"scopeMapId": resourcePath("rg", typeRegistry, "stagelyacme") + "/scopeMaps/_repositories_pull", "status": "enabled"},
+		"properties": map[string]any{"scopeMapId": resourcePath("rg", typeRegistry, "elprovoacme") + "/scopeMaps/_repositories_pull", "status": "enabled"},
 	}, nil))
 	var creds struct {
 		Username  string `json:"username"`
@@ -83,10 +83,10 @@ func TestTokenCredentialsCarryTheirExpiry(t *testing.T) {
 func TestTokenNeedsABuiltInScopeMap(t *testing.T) {
 	e := newEnv(t)
 	e.mustCall(http.StatusCreated, http.MethodPut, groupPath("rg")+apiVersion, map[string]any{"location": "westeurope"}, nil)
-	path := resourcePath("rg", typeRegistry, "stagelyacme")
+	path := resourcePath("rg", typeRegistry, "elprovoacme")
 	e.mustCall(http.StatusCreated, http.MethodPut, path+apiVersion, map[string]any{"location": "westeurope", "sku": map[string]string{"name": "Basic"}}, nil)
 
-	e.mustFail(http.StatusBadRequest, "UnsupportedBySimulation", http.MethodPut, path+"/tokens/stagely-pull"+apiVersion, map[string]any{
-		"properties": map[string]any{"scopeMapId": resourcePath("rg", typeRegistry, "stagelyacme") + "/scopeMaps/custom"},
+	e.mustFail(http.StatusBadRequest, "UnsupportedBySimulation", http.MethodPut, path+"/tokens/elprovo-pull"+apiVersion, map[string]any{
+		"properties": map[string]any{"scopeMapId": resourcePath("rg", typeRegistry, "elprovoacme") + "/scopeMaps/custom"},
 	})
 }

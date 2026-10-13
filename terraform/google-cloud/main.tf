@@ -1,8 +1,8 @@
 locals {
-  stagelet_tag = var.stagelet_tag != "" ? var.stagelet_tag : "${var.name}-stagelet"
-  agent_tag    = "${var.name}-agent"
-  gateway_tag  = "${var.name}-gateway"
-  ssh_keys     = "root:${var.ssh_public_key}"
+  preview_tag = var.preview_tag != "" ? var.preview_tag : "${var.name}-preview"
+  agent_tag   = "${var.name}-agent"
+  gateway_tag = "${var.name}-gateway"
+  ssh_keys    = "root:${var.ssh_public_key}"
 
   # The Compute Engine guest agent replaces the SSH host keys on an
   # instance's first boot unless this file says not to. Cloud-init writes it
@@ -17,12 +17,12 @@ locals {
 }
 
 resource "google_compute_network" "environment" {
-  name                    = "${var.name}-stagely"
+  name                    = "${var.name}-elprovo"
   auto_create_subnetworks = false
 }
 
 resource "google_compute_subnetwork" "environment" {
-  name          = "${var.name}-stagely"
+  name          = "${var.name}-elprovo"
   region        = var.region
   network       = google_compute_network.environment.id
   ip_cidr_range = var.subnet_cidr
@@ -69,15 +69,15 @@ resource "google_compute_firewall" "gateway_ssh" {
   }
 }
 
-# Stagelet machines and build workers accept traffic only from the agent,
+# Preview machines and build workers accept traffic only from the agent,
 # which drives them over SSH and checks health, and from the gateway. The
 # network's implied rules deny other ingress and allow all egress.
-resource "google_compute_firewall" "stagelets" {
-  name        = "${var.name}-stagelets"
+resource "google_compute_firewall" "previews" {
+  name        = "${var.name}-previews"
   network     = google_compute_network.environment.id
   direction   = "INGRESS"
   source_tags = [local.agent_tag, local.gateway_tag]
-  target_tags = [local.stagelet_tag]
+  target_tags = [local.preview_tag]
 
   allow {
     protocol = "tcp"
@@ -143,7 +143,7 @@ resource "google_artifact_registry_repository" "images" {
   location      = var.region
   repository_id = var.registry_name
   format        = "DOCKER"
-  description   = "Images that Stagely builds for ${var.name}"
+  description   = "Images that Elprovo builds for ${var.name}"
 }
 
 # Machines sign in to the registry with short-lived tokens of these accounts,
@@ -151,12 +151,12 @@ resource "google_artifact_registry_repository" "images" {
 # service account impersonates them, so its key never reaches a machine.
 resource "google_service_account" "registry_push" {
   account_id   = "${substr(var.name, 0, 24)}-push"
-  display_name = "Stagely ${var.name} registry push"
+  display_name = "Elprovo ${var.name} registry push"
 }
 
 resource "google_service_account" "registry_pull" {
   account_id   = "${substr(var.name, 0, 24)}-pull"
-  display_name = "Stagely ${var.name} registry pull"
+  display_name = "Elprovo ${var.name} registry pull"
 }
 
 resource "google_artifact_registry_repository_iam_member" "push" {

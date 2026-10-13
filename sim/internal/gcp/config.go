@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	defaultAccessToken = "ya29.stagely-sim"
+	defaultAccessToken = "ya29.elprovo-sim"
 	defaultZones       = "us-central1-a,us-central1-b,us-central1-c,us-central1-f,us-east1-b,us-east1-c,us-east1-d,europe-west1-b,europe-west1-c,europe-west1-d"
 	instanceLimit      = 24
 )
@@ -42,10 +42,10 @@ func (r *repeatedFlag) Set(v string) error {
 func registerFlags(fs *flag.FlagSet, cfg *config, tokens *repeatedFlag, zones *string) {
 	fs.BoolVar(&cfg.enabled, "gcp", false, "run the Google Cloud simulation")
 	fs.StringVar(&cfg.addr, "gcp-addr", "127.0.0.1:9320", "listen address of the simulated Google Cloud APIs (compute.googleapis.com, oauth2.googleapis.com, artifactregistry.googleapis.com); instance user data runs as root in privileged containers, so expose it with care")
-	fs.StringVar(&cfg.project, "gcp-project", "stagely-sim", "project ID that the simulated APIs serve")
+	fs.StringVar(&cfg.project, "gcp-project", "elprovo-sim", "project ID that the simulated APIs serve")
 	fs.Var(tokens, "gcp-access-token", "OAuth 2.0 access token that the simulated APIs accept besides the tokens they issue; repeatable (default "+defaultAccessToken+")")
 	fs.StringVar(zones, "gcp-zones", defaultZones, "comma-separated zones; their regions are the region part of each name")
-	fs.StringVar(&cfg.network, "gcp-network", "stagely-sim-gcp", "Docker network for instances' internal addresses; external addresses use <network>-public")
+	fs.StringVar(&cfg.network, "gcp-network", "elprovo-sim-gcp", "Docker network for instances' internal addresses; external addresses use <network>-public")
 	fs.StringVar(&cfg.tokenURI, "gcp-token-uri", "", "token_uri written into the service account key file (default http://<gcp-addr>/token)")
 }
 

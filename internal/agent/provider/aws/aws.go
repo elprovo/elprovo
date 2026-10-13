@@ -1,4 +1,4 @@
-// Package aws runs stagelet machines as Amazon EC2 instances. The agent
+// Package aws runs preview machines as Amazon EC2 instances. The agent
 // launches each instance through the EC2 API and hands it a host key that
 // the agent generated, so it never has to trust an unknown host key. It then
 // drives the instance over SSH as root with its own key. It also hands out
@@ -22,13 +22,13 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 const (
 	// groupTag is the tag key that marks the instances of one agent.
-	groupTag = "stagely-group"
+	groupTag = "elprovo-group"
 	// rootLogin lets root sign in with the instance's key pair. Ubuntu AMIs
 	// on AWS refuse root logins unless cloud-config turns disable_root off,
 	// and the agent signs in as root.
@@ -71,18 +71,18 @@ type Config struct {
 	InstanceType string
 	// Image is a stock Ubuntu AMI; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is a Stagely golden image AMI that already has
+	// GoldenImage, when set, is a Elprovo golden image AMI that already has
 	// Docker, Compose and BuildKit. It replaces Image.
 	GoldenImage string
 	SubnetID    string
 	// SecurityGroupID is the group of every instance. It must let in only
 	// the agent and the gateway: a group that lets in its own members, such
-	// as a VPC's default group, lets stagelets reach each other.
+	// as a VPC's default group, lets previews reach each other.
 	SecurityGroupID string
 	// VolumeSize is the root volume's size in GiB, for images, build cache
-	// and stagelet data; 0 keeps the AMI's, which is 8 GiB for Ubuntu.
+	// and preview data; 0 keeps the AMI's, which is 8 GiB for Ubuntu.
 	VolumeSize int
-	// Group is the value of the stagely-group tag on every instance the
+	// Group is the value of the elprovo-group tag on every instance the
 	// agent launches. The agent finds its instances by it.
 	Group string
 	// RepositoryPrefix is the ECR repository name prefix that the
@@ -197,9 +197,9 @@ func registryAccount(host, region string) (string, bool) {
 // when push is set, on the repositories under prefix in the account's
 // registry.
 func registrySession(region, account, prefix string, push bool) (string, string) {
-	name, actions := "stagely-registry-pull", registryPullActions
+	name, actions := "elprovo-registry-pull", registryPullActions
 	if push {
-		name, actions = "stagely-registry-push", slices.Concat(registryPullActions, registryPushActions)
+		name, actions = "elprovo-registry-push", slices.Concat(registryPullActions, registryPushActions)
 	}
 	repositories := "arn:aws:ecr:" + region + ":" + account + ":repository/*"
 	if prefix != "" {
@@ -373,7 +373,7 @@ func (p *Provider) filters() []filter {
 // the key pair's name.
 func (p *Provider) ensureKeyPair(ctx context.Context) (string, error) {
 	public := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p.machines.Signer.PublicKey())))
-	name := "stagely-agent-" + strings.ReplaceAll(ssh.FingerprintLegacyMD5(p.machines.Signer.PublicKey()), ":", "")
+	name := "elprovo-agent-" + strings.ReplaceAll(ssh.FingerprintLegacyMD5(p.machines.Signer.PublicKey()), ":", "")
 	p.keyMu.Lock()
 	defer p.keyMu.Unlock()
 	if p.keyRegistered {

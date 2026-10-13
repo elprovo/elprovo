@@ -11,7 +11,7 @@ import (
 func TestAWSCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	a := AWS{AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: "secret", Region: "eu-central-1", Endpoint: "http://sim:9310"}
 	outputs := map[string]any{
-		"subnet_id": "subnet-1", "stagelet_security_group_id": "sg-1", "stagelet_group": "prod-stagelet",
+		"subnet_id": "subnet-1", "preview_security_group_id": "sg-1", "preview_group": "prod-preview",
 		"image_id": "ami-1", "registry": "123456789012.dkr.ecr.eu-central-1.amazonaws.com/prod",
 	}
 
@@ -26,13 +26,13 @@ func TestAWSCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	args, env, err := cloud.Agent(outputs)
 	want := []string{
 		"-aws-region", "eu-central-1", "-aws-ec2-url", "http://sim:9310", "-aws-ecr-url", "http://sim:9310", "-aws-sts-url", "http://sim:9310",
-		"-aws-subnet", "subnet-1", "-aws-security-group", "sg-1", "-aws-group", "prod-stagelet", "-aws-image", "ami-1",
+		"-aws-subnet", "subnet-1", "-aws-security-group", "sg-1", "-aws-group", "prod-preview", "-aws-image", "ami-1",
 		"-registry", "123456789012.dkr.ecr.eu-central-1.amazonaws.com/prod",
 	}
 	if err != nil || !reflect.DeepEqual(args, want) || env["AWS_ACCESS_KEY_ID"] != "AKIAEXAMPLE" || env["AWS_SECRET_ACCESS_KEY"] != "secret" {
 		t.Fatalf("agent = %v %v %v", args, env, err)
 	}
-	if _, ok := env["STAGELY_REGISTRY_USERNAME"]; ok {
+	if _, ok := env["ELPROVO_REGISTRY_USERNAME"]; ok {
 		t.Fatal("the agent got registry credentials; it must sign in to ECR with its AWS credentials")
 	}
 	if strings.Contains(strings.Join(args, " "), "secret") {

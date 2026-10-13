@@ -22,7 +22,7 @@ variable "ssh_public_key" {
 
 variable "name" {
   type    = string
-  default = "stagely-sim-check"
+  default = "elprovo-sim-check"
 }
 
 provider "digitalocean" {
@@ -30,7 +30,7 @@ provider "digitalocean" {
   api_endpoint = var.api_endpoint
 }
 
-resource "digitalocean_vpc" "stagelets" {
+resource "digitalocean_vpc" "previews" {
   name     = var.name
   region   = "nyc3"
   ip_range = "10.200.0.0/24"
@@ -41,40 +41,40 @@ resource "digitalocean_ssh_key" "agent" {
   public_key = var.ssh_public_key
 }
 
-resource "digitalocean_tag" "stagelet" {
+resource "digitalocean_tag" "preview" {
   name = var.name
 }
 
-resource "digitalocean_droplet" "stagelet" {
+resource "digitalocean_droplet" "preview" {
   count     = 2
   name      = "${var.name}-${count.index}"
   region    = "nyc3"
   size      = "s-1vcpu-1gb"
   image     = "ubuntu-24-04-x64"
-  vpc_uuid  = digitalocean_vpc.stagelets.id
+  vpc_uuid  = digitalocean_vpc.previews.id
   ssh_keys  = [digitalocean_ssh_key.agent.fingerprint]
-  tags      = [digitalocean_tag.stagelet.id]
+  tags      = [digitalocean_tag.preview.id]
   user_data = <<-EOT
     #cloud-config
     write_files:
-      - path: /etc/stagely-check
+      - path: /etc/elprovo-check
         content: "droplet ${count.index}\n"
   EOT
 }
 
-resource "digitalocean_firewall" "stagelets" {
+resource "digitalocean_firewall" "previews" {
   name = var.name
-  tags = [digitalocean_tag.stagelet.id]
+  tags = [digitalocean_tag.preview.id]
 
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
-    source_addresses = [digitalocean_vpc.stagelets.ip_range]
+    source_addresses = [digitalocean_vpc.previews.ip_range]
   }
 
   inbound_rule {
     protocol    = "icmp"
-    source_tags = [digitalocean_tag.stagelet.id]
+    source_tags = [digitalocean_tag.preview.id]
   }
 
   outbound_rule {
@@ -96,7 +96,7 @@ resource "digitalocean_reserved_ip" "front" {
 
 resource "digitalocean_reserved_ip_assignment" "front" {
   ip_address = digitalocean_reserved_ip.front.ip_address
-  droplet_id = digitalocean_droplet.stagelet[0].id
+  droplet_id = digitalocean_droplet.preview[0].id
 }
 
 resource "digitalocean_container_registry" "images" {
@@ -110,30 +110,30 @@ resource "digitalocean_container_registry_docker_credentials" "images" {
   write         = true
 }
 
-resource "digitalocean_domain" "stagelets" {
+resource "digitalocean_domain" "previews" {
   name = "${var.name}.test"
 }
 
-resource "digitalocean_record" "stagelets" {
-  domain = digitalocean_domain.stagelets.id
+resource "digitalocean_record" "previews" {
+  domain = digitalocean_domain.previews.id
   type   = "A"
-  name   = "*.stagelets"
+  name   = "*.previews"
   value  = digitalocean_reserved_ip.front.ip_address
   ttl    = 300
 }
 
 output "public_addresses" {
-  value = digitalocean_droplet.stagelet[*].ipv4_address
+  value = digitalocean_droplet.preview[*].ipv4_address
 }
 
 output "reserved_ip" {
   value = digitalocean_reserved_ip.front.ip_address
 }
 
-output "stagelet_record" {
-  value = digitalocean_record.stagelets.fqdn
+output "preview_record" {
+  value = digitalocean_record.previews.fqdn
 }
 
 output "private_addresses" {
-  value = digitalocean_droplet.stagelet[*].ipv4_address_private
+  value = digitalocean_droplet.preview[*].ipv4_address_private
 }

@@ -20,7 +20,7 @@ const (
 	registryCredentialsExpiry = 2 * time.Hour
 	// jobTokenPrefix names the registry tokens the provider makes, one for
 	// each set of credentials, and removes after they expire.
-	jobTokenPrefix = "stagely-job-"
+	jobTokenPrefix = "elprovo-job-"
 )
 
 // RegistryCredentials returns credentials for the environment's container

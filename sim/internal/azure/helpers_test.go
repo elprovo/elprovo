@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 var errDocker = errors.New("docker failed")
@@ -264,7 +264,7 @@ type testEnv struct {
 func testConfig() config {
 	return config{
 		tenant: defaultTenant, subscription: defaultSubscription, clientID: defaultClientID, clientSecret: testSecret,
-		locations: []string{"westeurope", "eastus"}, network: "stagely-sim-unit", registry: registryConfig{domain: "azurecr.io", username: "registry-user", password: "registry-secret"},
+		locations: []string{"westeurope", "eastus"}, network: "elprovo-sim-unit", registry: registryConfig{domain: "azurecr.io", username: "registry-user", password: "registry-secret"},
 	}
 }
 
@@ -442,7 +442,7 @@ func resourcePath(group, typ, name string) string {
 }
 
 // network makes a resource group with a virtual network and the subnet
-// stagelets, and returns the subnet's id.
+// previews, and returns the subnet's id.
 func (e *testEnv) network(group string) string {
 	e.t.Helper()
 	e.mustCall(http.StatusCreated, http.MethodPut, groupPath(group)+apiVersion, map[string]any{"location": "westeurope"}, nil)
@@ -450,10 +450,10 @@ func (e *testEnv) network(group string) string {
 		"location":   "westeurope",
 		"properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []string{"10.42.0.0/16"}}},
 	}, nil)
-	e.mustCall(http.StatusCreated, http.MethodPut, resourcePath(group, typeVNet, "net")+"/subnets/stagelets"+apiVersion, map[string]any{
+	e.mustCall(http.StatusCreated, http.MethodPut, resourcePath(group, typeVNet, "net")+"/subnets/previews"+apiVersion, map[string]any{
 		"properties": map[string]any{"addressPrefix": "10.42.1.0/24"},
 	}, nil)
-	return resourcePath(group, typeVNet, "net") + "/subnets/stagelets"
+	return resourcePath(group, typeVNet, "net") + "/subnets/previews"
 }
 
 // nic makes a network interface in the subnet, with a public IP when
@@ -527,10 +527,10 @@ func vmBody(nicID string, customData string) map[string]any {
 				"osDisk":         map[string]any{"createOption": "FromImage", "deleteOption": "Delete", "managedDisk": map[string]string{"storageAccountType": "StandardSSD_LRS"}},
 			},
 			"osProfile": map[string]any{
-				"computerName": "web", "adminUsername": "stagely", "customData": base64.StdEncoding.EncodeToString([]byte(customData)),
+				"computerName": "web", "adminUsername": "elprovo", "customData": base64.StdEncoding.EncodeToString([]byte(customData)),
 				"linuxConfiguration": map[string]any{
 					"disablePasswordAuthentication": true,
-					"ssh":                           map[string]any{"publicKeys": []any{map[string]string{"path": "/home/stagely/.ssh/authorized_keys", "keyData": testKey}}},
+					"ssh":                           map[string]any{"publicKeys": []any{map[string]string{"path": "/home/elprovo/.ssh/authorized_keys", "keyData": testKey}}},
 				},
 			},
 			"networkProfile": map[string]any{"networkInterfaces": []any{map[string]any{"id": nicID, "properties": map[string]any{"deleteOption": "Delete"}}}},

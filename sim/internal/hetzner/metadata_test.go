@@ -13,7 +13,7 @@ func TestServerServesTheMetadataCloudInitReads(t *testing.T) {
 		SSHKey sshKeyJSON `json:"ssh_key"`
 	}
 	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/ssh_keys", map[string]any{"name": "agent", "public_key": agentKey}, &key)
-	n := e.createNetwork("stagely")
+	n := e.createNetwork("elprovo")
 	req := serverRequest("web-1", nil)
 	req["ssh_keys"] = []string{"agent"}
 	req["user_data"] = "#cloud-config\nruncmd: [true]\n"

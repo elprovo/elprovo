@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
-const host = "s1.stagelets.localhost"
+const host = "s1.previews.localhost"
 
 type fakeControlPlane struct {
 	handoffs   map[string]protocol.HandoffResult
@@ -68,14 +68,14 @@ func newFixture(t *testing.T) *fixture {
 	t.Cleanup(f.upstream.Close)
 	f.cp = &fakeControlPlane{
 		handoffs: map[string]protocol.HandoffResult{
-			"good":  {OK: true, SessionID: "sess1", StageletID: "s1", ExpiresAt: f.clock.t.Add(time.Hour)},
-			"other": {OK: true, SessionID: "sess2", StageletID: "s2", ExpiresAt: f.clock.t.Add(time.Hour)},
+			"good":  {OK: true, SessionID: "sess1", PreviewID: "s1", ExpiresAt: f.clock.t.Add(time.Hour)},
+			"other": {OK: true, SessionID: "sess2", PreviewID: "s2", ExpiresAt: f.clock.t.Add(time.Hour)},
 		},
 		valid: map[string]bool{"sess1": true},
 	}
 	f.gw = New(f.cp, ConfirmWindow, f.clock.now, slog.New(slog.DiscardHandler))
 	upstream, _ := url.Parse(f.upstream.URL)
-	f.gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: upstream.Host}})
+	f.gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: upstream.Host}})
 	return f
 }
 
@@ -116,7 +116,7 @@ func TestAnonymousRequestIsRefused(t *testing.T) {
 
 func TestUnknownHostIsNotFound(t *testing.T) {
 	f := newFixture(t)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://nope.stagelets.localhost/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://nope.previews.localhost/", nil)
 	rec := httptest.NewRecorder()
 	f.gw.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -148,7 +148,7 @@ func TestHandoffIsSingleUse(t *testing.T) {
 	}
 }
 
-func TestHandoffForAnotherStageletIsRejected(t *testing.T) {
+func TestHandoffForAnotherPreviewIsRejected(t *testing.T) {
 	f := newFixture(t)
 	if rec := f.get(protocol.HandoffPath + "?token=other"); rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", rec.Code)
@@ -242,18 +242,18 @@ func TestUnconfirmedSessionLosesItsOpenWebSocketWhenTheWindowPasses(t *testing.T
 }
 
 // addSession lets the control plane hand off one more valid session for
-// stagelet s1 with token.
+// preview s1 with token.
 func (f *fixture) addSession(token, id string) {
-	f.cp.handoffs[token] = protocol.HandoffResult{OK: true, SessionID: id, StageletID: "s1", ExpiresAt: f.clock.t.Add(time.Hour)}
+	f.cp.handoffs[token] = protocol.HandoffResult{OK: true, SessionID: id, PreviewID: "s1", ExpiresAt: f.clock.t.Add(time.Hour)}
 	f.cp.valid[id] = true
 }
 
-// serveWebSocketApp routes stagelet s1 to an app that echoes WebSocket
+// serveWebSocketApp routes preview s1 to an app that echoes WebSocket
 // messages, and serves the gateway over HTTP. It returns the gateway's URL.
 func (f *fixture) serveWebSocketApp(t *testing.T) string {
 	t.Helper()
 	app := startApp(t, echoWebSocket)
-	f.gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: addr(app)}})
+	f.gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: addr(app)}})
 	return startApp(t, f.gw.ServeHTTP).URL
 }
 
@@ -271,7 +271,7 @@ func echoWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// openWebSocket opens a WebSocket to stagelet s1 through the gateway at
+// openWebSocket opens a WebSocket to preview s1 through the gateway at
 // gatewayURL, with the visitor's session cookie.
 func openWebSocket(t *testing.T, gatewayURL string, cookie *http.Cookie) *websocket.Conn {
 	t.Helper()
@@ -323,9 +323,9 @@ func (u *unansweredControlPlane) ConfirmSessions(ctx context.Context, _ []string
 func TestUnansweredConfirmDoesNotHoldUpTheNextOne(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		cp := &unansweredControlPlane{confirms: make(chan struct{})}
-		cp.handoffs = map[string]protocol.HandoffResult{"good": {OK: true, SessionID: "sess1", StageletID: "s1", ExpiresAt: time.Now().Add(time.Hour)}}
+		cp.handoffs = map[string]protocol.HandoffResult{"good": {OK: true, SessionID: "sess1", PreviewID: "s1", ExpiresAt: time.Now().Add(time.Hour)}}
 		gw := New(cp, 50*time.Second, time.Now, slog.New(slog.DiscardHandler))
-		gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: host, Upstream: "127.0.0.1:9"}})
+		gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: host, Upstream: "127.0.0.1:9"}})
 		rec := httptest.NewRecorder()
 		gw.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+host+protocol.HandoffPath+"?token=good", nil))
 		if rec.Code != http.StatusSeeOther {

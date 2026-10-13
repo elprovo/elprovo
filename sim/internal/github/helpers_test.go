@@ -179,7 +179,7 @@ func writeFiles(t *testing.T, files map[string]string) string {
 
 func (ts *testSim) createApp(owner string, extra map[string]any) appCredentials {
 	ts.t.Helper()
-	body := map[string]any{"name": "Stagely Dev", "owner": owner, "webhook_url": ts.hooks.srv.URL, "webhook_secret": "hook-secret"}
+	body := map[string]any{"name": "Elprovo Dev", "owner": owner, "webhook_url": ts.hooks.srv.URL, "webhook_secret": "hook-secret"}
 	for k, v := range extra {
 		body[k] = v
 	}

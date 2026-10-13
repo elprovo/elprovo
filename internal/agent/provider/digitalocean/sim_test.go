@@ -18,20 +18,20 @@ import (
 	"time"
 )
 
-// TestProviderAgainstSimulation runs a stagelet's machine lifecycle against
-// stagely-sim's DigitalOcean simulation: create a stagelet droplet and a
+// TestProviderAgainstSimulation runs a preview's machine lifecycle against
+// elprovo-sim's DigitalOcean simulation: create a preview droplet and a
 // neighbor, wait until cloud-init and Docker Compose are ready, and run a
-// Compose project on the stagelet. As setup's module does for the agent, a
+// Compose project on the preview. As setup's module does for the agent, a
 // cloud firewall on the tag lets in only the test's address, so the neighbor
-// must not reach the stagelet's published port. Then it deletes both.
-// It needs a running simulation, named by STAGELY_SIM_DO_URL and
-// STAGELY_SIM_DO_TOKEN, and must run where droplet addresses are reachable.
-// With STAGELY_SIM_DO_GOLDEN_IMAGE, the droplet boots from that snapshot.
+// must not reach the preview's published port. Then it deletes both.
+// It needs a running simulation, named by ELPROVO_SIM_DO_URL and
+// ELPROVO_SIM_DO_TOKEN, and must run where droplet addresses are reachable.
+// With ELPROVO_SIM_DO_GOLDEN_IMAGE, the droplet boots from that snapshot.
 // "sim/scripts/check-digitalocean.sh agent" and "image" set them up.
 func TestProviderAgainstSimulation(t *testing.T) {
-	apiURL, token := os.Getenv("STAGELY_SIM_DO_URL"), os.Getenv("STAGELY_SIM_DO_TOKEN")
+	apiURL, token := os.Getenv("ELPROVO_SIM_DO_URL"), os.Getenv("ELPROVO_SIM_DO_TOKEN")
 	if apiURL == "" || token == "" {
-		t.Fatal("STAGELY_SIM_DO_URL and STAGELY_SIM_DO_TOKEN must name a running simulation; run sim/scripts/check-digitalocean.sh agent")
+		t.Fatal("ELPROVO_SIM_DO_URL and ELPROVO_SIM_DO_TOKEN must name a running simulation; run sim/scripts/check-digitalocean.sh agent")
 	}
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -39,14 +39,14 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	}
 	p, err := New(Config{
 		APIURL: apiURL, Token: token, Region: "nyc3", Size: "s-2vcpu-4gb", Image: "ubuntu-24-04-x64",
-		GoldenImage: os.Getenv("STAGELY_SIM_DO_GOLDEN_IMAGE"),
-		Tag:         "stagely-sim-agent-check", HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
+		GoldenImage: os.Getenv("ELPROVO_SIM_DO_GOLDEN_IMAGE"),
+		Tag:         "elprovo-sim-agent-check", HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
 	}, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.pollEvery = time.Second
-	name, neighbor := "stagely-check-"+randomHex(t), "stagely-neighbor-"+randomHex(t)
+	name, neighbor := "elprovo-check-"+randomHex(t), "elprovo-neighbor-"+randomHex(t)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
@@ -79,7 +79,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if !strings.Contains(string(body), "hello from the stagelet") {
+	if !strings.Contains(string(body), "hello from the preview") {
 		t.Fatalf("service answered %s: %q", resp.Status, body)
 	}
 	connect := func(host, port string) error {
@@ -90,7 +90,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		t.Fatalf("the neighbor can't connect out, so its blocked connection would prove nothing: %v", err)
 	}
 	if err := connect(addr, "8080"); err == nil {
-		t.Fatal("the neighbor reached the stagelet's published port through the cloud firewall")
+		t.Fatal("the neighbor reached the preview's published port through the cloud firewall")
 	}
 	metadata, err := p.machines.Output(t.Context(), name, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/metadata/v1/user-data")
 	if err == nil || !strings.Contains(err.Error(), "refused") {
@@ -203,7 +203,7 @@ func runComposeProject(t *testing.T, p *Provider, name string) {
       interval: 1s
       retries: 30
 `,
-		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the stagelet' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
+		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the preview' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
 	}
 	if _, err := p.machines.Output(t.Context(), name, nil, "mkdir", "-p", "/root/app"); err != nil {
 		t.Fatalf("make the project directory: %v", err)

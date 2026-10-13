@@ -37,10 +37,10 @@ variable "base_image" {
 
 variable "snapshot_name" {
   type    = string
-  default = "stagely-{{timestamp}}"
+  default = "elprovo-{{timestamp}}"
 }
 
-source "hcloud" "stagely" {
+source "hcloud" "elprovo" {
   endpoint             = var.endpoint
   token                = var.token
   location             = var.location
@@ -48,13 +48,13 @@ source "hcloud" "stagely" {
   image                = var.base_image
   ssh_username         = "root"
   snapshot_name        = var.snapshot_name
-  snapshot_labels      = { stagely = "golden-image" }
-  server_labels        = { stagely = "image-build" }
+  snapshot_labels      = { elprovo = "golden-image" }
+  server_labels        = { elprovo = "image-build" }
   public_ipv6_disabled = true
 }
 
 build {
-  sources = ["source.hcloud.stagely"]
+  sources = ["source.hcloud.elprovo"]
 
   provisioner "shell" {
     environment_vars = ["DEBIAN_FRONTEND=noninteractive"]

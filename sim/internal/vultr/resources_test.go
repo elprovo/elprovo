@@ -94,13 +94,13 @@ func TestVPCUpdateChangesTheDescription(t *testing.T) {
 	e := newEnv(t)
 	network := e.createVPC("ewr")
 
-	e.mustCall(http.StatusNoContent, http.MethodPut, "/v2/vpcs/"+network.ID, map[string]string{"description": "stagelets"}, nil)
+	e.mustCall(http.StatusNoContent, http.MethodPut, "/v2/vpcs/"+network.ID, map[string]string{"description": "previews"}, nil)
 
 	var read struct {
 		VPC vpcJSON `json:"vpc"`
 	}
 	e.mustCall(http.StatusOK, http.MethodGet, "/v2/vpcs/"+network.ID, nil, &read)
-	if read.VPC.Description != "stagelets" {
+	if read.VPC.Description != "previews" {
 		t.Fatalf("description = %q", read.VPC.Description)
 	}
 }

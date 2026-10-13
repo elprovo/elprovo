@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const sourceDir = "/var/lib/stagely/builds/s1/src"
+const sourceDir = "/var/lib/elprovo/builds/s1/src"
 
 // withService returns a resolved project whose one service has fields.
 func withService(fields string) string {
@@ -59,7 +59,7 @@ func TestCheckProjectRefusesProjectsOutsideTheSubset(t *testing.T) {
 		{"privileged start hook", withService(`"post_start":[{"command":["sh"],"privileged":true}]`), "post_start: privileged hooks are not allowed"},
 		{"privileged stop hook", withService(`"pre_stop":[{"command":["sh"],"privileged":true}]`), "pre_stop: privileged hooks are not allowed"},
 		{"build context of the worker's root", withService(`"build":{"context":"/"}`), `build.context "/" is not a directory in the repository`},
-		{"build context above the source", withService(`"build":{"context":"/var/lib/stagely/builds"}`), `build.context "/var/lib/stagely/builds" is not a directory`},
+		{"build context above the source", withService(`"build":{"context":"/var/lib/elprovo/builds"}`), `build.context "/var/lib/elprovo/builds" is not a directory`},
 		{"remote build context", withService(`"build":{"context":"https://github.com/acme/evil.git"}`), `build.context "https://github.com/acme/evil.git" is not a directory`},
 		{"absolute Dockerfile", withBuild(`"dockerfile":"/root/.docker/config.json"`), `build.dockerfile "/root/.docker/config.json" is not a file in the repository`},
 		{"Dockerfile above the source", withBuild(`"dockerfile":"../../Dockerfile"`), `build.dockerfile "../../Dockerfile" is not a file in the repository`},
@@ -87,7 +87,7 @@ func TestCheckProjectRefusesProjectsOutsideTheSubset(t *testing.T) {
 
 func TestCheckProjectAllowsATypicalApp(t *testing.T) {
 	project := `{
-	  "name": "stagelet",
+	  "name": "preview",
 	  "services": {
 	    "web": {
 	      "build": {
@@ -108,9 +108,9 @@ func TestCheckProjectAllowsATypicalApp(t *testing.T) {
 	    "assets": {"build": {"context": "` + sourceDir + `"}},
 	    "db": {"image": "postgres:17", "volumes": [{"type": "volume", "source": "data", "target": "/var/lib/postgresql/data"}]}
 	  },
-	  "volumes": {"data": {"name": "stagelet_data", "driver": "local"}, "cache": {"name": "stagelet_cache"}},
-	  "networks": {"default": {"name": "stagelet_default", "ipam": {}}},
-	  "secrets": {"npm": {"name": "stagelet_npm", "environment": "NPM_TOKEN"}}
+	  "volumes": {"data": {"name": "preview_data", "driver": "local"}, "cache": {"name": "preview_cache"}},
+	  "networks": {"default": {"name": "preview_default", "ipam": {}}},
+	  "secrets": {"npm": {"name": "preview_npm", "environment": "NPM_TOKEN"}}
 	}`
 	if err := CheckProject([]byte(project), sourceDir); err != nil {
 		t.Fatalf("CheckProject: %v", err)

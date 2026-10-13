@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
 )
 
 const (

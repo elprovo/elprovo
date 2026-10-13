@@ -9,15 +9,15 @@ import (
 )
 
 var azureOutputs = map[string]any{
-	"resource_group": "acme-stagely", "location": "westeurope", "stagelet_subnet_id": "/subscriptions/sub/resourceGroups/acme-stagely/providers/Microsoft.Network/virtualNetworks/acme/subnets/stagelets",
-	"stagelet_tag": "acme-stagelet", "registry": "acmestagely.azurecr.io",
-	"registry_id": "/subscriptions/sub/resourceGroups/acme-stagely/providers/Microsoft.ContainerRegistry/registries/acmestagely",
+	"resource_group": "acme-elprovo", "location": "westeurope", "preview_subnet_id": "/subscriptions/sub/resourceGroups/acme-elprovo/providers/Microsoft.Network/virtualNetworks/acme/subnets/previews",
+	"preview_tag": "acme-preview", "registry": "acmeelprovo.azurecr.io",
+	"registry_id": "/subscriptions/sub/resourceGroups/acme-elprovo/providers/Microsoft.ContainerRegistry/registries/acmeelprovo",
 }
 
 func azureSetup() Azure {
 	return Azure{
 		TenantID: "tenant", ClientID: "client", ClientSecret: "s3cret", SubscriptionID: "sub", ARMURL: "https://sim.test:9305",
-		Location: "westeurope", RegistryName: "acmestagely",
+		Location: "westeurope", RegistryName: "acmeelprovo",
 	}
 }
 
@@ -33,9 +33,9 @@ func TestAzureCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	args, env, err := cloud.Agent(azureOutputs)
 
 	want := []string{
-		"-azure-arm-url", "https://sim.test:9305", "-azure-subscription", "sub", "-azure-resource-group", "acme-stagely", "-azure-location", "westeurope",
-		"-azure-subnet", azureOutputs["stagelet_subnet_id"].(string), "-azure-tag", "acme-stagelet", "-azure-registry", azureOutputs["registry_id"].(string),
-		"-registry", "acmestagely.azurecr.io",
+		"-azure-arm-url", "https://sim.test:9305", "-azure-subscription", "sub", "-azure-resource-group", "acme-elprovo", "-azure-location", "westeurope",
+		"-azure-subnet", azureOutputs["preview_subnet_id"].(string), "-azure-tag", "acme-preview", "-azure-registry", azureOutputs["registry_id"].(string),
+		"-registry", "acmeelprovo.azurecr.io",
 	}
 	wantEnv := map[string]string{"AZURE_TENANT_ID": "tenant", "AZURE_CLIENT_ID": "client", "AZURE_CLIENT_SECRET": "s3cret"}
 	if err != nil || !reflect.DeepEqual(args, want) || !reflect.DeepEqual(env, wantEnv) {
@@ -44,14 +44,14 @@ func TestAzureCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	if strings.Contains(strings.Join(args, " "), "s3cret") {
 		t.Fatal("the client secret is in the agent's arguments, which other users can read")
 	}
-	if _, _, err := cloud.Agent(map[string]any{"registry": "acmestagely.azurecr.io"}); err == nil {
+	if _, _, err := cloud.Agent(map[string]any{"registry": "acmeelprovo.azurecr.io"}); err == nil {
 		t.Fatal("missing outputs were accepted")
 	}
 }
 
 func TestAzureCloudBootsMachinesFromAGoldenImage(t *testing.T) {
 	a := azureSetup()
-	a.GoldenImage = "/subscriptions/sub/resourceGroups/images/providers/Microsoft.Compute/images/stagely"
+	a.GoldenImage = "/subscriptions/sub/resourceGroups/images/providers/Microsoft.Compute/images/elprovo"
 	cloud, err := a.Cloud(fstest.MapFS{})
 	if err != nil {
 		t.Fatal(err)

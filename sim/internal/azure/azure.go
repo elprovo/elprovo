@@ -1,4 +1,4 @@
-// Package azure simulates the parts of Microsoft Azure that Stagely uses:
+// Package azure simulates the parts of Microsoft Azure that Elprovo uses:
 // Microsoft Entra ID's client credentials token endpoint, the Azure Resource
 // Manager metadata document for custom clouds, and Resource Manager with
 // resource groups, virtual networks and subnets, network security groups,
@@ -22,8 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (

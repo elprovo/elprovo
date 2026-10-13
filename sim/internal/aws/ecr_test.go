@@ -64,7 +64,7 @@ func (e *testEnv) callerAccount() string {
 		Account string `xml:"GetCallerIdentityResult>Account"`
 		Arn     string `xml:"GetCallerIdentityResult>Arn"`
 	}
-	if err := xml.Unmarshal(body, &got); status != http.StatusOK || err != nil || len(got.Account) != 12 || got.Arn != "arn:aws:iam::"+got.Account+":user/stagely-sim" {
+	if err := xml.Unmarshal(body, &got); status != http.StatusOK || err != nil || len(got.Account) != 12 || got.Arn != "arn:aws:iam::"+got.Account+":user/elprovo-sim" {
 		e.t.Fatalf("GetCallerIdentity = %d %s", status, body)
 	}
 	return got.Account
@@ -97,19 +97,19 @@ func TestRepositoryLifecycle(t *testing.T) {
 func TestRepositoryCreationTemplateIsStoredAndReportedAsTerraformReadsIt(t *testing.T) {
 	e := newEnv(t)
 
-	status, created := e.ecr("CreateRepositoryCreationTemplate", map[string]any{"prefix": "stagelets", "appliedFor": []string{"CREATE_ON_PUSH"}, "description": "images"})
+	status, created := e.ecr("CreateRepositoryCreationTemplate", map[string]any{"prefix": "previews", "appliedFor": []string{"CREATE_ON_PUSH"}, "description": "images"})
 	if status != http.StatusOK || created["registryId"] != e.callerAccount() {
 		t.Fatalf("CreateRepositoryCreationTemplate = %d %+v", status, created)
 	}
-	_, described := e.ecr("DescribeRepositoryCreationTemplates", map[string]any{"prefixes": []string{"stagelets"}})
+	_, described := e.ecr("DescribeRepositoryCreationTemplates", map[string]any{"prefixes": []string{"previews"}})
 	templates := described["repositoryCreationTemplates"].([]any)
 	got := templates[0].(map[string]any)
 	if len(templates) != 1 || got["description"] != "images" || got["imageTagMutability"] != "MUTABLE" || got["appliedFor"].([]any)[0] != "CREATE_ON_PUSH" ||
 		got["encryptionConfiguration"].(map[string]any)["encryptionType"] != "AES256" {
 		t.Fatalf("template = %+v", got)
 	}
-	e.ecr("DeleteRepositoryCreationTemplate", map[string]any{"prefix": "stagelets"})
-	if status, out := e.ecr("DescribeRepositoryCreationTemplates", map[string]any{"prefixes": []string{"stagelets"}}); status != http.StatusBadRequest || out["__type"] != "TemplateNotFoundException" {
+	e.ecr("DeleteRepositoryCreationTemplate", map[string]any{"prefix": "previews"})
+	if status, out := e.ecr("DescribeRepositoryCreationTemplates", map[string]any{"prefixes": []string{"previews"}}); status != http.StatusBadRequest || out["__type"] != "TemplateNotFoundException" {
 		t.Fatalf("deleted template = %d %+v", status, out)
 	}
 }

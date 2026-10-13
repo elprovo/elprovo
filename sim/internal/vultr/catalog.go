@@ -122,7 +122,7 @@ func withPlanDefaults(p planJSON) planJSON {
 
 func (s *Simulation) getAccount(*http.Request) (int, any, error) {
 	return http.StatusOK, map[string]any{"account": map[string]any{
-		"name": "stagely-sim", "email": "sim@stagely.local",
+		"name": "elprovo-sim", "email": "sim@elprovo.local",
 		"acls":    []string{"manage_users", "subscriptions_view", "subscriptions", "billing", "provisioning", "firewall"},
 		"balance": 0, "pending_charges": 0, "last_payment_date": "", "last_payment_amount": 0,
 	}}, nil

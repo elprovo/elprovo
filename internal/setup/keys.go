@@ -50,7 +50,7 @@ func createKey(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	block, err := ssh.MarshalPrivateKey(key, "stagely setup")
+	block, err := ssh.MarshalPrivateKey(key, "elprovo setup")
 	if err != nil {
 		return nil, err
 	}

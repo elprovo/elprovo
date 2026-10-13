@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 type createFirewallResponse struct {
@@ -14,23 +14,23 @@ type createFirewallResponse struct {
 	Actions  []actionJSON `json:"actions"`
 }
 
-// stageletFirewall admits SSH and HTTP from one agent address to the
-// servers with the stagelet label.
-func stageletFirewall(agent string) map[string]any {
+// previewFirewall admits SSH and HTTP from one agent address to the
+// servers with the preview label.
+func previewFirewall(agent string) map[string]any {
 	return map[string]any{
-		"name": "stagelets",
+		"name": "previews",
 		"rules": []map[string]any{
 			{"direction": "in", "protocol": "tcp", "port": "1-65535", "source_ips": []string{agent + "/32"}},
 		},
-		"apply_to": []map[string]any{{"type": "label_selector", "label_selector": map[string]string{"selector": "stagely=env-stagelet"}}},
+		"apply_to": []map[string]any{{"type": "label_selector", "label_selector": map[string]string{"selector": "elprovo=env-preview"}}},
 	}
 }
 
 func TestNewServerBootsWithTheFirewallItsLabelsMatch(t *testing.T) {
 	e := newEnv(t)
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), nil)
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), nil)
 
-	srv := e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "env-stagelet"}))
+	srv := e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "env-preview"}))
 
 	want := &machines.Firewall{
 		Inbound: []machines.Rule{{Protocol: "tcp", Ports: "1-65535", Peers: []string{"172.31.0.9/32"}}},
@@ -49,7 +49,7 @@ func TestNewServerBootsWithTheFirewallItsLabelsMatch(t *testing.T) {
 
 func TestServerWithoutAFirewallAcceptsEverything(t *testing.T) {
 	e := newEnv(t)
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), nil)
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), nil)
 
 	srv := e.createServer(serverRequest("other", nil))
 
@@ -61,8 +61,8 @@ func TestServerWithoutAFirewallAcceptsEverything(t *testing.T) {
 func TestFirewallOnTheLabelSelectorListsTheServersItCovers(t *testing.T) {
 	e := newEnv(t)
 	var created createFirewallResponse
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), &created)
-	srv := e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "env-stagelet"}))
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), &created)
+	srv := e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "env-preview"}))
 
 	var got struct {
 		Firewall firewallJSON `json:"firewall"`
@@ -71,15 +71,15 @@ func TestFirewallOnTheLabelSelectorListsTheServersItCovers(t *testing.T) {
 
 	applied := got.Firewall.AppliedTo
 	if len(applied) != 1 || applied[0].Type != "label_selector" || len(applied[0].AppliedToResources) != 1 || applied[0].AppliedToResources[0].Server.ID != srv.ID {
-		t.Fatalf("applied_to = %+v, want the selector with the stagelet server", applied)
+		t.Fatalf("applied_to = %+v, want the selector with the preview server", applied)
 	}
 }
 
 func TestNewRulesReachRunningServersBeforeTheActionSucceeds(t *testing.T) {
 	e := newEnv(t)
 	var created createFirewallResponse
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), &created)
-	srv := e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "env-stagelet"}))
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), &created)
+	srv := e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "env-preview"}))
 	release := e.machines.hold("SetFirewall")
 	defer release()
 
@@ -171,7 +171,7 @@ func TestFirewallEchoesRulesWithCanonicalIPv6AndNullPort(t *testing.T) {
 func TestFirewallInUseCanNotBeDeleted(t *testing.T) {
 	e := newEnv(t)
 	var created createFirewallResponse
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), &created)
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), &created)
 	path := fmt.Sprintf("/v1/firewalls/%d", created.Firewall.ID)
 
 	if status, code := e.errorCode(http.MethodDelete, path, nil); status != http.StatusUnprocessableEntity || code != "resource_in_use" {
@@ -181,7 +181,7 @@ func TestFirewallInUseCanNotBeDeleted(t *testing.T) {
 		Actions []actionJSON `json:"actions"`
 	}
 	e.mustCall(http.StatusCreated, http.MethodPost, path+"/actions/remove_from_resources", map[string]any{
-		"remove_from": []map[string]any{{"type": "label_selector", "label_selector": map[string]string{"selector": "stagely=env-stagelet"}}},
+		"remove_from": []map[string]any{{"type": "label_selector", "label_selector": map[string]string{"selector": "elprovo=env-preview"}}},
 	}, &removed)
 	e.waitAction(removed.Actions[0].ID)
 	e.mustCall(http.StatusNoContent, http.MethodDelete, path, nil, nil)
@@ -190,8 +190,8 @@ func TestFirewallInUseCanNotBeDeleted(t *testing.T) {
 func TestServerCoveredByASelectorCanNotBeRemovedOnItsOwn(t *testing.T) {
 	e := newEnv(t)
 	var created createFirewallResponse
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), &created)
-	srv := e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "env-stagelet"}))
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), &created)
+	srv := e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "env-preview"}))
 
 	status, code := e.errorCode(http.MethodPost, fmt.Sprintf("/v1/firewalls/%d/actions/remove_from_resources", created.Firewall.ID), map[string]any{
 		"remove_from": []map[string]any{{"type": "server", "server": map[string]int64{"id": srv.ID}}},
@@ -204,8 +204,8 @@ func TestServerCoveredByASelectorCanNotBeRemovedOnItsOwn(t *testing.T) {
 
 func TestRelabelingAServerMovesItOutOfTheFirewall(t *testing.T) {
 	e := newEnv(t)
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", stageletFirewall("172.31.0.9"), nil)
-	srv := e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "env-stagelet"}))
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/firewalls", previewFirewall("172.31.0.9"), nil)
+	srv := e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "env-preview"}))
 
 	e.mustCall(http.StatusOK, http.MethodPut, fmt.Sprintf("/v1/servers/%d", srv.ID), map[string]any{"labels": map[string]string{}}, nil)
 

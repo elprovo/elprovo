@@ -1,7 +1,7 @@
-// Package github simulates GitHub for Stagely: a web host like github.com
+// Package github simulates GitHub for Elprovo: a web host like github.com
 // with sign-in, GitHub App authorization and installation, a small
 // repository UI and git smart HTTP; an API host like api.github.com with
-// the REST endpoints Stagely calls; and signed webhook deliveries. An admin
+// the REST endpoints Elprovo calls; and signed webhook deliveries. An admin
 // API under /_sim/ on the web host sets up users, repositories and apps.
 package github
 
@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 // Config configures the simulation.

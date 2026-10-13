@@ -11,7 +11,7 @@ import (
 // refuses any other length, so the default token has that length too.
 const tokenLength = 64
 
-var defaultToken = "stagely-sim-hcloud-" + strings.Repeat("0", tokenLength-len("stagely-sim-hcloud-"))
+var defaultToken = "elprovo-sim-hcloud-" + strings.Repeat("0", tokenLength-len("elprovo-sim-hcloud-"))
 
 type config struct {
 	enabled   bool
@@ -34,7 +34,7 @@ func registerFlags(fs *flag.FlagSet, cfg *config, tokens *repeatedFlag) {
 	fs.BoolVar(&cfg.enabled, "hetzner", false, "run the Hetzner Cloud simulation")
 	fs.StringVar(&cfg.addr, "hcloud-addr", "127.0.0.1:9400", "listen address of the simulated Hetzner Cloud API (api.hetzner.cloud); server user data runs as root in privileged containers, so expose it with care")
 	fs.Var(tokens, "hcloud-token", "64-character API token that the simulated Hetzner Cloud API accepts; repeatable (default "+defaultToken+")")
-	fs.StringVar(&cfg.network, "hcloud-network", "stagely-sim-hetzner", "Docker network for servers' private addresses; public addresses use <network>-public")
+	fs.StringVar(&cfg.network, "hcloud-network", "elprovo-sim-hetzner", "Docker network for servers' private addresses; public addresses use <network>-public")
 }
 
 func (c *config) finish(tokens repeatedFlag) error {

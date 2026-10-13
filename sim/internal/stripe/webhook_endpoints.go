@@ -90,7 +90,7 @@ func newWebhookEndpoint(rawURL, secret string, events []string, now time.Time) *
 	}
 }
 
-const flagEndpointMarker = "stagely_sim_flag"
+const flagEndpointMarker = "elprovo_sim_flag"
 
 func syncFlagEndpoints(a *account, hooks []webhookConfig, now time.Time) {
 	fromFlags := map[string]*webhookEndpoint{}

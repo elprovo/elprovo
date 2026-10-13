@@ -225,7 +225,7 @@ func (c call) eval(t *templateScope) (any, error) {
 		}, nil
 	case "subscription":
 		return map[string]any{
-			"id": "/subscriptions/" + t.sim.cfg.subscription, "subscriptionId": t.sim.cfg.subscription, "tenantId": t.sim.cfg.tenant, "displayName": "Stagely simulation",
+			"id": "/subscriptions/" + t.sim.cfg.subscription, "subscriptionId": t.sim.cfg.subscription, "tenantId": t.sim.cfg.tenant, "displayName": "Elprovo simulation",
 		}, nil
 	case "resourceid":
 		return t.resourceID(args)

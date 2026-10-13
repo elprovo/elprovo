@@ -1,6 +1,6 @@
 // Package agent runs the jobs that the control plane leases to this
 // environment. A deploy builds the commit's images on a build worker from
-// the environment's pool and runs the compiled bundle on the stagelet's own
+// the environment's pool and runs the compiled bundle on the preview's own
 // machine. The runner reports each step, the job's output and the result
 // under the job's lease. Jobs outlive a dropped session and, through the
 // journal, a restart: after a reconnect the agent lists them, and the
@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/agent/build"
-	"github.com/stagely-dev/stagely/internal/agent/journal"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/agent/build"
+	"github.com/elprovo/elprovo/internal/agent/journal"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 // Machines manages the machines of one environment by name.
@@ -51,7 +51,7 @@ type Secrets interface {
 	Resolve(keys []string) (map[string]string, error)
 }
 
-// Registry is where build workers push images and stagelet machines pull
+// Registry is where build workers push images and preview machines pull
 // them. Prefix names images, such as registry.example.com/acme; the part
 // before the first slash is the host that the credentials sign in to.
 // Credentials is nil when the registry needs none.
@@ -62,7 +62,7 @@ type Registry struct {
 
 // RegistryCredentials returns the user name and password that a machine's
 // Docker signs in to host with for one job: credentials that can push for a
-// build worker, and pull only, where the cloud allows it, for a stagelet
+// build worker, and pull only, where the cloud allows it, for a preview
 // machine. Machines run untrusted code, so a cloud should hand out
 // short-lived credentials that reach only the registry.
 type RegistryCredentials func(ctx context.Context, host string, push bool) (username, password string, err error)
@@ -98,7 +98,7 @@ type Runner struct {
 	mu       sync.Mutex
 	jobs     map[string]*job
 	machines map[string]string
-	// turns holds, for each stagelet or machine, a channel that closes when
+	// turns holds, for each preview or machine, a channel that closes when
 	// the job working on it returns, so a newer job never overlaps a stale
 	// one after a reconnect.
 	turns map[string]chan struct{}
@@ -119,7 +119,7 @@ type job struct {
 }
 
 var (
-	stageletIDPattern   = regexp.MustCompile(`^[0-9a-f]{12}$`)
+	previewIDPattern    = regexp.MustCompile(`^[0-9a-f]{12}$`)
 	buildWorkerPattern  = regexp.MustCompile(`^build-([1-9][0-9]{0,3})$`)
 	errMachineNotOwned  = errors.New("the machine was not created by this agent")
 	errUnknownJobKind   = errors.New("unknown job kind")
@@ -335,7 +335,7 @@ func (r *Runner) abandon(ctx context.Context, jobID, reason string) {
 }
 
 func (r *Runner) runJob(ctx context.Context, j *job) {
-	log := r.Log.With("job_id", j.spec.ID, "kind", j.spec.Kind, "stagelet_id", j.spec.StageletID)
+	log := r.Log.With("job_id", j.spec.ID, "kind", j.spec.Kind, "preview_id", j.spec.PreviewID)
 	stopRenew := r.renewLease(ctx, j.spec, log)
 	defer stopRenew()
 
@@ -376,7 +376,7 @@ func (r *Runner) runJob(ctx context.Context, j *job) {
 }
 
 // awaitTurn waits until Recover has deleted the machines that interrupted
-// changes left, and until the agent's earlier job for the same stagelet, or
+// changes left, and until the agent's earlier job for the same preview, or
 // for the same machine, has returned with its cleanup done. Then it holds
 // the turn until release. It reports false when ctx ends first. The job
 // keeps renewing its lease while it waits.
@@ -394,7 +394,7 @@ func (r *Runner) awaitTurn(ctx context.Context, spec protocol.Job, log *slog.Log
 			return nil, false
 		}
 	}
-	key := spec.StageletID
+	key := spec.PreviewID
 	if key == "" {
 		key = spec.Machine
 	}
@@ -416,7 +416,7 @@ func (r *Runner) awaitTurn(ctx context.Context, spec protocol.Job, log *slog.Log
 			}, true
 		}
 		r.mu.Unlock()
-		log.Info("job waits until the agent's earlier job on the same stagelet or machine returns")
+		log.Info("job waits until the agent's earlier job on the same preview or machine returns")
 		select {
 		case <-earlier:
 		case <-ctx.Done():
@@ -470,7 +470,7 @@ func (r *Runner) execute(ctx context.Context, spec protocol.Job, rep *reporter, 
 	case protocol.JobReset:
 		return r.reset(ctx, spec, rep, result)
 	case protocol.JobDelete:
-		return r.deleteStagelet(ctx, spec, rep)
+		return r.deletePreview(ctx, spec, rep)
 	case protocol.JobDeleteMachine:
 		return r.deleteMachineJob(ctx, spec, rep)
 	default:
@@ -479,8 +479,8 @@ func (r *Runner) execute(ctx context.Context, spec protocol.Job, rep *reporter, 
 }
 
 // machineKind says which kind of machine name is and, for a runtime
-// machine, its stagelet. ok is false for names this agent never creates.
-func (r *Runner) machineKind(name string) (kind, stageletID string, ok bool) {
+// machine, its preview. ok is false for names this agent never creates.
+func (r *Runner) machineKind(name string) (kind, previewID string, ok bool) {
 	rest, found := strings.CutPrefix(name, r.MachinePrefix)
 	if !found {
 		return "", "", false
@@ -488,17 +488,17 @@ func (r *Runner) machineKind(name string) (kind, stageletID string, ok bool) {
 	if buildWorkerPattern.MatchString(rest) {
 		return protocol.MachineBuildWorker, "", true
 	}
-	if stageletIDPattern.MatchString(rest) {
+	if previewIDPattern.MatchString(rest) {
 		return protocol.MachineRuntime, rest, true
 	}
 	return "", "", false
 }
 
-func (r *Runner) runtimeName(stageletID string) (string, error) {
-	if !stageletIDPattern.MatchString(stageletID) {
-		return "", fmt.Errorf("invalid stagelet id %q", stageletID)
+func (r *Runner) runtimeName(previewID string) (string, error) {
+	if !previewIDPattern.MatchString(previewID) {
+		return "", fmt.Errorf("invalid preview id %q", previewID)
 	}
-	return r.MachinePrefix + stageletID, nil
+	return r.MachinePrefix + previewID, nil
 }
 
 func workerName(prefix string, n int) string {

@@ -25,7 +25,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
 // fakeCloud is a DigitalOcean API and the SSH server of every droplet it
@@ -224,7 +224,7 @@ func newProvider(t *testing.T, vpc string) (*Provider, *fakeCloud) {
 	t.Cleanup(api.Close)
 	p, err := New(Config{
 		APIURL: api.URL, Token: "do-token", Region: "fra1", Size: "s-2vcpu-4gb", Image: "ubuntu-24-04-x64",
-		Tag: "stagely-stagelet", VPCUUID: vpc, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		Tag: "elprovo-preview", VPCUUID: vpc, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 	}, key)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -238,18 +238,18 @@ func TestCreateMakesADropletTheAgentCanDrive(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]
-	if req.Region != "fra1" || req.Size != "s-2vcpu-4gb" || req.Tags[0] != "stagely-stagelet" || len(req.SSHKeys) != 1 {
+	if req.Region != "fra1" || req.Size != "s-2vcpu-4gb" || req.Tags[0] != "elprovo-preview" || len(req.SSHKeys) != 1 {
 		t.Fatalf("create request = %+v", req)
 	}
 	if !strings.Contains(req.UserData, "docker-compose-v2") {
 		t.Fatal("user data does not install Docker Compose")
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
@@ -260,16 +260,16 @@ func TestCreateMakesADropletTheAgentCanDrive(t *testing.T) {
 func TestRunRefusesADropletWithAnotherHostKey(t *testing.T) {
 	p, _ := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPublic, _ := ssh.NewPublicKey(other.Public())
-	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
-	if err := p.Run(ctx, "stagely-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
+	if err := p.Run(ctx, "elprovo-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
 		t.Fatalf("Run err = %v, want a failed handshake", err)
 	}
 }
@@ -277,7 +277,7 @@ func TestRunRefusesADropletWithAnotherHostKey(t *testing.T) {
 func TestCopyInStreamsTheFile(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	local := filepath.Join(t.TempDir(), "source.tar.gz")
@@ -285,7 +285,7 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := p.CopyIn(ctx, "stagely-a1", local, "/tmp/source.tar.gz"); err != nil {
+	if err := p.CopyIn(ctx, "elprovo-a1", local, "/tmp/source.tar.gz"); err != nil {
 		t.Fatalf("CopyIn: %v", err)
 	}
 	last := len(cloud.commands) - 1
@@ -297,11 +297,11 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 func TestAgentUsesThePrivateAddressInsideAVPC(t *testing.T) {
 	p, _ := newProvider(t, "vpc-1")
 	ctx := context.Background()
-	if _, err := p.api.createDroplet(ctx, createDroplet{Name: "stagely-a1", Tags: []string{"stagely-stagelet"}, UserData: mustCloudConfig(t)}); err != nil {
+	if _, err := p.api.createDroplet(ctx, createDroplet{Name: "elprovo-a1", Tags: []string{"elprovo-preview"}, UserData: mustCloudConfig(t)}); err != nil {
 		t.Fatal(err)
 	}
 
-	addr, err := p.Address(ctx, "stagely-a1")
+	addr, err := p.Address(ctx, "elprovo-a1")
 	if err != nil || addr != "127.0.0.2" {
 		t.Fatalf("Address = %q, %v; want the private address", addr, err)
 	}
@@ -311,7 +311,7 @@ func TestSSHKeyIsRegisteredOnce(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
 
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatalf("Create %s: %v", name, err)
 		}
@@ -348,18 +348,18 @@ func TestRegistryCredentialsAreScopedAndExpire(t *testing.T) {
 func TestDeleteWaitsUntilTheDropletIsGone(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePoll = 3
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -367,13 +367,13 @@ func TestDeleteWaitsUntilTheDropletIsGone(t *testing.T) {
 func TestDeleteFailsWhileTheDropletStillExists(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePoll = 1 << 30
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
 }
@@ -381,7 +381,7 @@ func TestDeleteFailsWhileTheDropletStillExists(t *testing.T) {
 func TestDeletingAMissingDropletSucceeds(t *testing.T) {
 	p, _ := newProvider(t, "")
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -403,7 +403,7 @@ func mustCloudConfig(t *testing.T) string {
 func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -430,7 +430,7 @@ func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	p.cfg.GoldenImage = "176543210"
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]

@@ -32,7 +32,7 @@ var forbiddenBuildKeys = []struct{ key, reason string }{
 	{"privileged", "privileged builds are not allowed"},
 	{"entitlements", "extra build privileges are not allowed"},
 	{"ssh", "the build worker's SSH agent and keys are not allowed"},
-	{"tags", "extra tags would push images under names that Stagely does not choose"},
+	{"tags", "extra tags would push images under names that Elprovo does not choose"},
 	{"cache_to", "exporting the build cache writes to the build worker or the registry and is not allowed"},
 }
 
@@ -76,7 +76,7 @@ func volumeDefinitionProblems(volumes map[string]map[string]any) []string {
 	for _, name := range slices.Sorted(maps.Keys(volumes)) {
 		v := volumes[name]
 		if driver, ok := v["driver"]; ok && driver != "local" {
-			problems = append(problems, fmt.Sprintf("volumes.%s: driver %v is not allowed; Stagely uses the local driver", name, driver))
+			problems = append(problems, fmt.Sprintf("volumes.%s: driver %v is not allowed; Elprovo uses the local driver", name, driver))
 		}
 		if _, ok := v["driver_opts"]; ok {
 			problems = append(problems, fmt.Sprintf("volumes.%s: driver_opts are not allowed, because they can mount the machine's files", name))
@@ -90,7 +90,7 @@ func networkDefinitionProblems(networks map[string]map[string]any) []string {
 	for _, name := range slices.Sorted(maps.Keys(networks)) {
 		n := networks[name]
 		if driver, ok := n["driver"]; ok && driver != "bridge" {
-			problems = append(problems, fmt.Sprintf("networks.%s: driver %v is not allowed; Stagely uses the bridge driver", name, driver))
+			problems = append(problems, fmt.Sprintf("networks.%s: driver %v is not allowed; Elprovo uses the bridge driver", name, driver))
 		}
 		if _, ok := n["driver_opts"]; ok {
 			problems = append(problems, fmt.Sprintf("networks.%s: driver_opts are not allowed", name))

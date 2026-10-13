@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultSecretKey  = "sk_test_stagely"
+	defaultSecretKey  = "sk_test_elprovo"
 	defaultAPIVersion = "2026-09-30.endive"
 )
 
@@ -58,7 +58,7 @@ func registerFlags(fs *flag.FlagSet, cfg *config, keys, hooks *repeatedFlag) {
 	fs.StringVar(&cfg.webURL, "stripe-web-url", "http://localhost:9201", "public base URL of the hosted pages, used in Checkout and portal session URLs")
 	fs.Var(keys, "stripe-secret-key", "API secret key that the API accepts, sk_test_...; repeatable (default "+defaultSecretKey+")")
 	fs.StringVar(&cfg.apiVersion, "stripe-api-version", defaultAPIVersion, "Stripe API version written into events")
-	fs.StringVar(&cfg.plan.name, "stripe-plan-name", "Team Stagelet", "name of the seeded product "+seedProductID)
+	fs.StringVar(&cfg.plan.name, "stripe-plan-name", "Team Preview", "name of the seeded product "+seedProductID)
 	fs.Int64Var(&cfg.plan.amount, "stripe-plan-amount", 2000, "amount of the seeded price "+seedPriceID+", in the smallest currency unit")
 	fs.StringVar(&cfg.plan.currency, "stripe-plan-currency", "usd", "currency of the seeded price")
 	fs.StringVar(&cfg.plan.interval, "stripe-plan-interval", "month", "billing interval of the seeded price: day, week, month or year")

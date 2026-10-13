@@ -1,5 +1,5 @@
-// Command stagely-sim runs local simulations of the outside services that
-// Stagely depends on, behind their real API contracts. See sim/README.md.
+// Command elprovo-sim runs local simulations of the outside services that
+// Elprovo depends on, behind their real API contracts. See sim/README.md.
 package main
 
 import (
@@ -21,14 +21,14 @@ type simulation interface {
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		slog.Error("stagely-sim stopped", "error", err)
+		slog.Error("elprovo-sim stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("stagely-sim", flag.ExitOnError)
-	dataDir := fs.String("data-dir", ".stagely-sim", "directory that keeps each simulation's state")
+	fs := flag.NewFlagSet("elprovo-sim", flag.ExitOnError)
+	dataDir := fs.String("data-dir", ".elprovo-sim", "directory that keeps each simulation's state")
 	builders := registerSimulations(fs)
 	if err := fs.Parse(args); err != nil {
 		return err

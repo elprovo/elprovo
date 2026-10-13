@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
 	testToken   = "ya29.unit"
-	testProject = "stagely-unit"
+	testProject = "elprovo-unit"
 	testZone    = "us-central1-a"
 	testTimeout = 5 * time.Second
 	agentKey    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEGiip+8bOcPUgKryMNIrrEq6am8Gw3YZSPOV/Py82KY agent"
@@ -200,7 +200,7 @@ type testEnv struct {
 func testConfig() config {
 	return config{
 		project: testProject, accessTokens: []string{testToken}, zones: []string{testZone, "us-central1-b", "europe-west1-b"},
-		network: "stagely-sim-unit", tokenURI: "http://sim.test/token",
+		network: "elprovo-sim-unit", tokenURI: "http://sim.test/token",
 	}
 }
 

@@ -11,11 +11,11 @@ import (
 )
 
 const resolved = `{
-  "name": "stagelet",
+  "name": "preview",
   "services": {
     "db": {"image": "postgres:17", "environment": {"POSTGRES_PASSWORD": "dev"}},
     "web": {
-      "build": {"context": "/var/lib/stagely/builds/s1/src", "dockerfile": "Dockerfile"},
+      "build": {"context": "/var/lib/elprovo/builds/s1/src", "dockerfile": "Dockerfile"},
       "pull_policy": "build",
       "environment": {"LITERAL": "cost $$5", "MODE": "dev"},
       "ports": [{"mode": "ingress", "target": 8080, "protocol": "tcp"}]
@@ -117,7 +117,7 @@ func TestApplyWritesBundleAndSecretsThenStartsTheProject(t *testing.T) {
 		t.Fatalf("second call = %v, want the secrets file created readable by root only", m.calls[1])
 	}
 	up := strings.Join(m.calls[2].args, " ")
-	if !strings.Contains(up, SecretsPath+" --project-name stagelet -f "+BundlePath+" up") || !strings.HasSuffix(up, "--force-recreate") {
+	if !strings.Contains(up, SecretsPath+" --project-name preview -f "+BundlePath+" up") || !strings.HasSuffix(up, "--force-recreate") {
 		t.Fatalf("up = %s, want compose up of the bundle with the secrets loaded", up)
 	}
 }

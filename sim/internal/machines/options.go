@@ -11,7 +11,7 @@ import (
 // caPath is where a machine keeps the CA certificates that -machine-ca names.
 // Ubuntu's update-ca-certificates adds the files in this folder to the
 // machine's trust store.
-const caPath = "usr/local/share/ca-certificates/stagely-sim.crt"
+const caPath = "usr/local/share/ca-certificates/elprovo-sim.crt"
 
 // Options are what every simulated cloud's machines share.
 type Options struct {

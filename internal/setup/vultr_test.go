@@ -10,7 +10,7 @@ import (
 
 func vultrOutputs() map[string]any {
 	return map[string]any{
-		"stagelet_firewall_group_id": "fw-1", "stagelet_tag": "prod-stagelet",
+		"preview_firewall_group_id": "fw-1", "preview_tag": "prod-preview",
 		"registry": "fra.vultrcr.com/acme", "registry_id": "reg-1",
 		"vpc_id": "vpc-1", "agent_private_ip": "10.42.0.2", "gateway_private_ip": "10.42.0.3",
 	}
@@ -29,7 +29,7 @@ func TestVultrCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	}
 	args, env, err := cloud.Agent(vultrOutputs())
 	want := []string{
-		"-vultr-region", "fra", "-vultr-firewall-group", "fw-1", "-vultr-tag", "prod-stagelet",
+		"-vultr-region", "fra", "-vultr-firewall-group", "fw-1", "-vultr-tag", "prod-preview",
 		"-vultr-vpc", "vpc-1", "-vultr-vpc-range", "10.42.0.0/20", "-vultr-vpc-allow", "10.42.0.2,10.42.0.3",
 		"-vultr-registry", "reg-1", "-registry", "fra.vultrcr.com/acme",
 	}

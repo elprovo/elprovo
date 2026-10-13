@@ -20,10 +20,10 @@ variable "registry_port" {
   default     = 5050
 }
 
-variable "stagelet_domain" {
-  description = "Domain that stagelet host names live under."
+variable "preview_domain" {
+  description = "Domain that preview host names live under."
   type        = string
-  default     = "stagelets.localhost"
+  default     = "previews.localhost"
 }
 
 variable "certificate_dir" {

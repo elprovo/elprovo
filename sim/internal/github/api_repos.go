@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/github/gitrepo"
+	"github.com/elprovo/elprovo/sim/internal/github/gitrepo"
 )
 
 const maxJSONBlobSize = 1 << 20

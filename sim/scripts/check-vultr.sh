@@ -40,14 +40,14 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-vultr-check-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9390}
+network="elprovo-sim-vultr-check-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9390}
 key="CHECK$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n' | tr a-f A-F)"
 arch=$(docker version --format '{{.Server.Arch}}')
 account=""
 
 machines_left() {
-	docker ps --all --quiet --filter "label=stagely-sim.cloud=vultr" --filter "label=stagely-sim.account=$account" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter "label=elprovo-sim.cloud=vultr" --filter "label=elprovo-sim.account=$account" | wc -l | tr -d ' '
 }
 
 # wait_no_machines waits until the machines of instances that a client
@@ -73,8 +73,8 @@ cleanup() {
 	fi
 	docker rm --force "$network-sim" "$network-agent" "$network-tofu" "$network-packer" >/dev/null 2>&1 || true
 	if [ -n "$account" ]; then
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-vultr-snapshot:$(echo "$account" | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
-		docker ps --all --quiet --filter "label=stagely-sim.account=$account" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-vultr-snapshot:$(echo "$account" | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter "label=elprovo-sim.account=$account" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	rm -rf "$work"
@@ -89,7 +89,7 @@ make_certs() {
 	(
 		cd "$work/certs"
 		openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 \
-			-subj "/CN=stagely-sim Vultr check CA" -keyout ca.key -out ca.pem \
+			-subj "/CN=elprovo-sim Vultr check CA" -keyout ca.key -out ca.pem \
 			-addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign 2>/dev/null
 		openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes \
 			-subj "/CN=api.vultr.com" -keyout api.key -out api.csr 2>/dev/null
@@ -105,16 +105,16 @@ api() {
 }
 
 start_simulation() {
-	(cd "$repo/sim" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$work/stagely-sim" ./cmd/stagely-sim)
+	(cd "$repo/sim" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
 	make_certs
-	docker network create --label stagely-sim.network=true "$network" >/dev/null
-	docker network create --label stagely-sim.network=true "$network-public" >/dev/null
+	docker network create --label elprovo-sim.network=true "$network" >/dev/null
+	docker network create --label elprovo-sim.network=true "$network-public" >/dev/null
 	docker create --name "$network-sim" --network "$network-public" --network-alias api.vultr.com \
 		--publish "127.0.0.1:$port:443" --volume /var/run/docker.sock:/var/run/docker.sock \
-		--entrypoint /stagely-sim docker:29.8.1-cli \
+		--entrypoint /elprovo-sim docker:29.8.1-cli \
 		-data-dir /data -vultr -vultr-addr :443 -vultr-network "$network" -vultr-api-key "$key" \
 		-vultr-tls-cert /certs/api.crt -vultr-tls-key /certs/api.key >/dev/null
-	docker cp "$work/stagely-sim" "$network-sim:/stagely-sim"
+	docker cp "$work/elprovo-sim" "$network-sim:/elprovo-sim"
 	docker cp "$work/certs/." "$network-sim:/certs/"
 	docker start "$network-sim" >/dev/null
 	tries=0
@@ -134,8 +134,8 @@ check_agent() {
 		-o "$work/provider.test" ./internal/agent/provider/vultr)
 	private_range=$(docker network inspect "$network" --format '{{(index .IPAM.Config 0).Subnet}}')
 	docker create --name "$network-agent" --network "$network" --network "$network-public" \
-		-e VULTR_API_KEY="$key" -e STAGELY_SIM_VULTR_GOLDEN_IMAGE="${golden_image:-}" -e SSL_CERT_FILE=/ca.pem \
-		-e STAGELY_SIM_VULTR_NETWORK_RANGE="$private_range" \
+		-e VULTR_API_KEY="$key" -e ELPROVO_SIM_VULTR_GOLDEN_IMAGE="${golden_image:-}" -e SSL_CERT_FILE=/ca.pem \
+		-e ELPROVO_SIM_VULTR_NETWORK_RANGE="$private_range" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	docker cp "$work/certs/ca.pem" "$network-agent:/ca.pem"
@@ -172,12 +172,12 @@ check_terraform() {
 	mkdir -p "$work/tofu"
 	cp -R "$repo/sim/internal/vultr/testdata/terraform" "$work/tofu/testdata"
 	cp -R "$repo/terraform/vultr" "$work/tofu/module"
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
 	public_key=$(cat "$work/key.pub")
 	cat >"$work/tofu/testdata/terraform.tfvars.json" <<EOF
 {"ssh_public_key": "$public_key"}
 EOF
-	# The variables stagely setup passes, with user data like the host keys
+	# The variables elprovo setup passes, with user data like the host keys
 	# it pins.
 	cat >"$work/tofu/module/terraform.tfvars.json" <<EOF
 {
@@ -207,11 +207,11 @@ check_image() {
 	docker create --name "$network-packer" --network "$network" --network "$network-public" \
 		-e VULTR_API_KEY="$key" -w /images --entrypoint sh hashicorp/packer:1.16.1 \
 		-c 'cat /etc/ssl/certs/ca-certificates.crt /ca.pem >/tmp/bundle.pem && export SSL_CERT_FILE=/tmp/bundle.pem &&
-			packer init . && packer build -color=false -var region=ewr -var snapshot_description=stagely-image-check .' >/dev/null
+			packer init . && packer build -color=false -var region=ewr -var snapshot_description=elprovo-image-check .' >/dev/null
 	docker cp "$repo/images/vultr/." "$network-packer:/images/"
 	docker cp "$work/certs/ca.pem" "$network-packer:/ca.pem"
 	docker start --attach "$network-packer"
-	golden_image=$(api "/v2/snapshots?description=stagely-image-check" |
+	golden_image=$(api "/v2/snapshots?description=elprovo-image-check" |
 		python3 -c 'import json, sys; print(next(s["id"] for s in json.load(sys.stdin)["snapshots"] if s["status"] == "complete"))')
 	wait_no_machines "after Packer deleted its build instance"
 	echo "built the golden image $golden_image"

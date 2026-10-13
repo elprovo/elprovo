@@ -24,7 +24,7 @@ type Azure struct {
 	Location     string
 	RegistryName string
 	// GoldenImage is the id of a managed image from images/azure that the
-	// agent boots stagelet machines and build workers from. Empty means the
+	// agent boots preview machines and build workers from. Empty means the
 	// stock image with cloud-init.
 	GoldenImage string
 }
@@ -53,7 +53,7 @@ func (a Azure) Cloud(module fs.FS) (Cloud, error) {
 		},
 		Vars: map[string]any{"metadata_host": arm.Host, "location": a.Location, "registry_name": a.RegistryName},
 		Agent: func(o map[string]any) ([]string, map[string]string, error) {
-			names := []string{"resource_group", "location", "stagelet_subnet_id", "stagelet_tag", "registry", "registry_id"}
+			names := []string{"resource_group", "location", "preview_subnet_id", "preview_tag", "registry", "registry_id"}
 			values := map[string]string{}
 			for _, name := range names {
 				v, err := outputString(o, name)
@@ -64,7 +64,7 @@ func (a Azure) Cloud(module fs.FS) (Cloud, error) {
 			}
 			args := []string{
 				"-azure-arm-url", "https://" + arm.Host, "-azure-subscription", a.SubscriptionID, "-azure-resource-group", values["resource_group"],
-				"-azure-location", values["location"], "-azure-subnet", values["stagelet_subnet_id"], "-azure-tag", values["stagelet_tag"],
+				"-azure-location", values["location"], "-azure-subnet", values["preview_subnet_id"], "-azure-tag", values["preview_tag"],
 				"-azure-registry", values["registry_id"], "-registry", values["registry"],
 			}
 			if a.GoldenImage != "" {

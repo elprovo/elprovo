@@ -75,8 +75,8 @@ func TestSeedArchiveWritesMetaDataUserDataAndFirewall(t *testing.T) {
 	if string(files["var/lib/cloud/seed/nocloud/user-data"]) != "#cloud-config\n" {
 		t.Fatalf("user-data = %q", files["var/lib/cloud/seed/nocloud/user-data"])
 	}
-	if string(files["var/lib/stagely-vm/firewall.json"]) != "null" {
-		t.Fatalf("firewall = %q, want null so a snapshot's old firewall is replaced", files["var/lib/stagely-vm/firewall.json"])
+	if string(files["var/lib/elprovo-vm/firewall.json"]) != "null" {
+		t.Fatalf("firewall = %q, want null so a snapshot's old firewall is replaced", files["var/lib/elprovo-vm/firewall.json"])
 	}
 }
 

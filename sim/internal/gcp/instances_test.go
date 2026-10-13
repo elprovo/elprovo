@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func TestInsertInstanceRunsWhenItsMachineStarts(t *testing.T) {
@@ -19,7 +19,7 @@ func TestInsertInstanceRunsWhenItsMachineStarts(t *testing.T) {
 	e.mustCall(http.StatusOK, http.MethodPost, computePath+"/zones/"+testZone+"/instances", instanceBody("web-1", map[string]any{
 		"metadata": map[string]any{"items": []map[string]string{{"key": "user-data", "value": userData}, {"key": "ssh-keys", "value": "root:" + agentKey}}},
 		"tags":     map[string]any{"items": []string{"web"}},
-		"labels":   map[string]string{"stagely": "web"},
+		"labels":   map[string]string{"elprovo": "web"},
 	}), &op)
 
 	if op.Status != "RUNNING" || op.OperationType != "insert" || op.Zone != computeBase+"projects/"+testProject+"/zones/"+testZone {
@@ -58,7 +58,7 @@ func TestInstanceMetadataServesWhatTheGuestReads(t *testing.T) {
 	e := newEnv(t)
 	got := e.createInstance("web-1", map[string]any{
 		"metadata": map[string]any{"items": []map[string]string{{"key": "user-data", "value": "#cloud-config\n"}}},
-		"tags":     map[string]any{"items": []string{"web", "stagelet"}},
+		"tags":     map[string]any{"items": []string{"web", "preview"}},
 	})
 	_, spec, _ := e.machines.machineOf(got.ID)
 
@@ -69,7 +69,7 @@ func TestInstanceMetadataServesWhatTheGuestReads(t *testing.T) {
 		base + "instance/id":                                                got.ID,
 		base + "instance/name":                                              "web-1",
 		base + "instance/hostname":                                          "web-1." + testZone + ".c." + testProject + ".internal",
-		base + "instance/tags":                                              `["web","stagelet"]`,
+		base + "instance/tags":                                              `["web","preview"]`,
 		base + "instance/attributes/user-data":                              "#cloud-config\n",
 		base + "instance/network-interfaces/0/ip":                           "10.0.0.5",
 		base + "instance/network-interfaces/0/access-configs/0/external-ip": "203.0.113.5",
@@ -154,15 +154,15 @@ func TestDeleteWhileTheInstanceIsCreatedIsNotReady(t *testing.T) {
 func TestListInstancesFiltersByLabelAndPages(t *testing.T) {
 	e := newEnv(t)
 	for _, name := range []string{"a-1", "a-2", "a-3"} {
-		e.createInstance(name, map[string]any{"labels": map[string]string{"stagely": "env-a"}})
+		e.createInstance(name, map[string]any{"labels": map[string]string{"elprovo": "env-a"}})
 	}
-	e.createInstance("b-1", map[string]any{"labels": map[string]string{"stagely": "env-b"}})
+	e.createInstance("b-1", map[string]any{"labels": map[string]string{"elprovo": "env-b"}})
 	var names []string
 	token := ""
 
 	for {
 		var got list[instanceJSON]
-		path := computePath + "/zones/" + testZone + "/instances?maxResults=2&filter=" + strings.ReplaceAll(`labels.stagely+%3D+"env-a"`, " ", "+")
+		path := computePath + "/zones/" + testZone + "/instances?maxResults=2&filter=" + strings.ReplaceAll(`labels.elprovo+%3D+"env-a"`, " ", "+")
 		if token != "" {
 			path += "&pageToken=" + token
 		}
@@ -263,23 +263,23 @@ func TestFirewallRulesFollowTargetAndSourceTags(t *testing.T) {
 	e.insert(computePath+"/regions/us-central1/subnetworks", map[string]any{"name": "env", "network": "global/networks/env", "ipCidrRange": "10.42.0.0/24"})
 	nic := map[string]any{"networkInterfaces": []map[string]any{{"subnetwork": "regions/us-central1/subnetworks/env"}}}
 	agent := e.createInstance("agent", merge(map[string]any{"tags": map[string]any{"items": []string{"agent"}}}, nic))
-	stagelet := e.createInstance("stagelet", merge(map[string]any{"tags": map[string]any{"items": []string{"stagelet"}}}, nic))
+	preview := e.createInstance("preview", merge(map[string]any{"tags": map[string]any{"items": []string{"preview"}}}, nic))
 
 	e.insert(computePath+"/global/firewalls", map[string]any{
-		"name": "stagelets", "network": "global/networks/env", "direction": "INGRESS",
-		"allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"1-65535"}}}, "sourceTags": []string{"agent"}, "targetTags": []string{"stagelet"},
+		"name": "previews", "network": "global/networks/env", "direction": "INGRESS",
+		"allowed": []map[string]any{{"IPProtocol": "tcp", "ports": []string{"1-65535"}}}, "sourceTags": []string{"agent"}, "targetTags": []string{"preview"},
 	})
 
 	want := []machines.Rule{{Protocol: "tcp", Peers: []string{agent.NetworkInterfaces[0].NetworkIP}}}
-	eventually(t, "the stagelet's machine gets the rule", func() bool {
-		fw := e.machines.lastFirewall(stagelet.ID)
+	eventually(t, "the preview's machine gets the rule", func() bool {
+		fw := e.machines.lastFirewall(preview.ID)
 		return fw != nil && slices.EqualFunc(fw.Inbound, want, ruleEqual)
 	})
 	if fw := e.machines.lastFirewall(agent.ID); len(fw.Inbound) != 0 {
 		t.Fatalf("agent firewall = %+v, want no inbound rule", fw.Inbound)
 	}
-	e.remove(computePath + "/global/firewalls/stagelets")
-	eventually(t, "the stagelet's machine loses the rule", func() bool { return len(e.machines.lastFirewall(stagelet.ID).Inbound) == 0 })
+	e.remove(computePath + "/global/firewalls/previews")
+	eventually(t, "the preview's machine loses the rule", func() bool { return len(e.machines.lastFirewall(preview.ID).Inbound) == 0 })
 }
 
 func ruleEqual(a, b machines.Rule) bool {

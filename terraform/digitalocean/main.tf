@@ -1,5 +1,5 @@
 locals {
-  stagelet_tag = var.stagelet_tag != "" ? var.stagelet_tag : "${var.name}-stagelet"
+  preview_tag = var.preview_tag != "" ? var.preview_tag : "${var.name}-preview"
 }
 
 # Firewalls apply to tags, and DigitalOcean accepts a firewall only for tags
@@ -12,18 +12,18 @@ resource "digitalocean_tag" "gateway" {
   name = "${var.name}-gateway"
 }
 
-resource "digitalocean_tag" "stagelet" {
-  name = local.stagelet_tag
+resource "digitalocean_tag" "preview" {
+  name = local.preview_tag
 }
 
 resource "digitalocean_vpc" "environment" {
-  name     = "${var.name}-stagely"
+  name     = "${var.name}-elprovo"
   region   = var.region
   ip_range = var.vpc_ip_range
 }
 
 resource "digitalocean_ssh_key" "operator" {
-  name       = "${var.name}-stagely-setup"
+  name       = "${var.name}-elprovo-setup"
   public_key = var.ssh_public_key
 }
 
@@ -118,11 +118,11 @@ resource "digitalocean_firewall" "gateway" {
   }
 }
 
-# Stagelet machines and build workers accept traffic only from the agent,
+# Preview machines and build workers accept traffic only from the agent,
 # which drives them over SSH and checks health, and from the gateway.
-resource "digitalocean_firewall" "stagelets" {
-  name = "${var.name}-stagelets"
-  tags = [digitalocean_tag.stagelet.id]
+resource "digitalocean_firewall" "previews" {
+  name = "${var.name}-previews"
+  tags = [digitalocean_tag.preview.id]
 
   inbound_rule {
     protocol           = "tcp"
@@ -143,18 +143,18 @@ resource "digitalocean_firewall" "stagelets" {
   }
 }
 
-resource "digitalocean_container_registry" "stagely" {
+resource "digitalocean_container_registry" "elprovo" {
   count                  = var.create_registry ? 1 : 0
   name                   = var.registry_name
   subscription_tier_slug = var.registry_tier
   region                 = var.region
 }
 
-resource "digitalocean_record" "stagelets" {
+resource "digitalocean_record" "previews" {
   count  = var.dns_domain == "" ? 0 : 1
   domain = var.dns_domain
   type   = "A"
-  name   = "*.${var.stagelet_subdomain}"
+  name   = "*.${var.preview_subdomain}"
   value  = digitalocean_reserved_ip.gateway.ip_address
   ttl    = 300
 }

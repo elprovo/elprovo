@@ -20,29 +20,29 @@ import (
 	"time"
 )
 
-// TestProviderAgainstSimulation runs a stagelet's machine lifecycle against
-// stagely-sim's AWS simulation. As setup does, it puts the instances in a
+// TestProviderAgainstSimulation runs a preview's machine lifecycle against
+// elprovo-sim's AWS simulation. As setup does, it puts the instances in a
 // security group that lets in only the agent, here the test's addresses. It
-// launches a stagelet and a neighbor into the default VPC, waits until
+// launches a preview and a neighbor into the default VPC, waits until
 // cloud-init and Docker Compose are ready, runs a Compose project on the
-// stagelet and reaches it, checks that the neighbor can connect out but not
-// to the stagelet and that a container can't reach the metadata service.
+// preview and reaches it, checks that the neighbor can connect out but not
+// to the preview and that a container can't reach the metadata service.
 // It pushes an image with a build worker's registry credentials, pulls it
-// with a stagelet machine's and is refused a push with them, then
+// with a preview machine's and is refused a push with them, then
 // terminates both instances. It needs a running simulation that serves EC2,
-// STS and ECR at STAGELY_SIM_AWS_URL for the access key in
-// STAGELY_SIM_AWS_ACCESS_KEY_ID and STAGELY_SIM_AWS_SECRET_ACCESS_KEY, in
-// STAGELY_SIM_AWS_REGION, the stock AMI in STAGELY_SIM_AWS_IMAGE, and an
+// STS and ECR at ELPROVO_SIM_AWS_URL for the access key in
+// ELPROVO_SIM_AWS_ACCESS_KEY_ID and ELPROVO_SIM_AWS_SECRET_ACCESS_KEY, in
+// ELPROVO_SIM_AWS_REGION, the stock AMI in ELPROVO_SIM_AWS_IMAGE, and an
 // image prefix, <account registry host>/<repository prefix>, in
-// STAGELY_SIM_AWS_REGISTRY, of a registry that uses the simulation as its
+// ELPROVO_SIM_AWS_REGISTRY, of a registry that uses the simulation as its
 // token service. It must run where instance addresses are reachable. With
-// STAGELY_SIM_AWS_GOLDEN_IMAGE, the instances boot from that AMI.
+// ELPROVO_SIM_AWS_GOLDEN_IMAGE, the instances boot from that AMI.
 // "sim/scripts/check-aws.sh agent" and "image" set them up.
 func TestProviderAgainstSimulation(t *testing.T) {
 	env := map[string]string{}
 	for _, name := range []string{"URL", "ACCESS_KEY_ID", "SECRET_ACCESS_KEY", "REGION", "IMAGE", "REGISTRY"} {
-		if env[name] = os.Getenv("STAGELY_SIM_AWS_" + name); env[name] == "" {
-			t.Fatalf("STAGELY_SIM_AWS_%s must be set for a running simulation; run sim/scripts/check-aws.sh agent", name)
+		if env[name] = os.Getenv("ELPROVO_SIM_AWS_" + name); env[name] == "" {
+			t.Fatalf("ELPROVO_SIM_AWS_%s must be set for a running simulation; run sim/scripts/check-aws.sh agent", name)
 		}
 	}
 	creds := Credentials{AccessKeyID: env["ACCESS_KEY_ID"], SecretAccessKey: env["SECRET_ACCESS_KEY"]}
@@ -55,43 +55,43 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	_, repositoryPrefix, _ := strings.Cut(env["REGISTRY"], "/")
 	p, err := New(Config{
 		EC2URL: env["URL"], ECRURL: env["URL"], STSURL: env["URL"], Region: env["REGION"], Credentials: creds, InstanceType: "t3.medium",
-		Image: env["IMAGE"], GoldenImage: os.Getenv("STAGELY_SIM_AWS_GOLDEN_IMAGE"), SecurityGroupID: group, VolumeSize: 30,
-		Group: "stagely-sim-agent-check", RepositoryPrefix: repositoryPrefix, HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
+		Image: env["IMAGE"], GoldenImage: os.Getenv("ELPROVO_SIM_AWS_GOLDEN_IMAGE"), SecurityGroupID: group, VolumeSize: 30,
+		Group: "elprovo-sim-agent-check", RepositoryPrefix: repositoryPrefix, HostKeyDir: t.TempDir(), ReadyTimeout: 10 * time.Minute,
 	}, key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.pollEvery = time.Second
-	stagelet, neighbor := "stagely-check-"+randomHex(t), "stagely-neighbor-"+randomHex(t)
+	preview, neighbor := "elprovo-check-"+randomHex(t), "elprovo-neighbor-"+randomHex(t)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		_ = p.Delete(ctx, stagelet)
+		_ = p.Delete(ctx, preview)
 		_ = p.Delete(ctx, neighbor)
 		_ = ec2.query(ctx, "DeleteSecurityGroup", url.Values{"GroupId": {group}}, &struct{}{})
 	})
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Create(t.Context(), name); err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
 	}
-	addr, err := p.Address(t.Context(), stagelet)
+	addr, err := p.Address(t.Context(), preview)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
-	runComposeProject(t, p, stagelet)
-	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the stagelet") {
-		t.Fatalf("service on the stagelet's address answered %q", body)
+	runComposeProject(t, p, preview)
+	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the preview") {
+		t.Fatalf("service on the preview's address answered %q", body)
 	}
-	checkNeighborIsolation(t, p, ec2, stagelet, neighbor, addr)
-	metadata, err := p.machines.Output(t.Context(), stagelet, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/latest/user-data")
+	checkNeighborIsolation(t, p, ec2, preview, neighbor, addr)
+	metadata, err := p.machines.Output(t.Context(), preview, nil, "docker", "run", "--rm", "busybox:1.36", "wget", "-T", "5", "-qO-", "http://169.254.169.254/latest/user-data")
 	if err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Fatalf("a container asked the metadata service: %q, %v; want the connection refused, so containers can't read the user data", metadata, err)
 	}
-	pushAndPull(t, p, stagelet, env["REGISTRY"])
+	pushAndPull(t, p, preview, env["REGISTRY"])
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Delete(t.Context(), name); err != nil {
 			t.Fatalf("delete %s: %v", name, err)
 		}
@@ -105,7 +105,7 @@ func TestProviderAgainstSimulation(t *testing.T) {
 }
 
 // pushAndPull signs the machine in as the agent's runner does: with a build
-// worker's credentials it pushes an image, and with a stagelet machine's it
+// worker's credentials it pushes an image, and with a preview machine's it
 // pulls the image and is refused a push.
 func pushAndPull(t *testing.T, p *Provider, name, registry string) {
 	t.Helper()
@@ -126,27 +126,27 @@ func pushAndPull(t *testing.T, p *Provider, name, registry string) {
 	}
 	login(false)
 	if out, err := p.machines.Output(t.Context(), name, nil, "docker", "pull", ref); err != nil {
-		t.Fatalf("pull %s with a stagelet machine's credentials: %v\n%s", ref, err, out)
+		t.Fatalf("pull %s with a preview machine's credentials: %v\n%s", ref, err, out)
 	}
-	if _, err := p.machines.Output(t.Context(), name, nil, "docker", "tag", ref, registry+"/busybox:pushed-by-stagelet"); err != nil {
+	if _, err := p.machines.Output(t.Context(), name, nil, "docker", "tag", ref, registry+"/busybox:pushed-by-preview"); err != nil {
 		t.Fatalf("tag the image: %v", err)
 	}
-	_, err := p.machines.Output(t.Context(), name, nil, "docker", "push", registry+"/busybox:pushed-by-stagelet")
+	_, err := p.machines.Output(t.Context(), name, nil, "docker", "push", registry+"/busybox:pushed-by-preview")
 	if err == nil || !strings.Contains(err.Error(), "insufficient_scope") {
-		t.Fatalf("push with a stagelet machine's credentials: %v; want the registry to refuse it for insufficient scope", err)
+		t.Fatalf("push with a preview machine's credentials: %v; want the registry to refuse it for insufficient scope", err)
 	}
-	t.Logf("pushed %s with a build worker's credentials and pulled it with a stagelet machine's, which may not push", ref)
+	t.Logf("pushed %s with a build worker's credentials and pulled it with a preview machine's, which may not push", ref)
 }
 
 // agentOnlyGroup creates a security group in the default VPC that lets in
-// TCP from this test's IPv4 addresses only, as the stagelet group setup
+// TCP from this test's IPv4 addresses only, as the preview group setup
 // makes lets in only the agent and the gateway, and returns its id.
 func agentOnlyGroup(t *testing.T, ec2 *client) string {
 	t.Helper()
 	var created struct {
 		GroupID string `xml:"groupId"`
 	}
-	name := "stagely-check-" + randomHex(t)
+	name := "elprovo-check-" + randomHex(t)
 	if err := ec2.query(t.Context(), "CreateSecurityGroup", url.Values{"GroupName": {name}, "GroupDescription": {"agent check"}}, &created); err != nil {
 		t.Fatalf("create the security group: %v", err)
 	}
@@ -168,10 +168,10 @@ func agentOnlyGroup(t *testing.T, ec2 *client) string {
 	return created.GroupID
 }
 
-// checkNeighborIsolation checks that another instance in the stagelet group
-// can't connect to the stagelet's published port, at either of its
+// checkNeighborIsolation checks that another instance in the preview group
+// can't connect to the preview's published port, at either of its
 // addresses, while it can connect out to the test.
-func checkNeighborIsolation(t *testing.T, p *Provider, ec2 *client, stagelet, neighbor, stageletAddr string) {
+func checkNeighborIsolation(t *testing.T, p *Provider, ec2 *client, preview, neighbor, previewAddr string) {
 	t.Helper()
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", ":0")
 	if err != nil {
@@ -192,16 +192,16 @@ func checkNeighborIsolation(t *testing.T, p *Provider, ec2 *client, stagelet, ne
 		return err
 	}
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
-	if err := connect(egressAddress(t, stageletAddr), port); err != nil {
+	if err := connect(egressAddress(t, previewAddr), port); err != nil {
 		t.Fatalf("the neighbor can't connect out, so its blocked connections would prove nothing: %v", err)
 	}
-	instances, err := ec2.describeInstances(t.Context(), []filter{{"tag:Name", []string{stagelet}}})
+	instances, err := ec2.describeInstances(t.Context(), []filter{{"tag:Name", []string{preview}}})
 	if err != nil || len(instances) != 1 {
-		t.Fatalf("find the stagelet: %v, %d instances", err, len(instances))
+		t.Fatalf("find the preview: %v, %d instances", err, len(instances))
 	}
-	for _, addr := range []string{stageletAddr, instances[0].PrivateIP} {
+	for _, addr := range []string{previewAddr, instances[0].PrivateIP} {
 		if err := connect(addr, "8080"); err == nil {
-			t.Fatalf("the neighbor reached the stagelet's published port at %s through the security group", addr)
+			t.Fatalf("the neighbor reached the preview's published port at %s through the security group", addr)
 		}
 	}
 }
@@ -245,7 +245,7 @@ func runComposeProject(t *testing.T, p *Provider, name string) {
       interval: 1s
       retries: 30
 `,
-		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the stagelet' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
+		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the preview' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
 	}
 	if _, err := p.machines.Output(t.Context(), name, nil, "mkdir", "-p", "/root/app"); err != nil {
 		t.Fatalf("make the project directory: %v", err)

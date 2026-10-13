@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const runDir = "/run/stagely-vm-init"
+const runDir = "/run/elprovo-vm-init"
 
 var bootTargets = []string{"multi-user.target", "default.target"}
 
@@ -292,7 +292,7 @@ func changeEnablement(root, socket, verb string, units []string, now bool, stdou
 func askSupervisor(socket string, req controlRequest, stdout, stderr io.Writer) int {
 	conn, err := (&net.Dialer{}).DialContext(context.Background(), "unix", socket)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "systemctl: the stagely-vm-init supervisor is not running: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "systemctl: the elprovo-vm-init supervisor is not running: %v\n", err)
 		return 1
 	}
 	defer func() { _ = conn.Close() }()

@@ -62,10 +62,10 @@ func TestRecordLifecycleAsTheTerraformProviderDrivesIt(t *testing.T) {
 
 	var created domainRecordResponse
 	e.mustCall(http.StatusCreated, http.MethodPost, "/v2/domains/acme.dev/records", map[string]any{
-		"type": "A", "name": "*.stagelets", "data": "203.0.113.7", "priority": 0, "port": 0, "ttl": 300, "weight": 0, "flags": 0,
+		"type": "A", "name": "*.previews", "data": "203.0.113.7", "priority": 0, "port": 0, "ttl": 300, "weight": 0, "flags": 0,
 	}, &created)
 	rec := created.DomainRecord
-	if rec.ID == 0 || rec.Name != "*.stagelets" || rec.Data != "203.0.113.7" || rec.TTL != 300 || rec.Priority != nil || rec.Port != nil {
+	if rec.ID == 0 || rec.Name != "*.previews" || rec.Data != "203.0.113.7" || rec.TTL != 300 || rec.Priority != nil || rec.Port != nil {
 		t.Fatalf("created = %+v, want the A record with an id, its relative name, TTL 300 and no priority or port", rec)
 	}
 	path := "/v2/domains/acme.dev/records/" + strconv.FormatInt(rec.ID, 10)
@@ -76,14 +76,14 @@ func TestRecordLifecycleAsTheTerraformProviderDrivesIt(t *testing.T) {
 		t.Fatalf("read = %+v, want %+v", read.DomainRecord, rec)
 	}
 	var byName domainRecordsResponse
-	e.mustCall(http.StatusOK, http.MethodGet, "/v2/domains/acme.dev/records?type=A&name=*.stagelets.acme.dev", nil, &byName)
+	e.mustCall(http.StatusOK, http.MethodGet, "/v2/domains/acme.dev/records?type=A&name=*.previews.acme.dev", nil, &byName)
 	if len(byName.DomainRecords) != 1 || byName.DomainRecords[0].ID != rec.ID {
-		t.Fatalf("records named *.stagelets.acme.dev = %+v, want the new record", byName.DomainRecords)
+		t.Fatalf("records named *.previews.acme.dev = %+v, want the new record", byName.DomainRecords)
 	}
 
 	var updated domainRecordResponse
 	e.mustCall(http.StatusOK, http.MethodPut, path, map[string]any{
-		"type": "A", "name": "*.stagelets", "data": "203.0.113.8", "priority": 0, "port": 0, "ttl": 300, "weight": 0, "flags": 0,
+		"type": "A", "name": "*.previews", "data": "203.0.113.8", "priority": 0, "port": 0, "ttl": 300, "weight": 0, "flags": 0,
 	}, &updated)
 	if updated.DomainRecord.Data != "203.0.113.8" || updated.DomainRecord.ID != rec.ID {
 		t.Fatalf("updated = %+v, want the same record pointing at 203.0.113.8", updated.DomainRecord)

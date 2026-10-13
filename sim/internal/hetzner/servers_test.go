@@ -14,7 +14,7 @@ func TestCreatedServerHasItsPublicAddressBeforeItRuns(t *testing.T) {
 	defer release()
 
 	var created createServerResponse
-	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/servers", serverRequest("web-1", map[string]string{"stagely": "env-stagelet"}), &created)
+	e.mustCall(http.StatusCreated, http.MethodPost, "/v1/servers", serverRequest("web-1", map[string]string{"elprovo": "env-preview"}), &created)
 
 	srv := created.Server
 	if srv.Status != "initializing" || srv.PublicNet.IPv4 == nil || srv.PublicNet.IPv4.IP == "" || srv.PublicNet.IPv4.ID == 0 {
@@ -55,16 +55,16 @@ func TestServerRunsOnAMachineWithItsPrimaryIP(t *testing.T) {
 
 func TestServersAreFoundByLabelSelectorAndName(t *testing.T) {
 	e := newEnv(t)
-	e.createServer(serverRequest("stagely-a1", map[string]string{"stagely": "prod-stagelet"}))
-	e.createServer(serverRequest("stagely-a2", map[string]string{"stagely": "dev-stagelet"}))
+	e.createServer(serverRequest("elprovo-a1", map[string]string{"elprovo": "prod-preview"}))
+	e.createServer(serverRequest("elprovo-a2", map[string]string{"elprovo": "dev-preview"}))
 	e.createServer(serverRequest("other", nil))
 
 	var got struct {
 		Servers []serverJSON `json:"servers"`
 	}
-	e.mustCall(http.StatusOK, http.MethodGet, "/v1/servers?label_selector=stagely%3D%3Dprod-stagelet", nil, &got)
-	if len(got.Servers) != 1 || got.Servers[0].Name != "stagely-a1" {
-		t.Fatalf("servers with stagely==prod-stagelet = %v", got.Servers)
+	e.mustCall(http.StatusOK, http.MethodGet, "/v1/servers?label_selector=elprovo%3D%3Dprod-preview", nil, &got)
+	if len(got.Servers) != 1 || got.Servers[0].Name != "elprovo-a1" {
+		t.Fatalf("servers with elprovo==prod-preview = %v", got.Servers)
 	}
 	e.mustCall(http.StatusOK, http.MethodGet, "/v1/servers?name=other", nil, &got)
 	if len(got.Servers) != 1 || got.Servers[0].Name != "other" {

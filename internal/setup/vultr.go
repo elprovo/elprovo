@@ -8,14 +8,14 @@ import (
 
 // Vultr is a Vultr account to bootstrap. The module and the agent call
 // https://api.vultr.com, the only API URL the Terraform provider knows. The
-// hosts, stagelet machines and build workers share a VPC, which Vultr's
+// hosts, preview machines and build workers share a VPC, which Vultr's
 // firewall does not filter.
 type Vultr struct {
 	APIKey       string
 	Region       string
 	RegistryName string
 	// GoldenImage is a snapshot from images/vultr that the agent boots
-	// stagelet machines and build workers from. Empty means the stock
+	// preview machines and build workers from. Empty means the stock
 	// operating system with cloud-init.
 	GoldenImage string
 }
@@ -40,7 +40,7 @@ func (v Vultr) Cloud(module fs.FS) (Cloud, error) {
 // registry credentials for each machine with it.
 func (v Vultr) agent(o map[string]any) ([]string, map[string]string, error) {
 	values := map[string]string{}
-	for _, name := range []string{"stagelet_firewall_group_id", "stagelet_tag", "registry", "registry_id", "vpc_id", "agent_private_ip", "gateway_private_ip"} {
+	for _, name := range []string{"preview_firewall_group_id", "preview_tag", "registry", "registry_id", "vpc_id", "agent_private_ip", "gateway_private_ip"} {
 		value, err := outputString(o, name)
 		if err != nil {
 			return nil, nil, err
@@ -48,8 +48,8 @@ func (v Vultr) agent(o map[string]any) ([]string, map[string]string, error) {
 		values[name] = value
 	}
 	args := []string{
-		"-vultr-region", v.Region, "-vultr-firewall-group", values["stagelet_firewall_group_id"],
-		"-vultr-tag", values["stagelet_tag"], "-vultr-vpc", values["vpc_id"], "-vultr-vpc-range", privateNetworkRange,
+		"-vultr-region", v.Region, "-vultr-firewall-group", values["preview_firewall_group_id"],
+		"-vultr-tag", values["preview_tag"], "-vultr-vpc", values["vpc_id"], "-vultr-vpc-range", privateNetworkRange,
 		"-vultr-vpc-allow", values["agent_private_ip"] + "," + values["gateway_private_ip"],
 		"-vultr-registry", values["registry_id"], "-registry", values["registry"],
 	}

@@ -35,8 +35,8 @@ func TestCreateVMBootsAMachineOnItsInterfaceAddress(t *testing.T) {
 		t.Fatalf("machine addresses = %v, want the public IP %s", got, pipAddr)
 	}
 	execs := e.machines.execsOf(vm.Properties.VMID)
-	if len(execs) != 1 || execs[0].args[len(execs[0].args)-1] != "stagely" || execs[0].stdin != testKey+"\n" {
-		t.Fatalf("provisioning commands = %+v, want the admin user stagely made with the key", execs)
+	if len(execs) != 1 || execs[0].args[len(execs[0].args)-1] != "elprovo" || execs[0].stdin != testKey+"\n" {
+		t.Fatalf("provisioning commands = %+v, want the admin user elprovo made with the key", execs)
 	}
 	if vm.Properties.OSProfile.CustomData != "" {
 		t.Fatal("GET returned the custom data")
@@ -159,7 +159,7 @@ func TestCaptureImageFromAGeneralizedVMAndBootFromIt(t *testing.T) {
 	var web vmJSON
 	e.mustCall(http.StatusOK, http.MethodGet, resourcePath("rg", typeVM, "web")+apiVersion, nil, &web)
 	image := e.machines.specOf(web.Properties.VMID).Image
-	if !strings.HasPrefix(image, "stagely-sim-az-image:") || e.machines.imageSource(image) != "c-"+vm.Properties.VMID {
+	if !strings.HasPrefix(image, "elprovo-sim-az-image:") || e.machines.imageSource(image) != "c-"+vm.Properties.VMID {
 		t.Fatalf("the VM booted %q, want the image committed from the build machine", image)
 	}
 }

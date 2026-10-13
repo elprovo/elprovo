@@ -1,4 +1,4 @@
-// Command stagely-vm-init boots a simulated cloud VM: a Docker container
+// Command elprovo-vm-init boots a simulated cloud VM: a Docker container
 // that behaves like a fresh Ubuntu cloud VM. It runs under Docker's init
 // (tini), applies NoCloud seed data the way cloud-init does, supervises
 // systemd-style units, and enforces the cloud firewall that the simulation
@@ -35,7 +35,7 @@ func main() {
 		}
 	}
 	if err := boot(); err != nil {
-		fmt.Fprintln(os.Stderr, "stagely-vm-init:", err)
+		fmt.Fprintln(os.Stderr, "elprovo-vm-init:", err)
 		os.Exit(1)
 	}
 }

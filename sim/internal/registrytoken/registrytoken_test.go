@@ -66,7 +66,7 @@ func TestTokenGrantsOnlyTheRequestedActionsTheClientIsAllowed(t *testing.T) {
 		t.Fatalf("token service = %d, %v", w.Code, err)
 	}
 	claims := verify(t, s.Signer, body.Token)
-	if claims.Issuer != "stagely-sim" || claims.Subject != "puller" || claims.Audience != registryHost || claims.Expiry != now.Add(time.Hour).Unix() || body.ExpiresIn != 3600 {
+	if claims.Issuer != "elprovo-sim" || claims.Subject != "puller" || claims.Audience != registryHost || claims.Expiry != now.Add(time.Hour).Unix() || body.ExpiresIn != 3600 {
 		t.Fatalf("claims = %+v, expires_in %d", claims, body.ExpiresIn)
 	}
 	want := []Access{{Type: "repository", Name: "acme/web", Actions: []string{"pull"}}}

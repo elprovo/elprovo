@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -201,7 +201,7 @@ type testEnv struct {
 
 func testConfig() config {
 	return config{
-		apiKeys: []string{testAPIKey}, network: "stagely-sim-unit", rateLimit: 1000,
+		apiKeys: []string{testAPIKey}, network: "elprovo-sim-unit", rateLimit: 1000,
 		registry: registryConfig{username: "root-user", password: "root-secret"},
 	}
 }

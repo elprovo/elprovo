@@ -25,7 +25,7 @@
 # agent check on an instance booted from that image.
 #
 # Each run uses its own data directory and Docker networks, and port 9393
-# (STAGELY_SIM_CHECK_PORT changes it), and removes all of it when it ends.
+# (ELPROVO_SIM_CHECK_PORT changes it), and removes all of it when it ends.
 set -eu
 
 check=${1:-}
@@ -39,9 +39,9 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-gcp-check-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9393}
-project=stagely-sim
+network="elprovo-sim-gcp-check-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9393}
+project=elprovo-sim
 registry_host=us-central1-docker.pkg.dev
 token="ya29.check-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 sim_pid=""
@@ -51,7 +51,7 @@ account() {
 }
 
 machines_left() {
-	docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | wc -l | tr -d ' '
 }
 
 cleanup() {
@@ -62,8 +62,8 @@ cleanup() {
 	fi
 	docker rm --force --volumes "$network-agent" "$network-packer" "$network-ssh" "$network-registry" >/dev/null 2>&1 || true
 	if [ -n "$(account)" ]; then
-		docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-gcp-disk:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-gcp-disk:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	if [ "$status" -ne 0 ] && [ -f "$work/sim.log" ]; then
@@ -98,7 +98,7 @@ json.dump(key, open(sys.argv[3], "w"))' "$work/data/gcp/service-account.json" "$
 make_certs() {
 	mkdir -p "$work/certs"
 	cd "$work/certs"
-	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=stagely-sim-gcp-check \
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=elprovo-sim-gcp-check \
 		-keyout ca.key -out ca.pem 2>/dev/null
 	openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj /CN=$registry_host \
 		-keyout registry.key -out registry.csr 2>/dev/null
@@ -109,9 +109,9 @@ make_certs() {
 }
 
 start_simulation() {
-	(cd "$repo/sim" && go build -o "$work/stagely-sim" ./cmd/stagely-sim)
+	(cd "$repo/sim" && go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
 	make_certs
-	"$work/stagely-sim" -gcp -data-dir "$work/data" -gcp-network "$network" -gcp-project "$project" \
+	"$work/elprovo-sim" -gcp -data-dir "$work/data" -gcp-network "$network" -gcp-project "$project" \
 		-gcp-addr ":$port" -gcp-access-token "$token" -machine-ca "$work/certs/ca.pem" >"$work/sim.log" 2>&1 &
 	sim_pid=$!
 	tries=0
@@ -129,12 +129,12 @@ start_simulation() {
 # Docker inside the machines asks the simulation for tokens at the Docker
 # host's address.
 start_registry() {
-	host_ip=$(docker run --rm --add-host stagely-sim-host:host-gateway ubuntu:24.04 getent hosts stagely-sim-host | cut -d' ' -f1)
+	host_ip=$(docker run --rm --add-host elprovo-sim-host:host-gateway ubuntu:24.04 getent hosts elprovo-sim-host | cut -d' ' -f1)
 	cp "$work/data/gcp/registry-token.pem" "$work/certs/token.pem"
 	docker create --name "$network-registry" --network "$network-public" --network-alias "$registry_host" \
 		-e REGISTRY_HTTP_ADDR=:443 -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.pem -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
 		-e REGISTRY_AUTH=token -e REGISTRY_AUTH_TOKEN_REALM="http://$host_ip:$port/v2/token" -e REGISTRY_AUTH_TOKEN_SERVICE="$registry_host" \
-		-e REGISTRY_AUTH_TOKEN_ISSUER=stagely-sim -e REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=/certs/token.pem \
+		-e REGISTRY_AUTH_TOKEN_ISSUER=elprovo-sim -e REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=/certs/token.pem \
 		registry:2.8.3 >/dev/null
 	docker cp "$work/certs" "$network-registry:/certs"
 	docker start "$network-registry" >/dev/null
@@ -145,10 +145,10 @@ check_agent() {
 	arch=$(docker version --format '{{.Server.Arch}}')
 	(cd "$repo" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags simdocker \
 		-o "$work/provider.test" ./internal/agent/provider/gcp)
-	key_file "http://stagely-sim-host:$port/token" "$work/agent-key.json"
-	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
-		-e STAGELY_SIM_GCP_ENDPOINT="http://stagely-sim-host:$port/" -e STAGELY_SIM_GCP_CREDENTIALS=/key.json \
-		-e STAGELY_SIM_GCP_GOLDEN_IMAGE="${golden_image:-}" -e STAGELY_SIM_GCP_REGISTRY="$registry_host/$project/stagely-check" \
+	key_file "http://elprovo-sim-host:$port/token" "$work/agent-key.json"
+	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
+		-e ELPROVO_SIM_GCP_ENDPOINT="http://elprovo-sim-host:$port/" -e ELPROVO_SIM_GCP_CREDENTIALS=/key.json \
+		-e ELPROVO_SIM_GCP_GOLDEN_IMAGE="${golden_image:-}" -e ELPROVO_SIM_GCP_REGISTRY="$registry_host/$project/elprovo-check" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	docker cp "$work/agent-key.json" "$network-agent:/key.json"
@@ -162,12 +162,12 @@ check_agent() {
 
 check_terraform() {
 	cp -R "$repo/terraform/google-cloud" "$work/tf"
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-host -f "$work/host"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-host -f "$work/host"
 	key_file "http://127.0.0.1:$port/token" "$work/tf-key.json"
 	GOOGLE_CREDENTIALS=$(cat "$work/tf-key.json")
 	export GOOGLE_CREDENTIALS TF_IN_AUTOMATION=1 TF_INPUT=0
-	# The hosts get the user data that stagely setup writes: a host key that
+	# The hosts get the user data that elprovo setup writes: a host key that
 	# the check pins when it connects.
 	python3 -c 'import json, sys
 work, port, project = sys.argv[1:]
@@ -179,7 +179,7 @@ json.dump({
     "name": "check", "project": project, "region": "us-central1", "zone": "us-central1-a",
     "compute_endpoint": "http://127.0.0.1:%s/compute/v1/" % port, "artifact_registry_endpoint": "http://127.0.0.1:%s/v1/" % port,
     "iam_endpoint": "http://127.0.0.1:%s/v1/" % port, "agent_service_account": json.load(open(work + "/tf-key.json"))["client_email"],
-    "registry_name": "stagely-check", "operator_cidrs": ["0.0.0.0/0"], "ssh_public_key": open(work + "/key.pub").read().strip(),
+    "registry_name": "elprovo-check", "operator_cidrs": ["0.0.0.0/0"], "ssh_public_key": open(work + "/key.pub").read().strip(),
     "agent_user_data": user_data, "gateway_user_data": user_data,
 }, open(work + "/tf/terraform.tfvars.json", "w"))' "$work" "$port" "$project"
 	cd "$work/tf"
@@ -201,13 +201,13 @@ json.dump({
 }
 
 # check_host_login signs in as root with the operator key to each address,
-# trusting only the host key from the user data, as stagely setup does. The
+# trusting only the host key from the user data, as elprovo setup does. The
 # gateway answers at its static address.
 check_host_login() {
 	mkdir -p "$work/ssh"
 	cp "$work/key" "$work/ssh/key"
 	echo "$1,$2 $(cut -d' ' -f1,2 "$work/host.pub")" >"$work/ssh/known_hosts"
-	machine_image=$(docker inspect --format '{{.Config.Image}}' "$(docker ps --quiet --filter "label=stagely-sim.account=$(account)" | head -n 1)")
+	machine_image=$(docker inspect --format '{{.Config.Image}}' "$(docker ps --quiet --filter "label=elprovo-sim.account=$(account)" | head -n 1)")
 	for host in "$@"; do
 		docker create --name "$network-ssh" --network "$network-public" --entrypoint ssh "$machine_image" \
 			-i /keys/key -o UserKnownHostsFile=/keys/known_hosts -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=10 \
@@ -247,19 +247,19 @@ check_impersonation() {
 }
 
 check_image() {
-	key_file "http://stagely-sim-host:$port/token" "$work/packer-key.json"
-	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
+	key_file "http://elprovo-sim-host:$port/token" "$work/packer-key.json"
+	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/images/key.json -w /images --entrypoint sh hashicorp/packer:1.16.1 \
-		-c "packer init . && packer build -color=false -var project_id=$project -var zone=us-central1-a -var compute_endpoint=http://stagely-sim-host:$port/compute/v1/ -var image_name=stagely-image-check ." >/dev/null
+		-c "packer init . && packer build -color=false -var project_id=$project -var zone=us-central1-a -var compute_endpoint=http://elprovo-sim-host:$port/compute/v1/ -var image_name=elprovo-image-check ." >/dev/null
 	docker cp "$repo/images/google-cloud/." "$network-packer:/images/"
 	docker cp "$work/packer-key.json" "$network-packer:/images/key.json"
 	docker start --attach "$network-packer"
-	api GET global/images/stagely-image-check -o /dev/null
+	api GET global/images/elprovo-image-check -o /dev/null
 	if [ "$(machines_left)" != 0 ]; then
 		echo "Packer left its build instance" >&2
 		exit 1
 	fi
-	golden_image=stagely-image-check
+	golden_image=elprovo-image-check
 	echo "built the golden image $golden_image"
 	check_agent
 	echo "image check passed"

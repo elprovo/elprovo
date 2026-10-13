@@ -162,7 +162,7 @@ func (s *Simulation) serveCloudMetadata(w http.ResponseWriter, r *http.Request) 
 	}
 	base := baseURL(r)
 	doc := map[string]any{
-		"name":   "AzureStagelySim",
+		"name":   "AzureElprovoSim",
 		"portal": base,
 		"authentication": map[string]any{
 			"loginEndpoint": base, "audiences": []string{base}, "tenant": "common", "identityProvider": "AAD",

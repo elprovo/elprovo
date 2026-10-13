@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -635,7 +635,7 @@ func (s *Simulation) machineSpec(w *world, inst *instance, imageRef string) mach
 	project, number := s.cfg.project, w.ProjectNumber
 	snapshot := *inst
 	return machines.Spec{
-		Name:     fmt.Sprintf("stagely-sim-gcp-%s-%s", w.Account[:8], id),
+		Name:     fmt.Sprintf("elprovo-sim-gcp-%s-%s", w.Account[:8], id),
 		Hostname: inst.Name,
 		Cloud:    cloudLabel, Account: w.Account, Resource: id,
 		Image: imageRef,
@@ -809,7 +809,7 @@ func (s *Simulation) deleteInstance(r *http.Request) (int, any, error) {
 		out = s.renderOperation(w, op)
 		job = destruction{instanceID: inst.ID, operationID: op.ID, machine: inst.Machine, keepDisk: !inst.AutoDelete}
 		if d := w.disk(zone, inst.BootDisk); d != nil && job.keepDisk {
-			job.diskRef = fmt.Sprintf("stagely-sim-gcp-disk:%s-%d", w.Account[:8], d.ID)
+			job.diskRef = fmt.Sprintf("elprovo-sim-gcp-disk:%s-%d", w.Account[:8], d.ID)
 		}
 		return nil
 	})

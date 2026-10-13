@@ -24,14 +24,14 @@ func TestParseIPv4FailsWithoutAddress(t *testing.T) {
 }
 
 func TestParseInstanceNamesReadsNDJSON(t *testing.T) {
-	out := []byte(`{"name":"stagely-a1","status":"Running"}
+	out := []byte(`{"name":"elprovo-a1","status":"Running"}
 {"name":"other","status":"Stopped"}
 `)
 	got, err := parseInstanceNames(out)
 	if err != nil {
 		t.Fatalf("parseInstanceNames: %v", err)
 	}
-	if want := []string{"stagely-a1", "other"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"elprovo-a1", "other"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("names = %v, want %v", got, want)
 	}
 }

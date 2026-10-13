@@ -37,11 +37,11 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-hz-check-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9391}
+network="elprovo-sim-hz-check-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9391}
 # Hetzner tokens, and so the ones the Terraform provider accepts, are 64
 # characters long.
-token="stagely-sim-check-$(od -An -N23 -tx1 /dev/urandom | tr -d ' \n')"
+token="elprovo-sim-check-$(od -An -N23 -tx1 /dev/urandom | tr -d ' \n')"
 sim_pid=""
 
 project() {
@@ -49,7 +49,7 @@ project() {
 }
 
 machines_left() {
-	docker ps --all --quiet --filter "label=stagely-sim.account=$(project)" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter "label=elprovo-sim.account=$(project)" | wc -l | tr -d ' '
 }
 
 cleanup() {
@@ -60,8 +60,8 @@ cleanup() {
 	fi
 	docker rm --force "$network-agent" "$network-packer" >/dev/null 2>&1 || true
 	if [ -n "$(project)" ]; then
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-hz-snapshot:$(project | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
-		docker ps --all --quiet --filter "label=stagely-sim.account=$(project)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-hz-snapshot:$(project | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter "label=elprovo-sim.account=$(project)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	if [ "$status" -ne 0 ] && [ -f "$work/sim.log" ]; then
@@ -75,8 +75,8 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 start_simulation() {
-	(cd "$repo/sim" && go build -o "$work/stagely-sim" ./cmd/stagely-sim)
-	"$work/stagely-sim" -hetzner -data-dir "$work/data" -hcloud-network "$network" \
+	(cd "$repo/sim" && go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
+	"$work/elprovo-sim" -hetzner -data-dir "$work/data" -hcloud-network "$network" \
 		-hcloud-addr ":$port" -hcloud-token "$token" >"$work/sim.log" 2>&1 &
 	sim_pid=$!
 	tries=0
@@ -95,10 +95,10 @@ check_agent() {
 	(cd "$repo" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags simdocker \
 		-o "$work/provider.test" ./internal/agent/provider/hetzner)
 	private_range=$(docker network inspect "$network" --format '{{(index .IPAM.Config 0).Subnet}}')
-	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
-		-e STAGELY_SIM_HCLOUD_URL="http://stagely-sim-host:$port/v1" -e STAGELY_SIM_HCLOUD_TOKEN="$token" \
-		-e STAGELY_SIM_HCLOUD_NETWORK_RANGE="$private_range" \
-		-e STAGELY_SIM_HCLOUD_GOLDEN_IMAGE="${golden_image:-}" \
+	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
+		-e ELPROVO_SIM_HCLOUD_URL="http://elprovo-sim-host:$port/v1" -e ELPROVO_SIM_HCLOUD_TOKEN="$token" \
+		-e ELPROVO_SIM_HCLOUD_NETWORK_RANGE="$private_range" \
+		-e ELPROVO_SIM_HCLOUD_GOLDEN_IMAGE="${golden_image:-}" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	docker start --attach "$network-agent"
@@ -133,10 +133,10 @@ apply_module() {
 }
 
 check_terraform() {
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
 	TF_VAR_ssh_public_key=$(cat "$work/key.pub")
-	TF_VAR_agent_user_data=$(printf '#cloud-config\nwrite_files:\n  - path: /etc/stagely-check\n    content: "agent\\n"\n')
-	TF_VAR_gateway_user_data=$(printf '#cloud-config\nwrite_files:\n  - path: /etc/stagely-check\n    content: "gateway\\n"\n')
+	TF_VAR_agent_user_data=$(printf '#cloud-config\nwrite_files:\n  - path: /etc/elprovo-check\n    content: "agent\\n"\n')
+	TF_VAR_gateway_user_data=$(printf '#cloud-config\nwrite_files:\n  - path: /etc/elprovo-check\n    content: "gateway\\n"\n')
 	export TF_IN_AUTOMATION=1 TF_INPUT=0 HCLOUD_TOKEN="$token" TF_VAR_endpoint="http://127.0.0.1:$port/v1"
 	export TF_VAR_ssh_public_key TF_VAR_agent_user_data TF_VAR_gateway_user_data
 	export TF_VAR_name=hzcheck TF_VAR_location=fsn1 TF_VAR_operator_cidrs='["0.0.0.0/0"]' TF_VAR_network_range=10.42.0.0/20
@@ -147,13 +147,13 @@ check_terraform() {
 }
 
 check_image() {
-	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
+	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
 		-e HCLOUD_TOKEN="$token" -w /images --entrypoint sh hashicorp/packer:1.16.1 \
-		-c "packer init . && packer build -color=false -var location=fsn1 -var endpoint=http://stagely-sim-host:$port/v1 -var snapshot_name=stagely-image-check ." >/dev/null
+		-c "packer init . && packer build -color=false -var location=fsn1 -var endpoint=http://elprovo-sim-host:$port/v1 -var snapshot_name=elprovo-image-check ." >/dev/null
 	docker cp "$repo/images/hetzner/." "$network-packer:/images/"
 	docker start --attach "$network-packer"
 	golden_image=$(curl -fs -H "Authorization: Bearer $token" "http://127.0.0.1:$port/v1/images?type=snapshot" |
-		python3 -c 'import json, sys; print(next(i["id"] for i in json.load(sys.stdin)["images"] if i["description"] == "stagely-image-check"))')
+		python3 -c 'import json, sys; print(next(i["id"] for i in json.load(sys.stdin)["images"] if i["description"] == "elprovo-image-check"))')
 	if [ "$(machines_left)" != 0 ]; then
 		echo "Packer left its build server" >&2
 		exit 1

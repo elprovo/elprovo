@@ -10,10 +10,10 @@ import (
 	"io/fs"
 	"strings"
 
-	"github.com/stagely-dev/stagely/sim/vm"
+	"github.com/elprovo/elprovo/sim/vm"
 )
 
-const imageRepository = "stagely-sim-vm"
+const imageRepository = "elprovo-sim-vm"
 
 // BaseImage returns the reference of the machine image, building it from
 // sim/vm when Docker does not have it yet. The tag is a hash of the build
@@ -104,11 +104,11 @@ func seedArchive(spec Spec, addrs addresses, options Options) ([]byte, error) {
 	files := []seedFile{
 		{"var/lib/cloud/seed/nocloud/meta-data", meta, 0o644},
 		{"var/lib/cloud/seed/nocloud/user-data", []byte(spec.Seed.UserData), 0o600},
-		{"var/lib/stagely-vm/firewall.json", firewall, 0o600},
-		{"var/lib/stagely-vm/metadata.json", metadataJSON, 0o600},
+		{"var/lib/elprovo-vm/firewall.json", firewall, 0o600},
+		{"var/lib/elprovo-vm/metadata.json", metadataJSON, 0o600},
 		// A machine booted from a snapshot must not keep its source's
 		// reserved IPs.
-		{"var/lib/stagely-vm/addresses.json", []byte(`{"addresses":[]}`), 0o600},
+		{"var/lib/elprovo-vm/addresses.json", []byte(`{"addresses":[]}`), 0o600},
 	}
 	if len(options.CACerts) > 0 {
 		files = append(files, seedFile{caPath, options.CACerts, 0o644})

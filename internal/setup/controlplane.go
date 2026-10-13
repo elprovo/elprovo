@@ -18,11 +18,11 @@ type API interface {
 
 // Environment is the control plane's record of the cloud being set up.
 type Environment struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Provider       string `json:"provider"`
-	StageletDomain string `json:"stagelet_domain"`
-	StageletPort   int    `json:"stagelet_port"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+	PreviewDomain string `json:"preview_domain"`
+	PreviewPort   int    `json:"preview_port"`
 }
 
 // Client is an enrolled agent or gateway.
@@ -45,7 +45,7 @@ func account(ctx context.Context, api API) (string, error) {
 		return "", err
 	}
 	if len(me.Accounts) != 1 {
-		return "", errors.New("the sign-in is not bound to one account; run `stagely login` again")
+		return "", errors.New("the sign-in is not bound to one account; run `elprovo login` again")
 	}
 	return me.Accounts[0].ID, nil
 }
@@ -67,14 +67,14 @@ func ensureEnvironment(ctx context.Context, api API, accountID string, want Envi
 		if env.Provider != want.Provider {
 			return Environment{}, fmt.Errorf("environment %q already exists with provider %s, not %s", env.Name, env.Provider, want.Provider)
 		}
-		if env.StageletDomain != want.StageletDomain || env.StageletPort != want.StageletPort {
-			return Environment{}, fmt.Errorf("environment %q already serves stagelets at %s port %d, not %s port %d; run setup with those values, or delete the environment first",
-				env.Name, env.StageletDomain, env.StageletPort, want.StageletDomain, want.StageletPort)
+		if env.PreviewDomain != want.PreviewDomain || env.PreviewPort != want.PreviewPort {
+			return Environment{}, fmt.Errorf("environment %q already serves previews at %s port %d, not %s port %d; run setup with those values, or delete the environment first",
+				env.Name, env.PreviewDomain, env.PreviewPort, want.PreviewDomain, want.PreviewPort)
 		}
 		return env, nil
 	}
 	var created Environment
-	body := map[string]any{"name": want.Name, "provider": want.Provider, "stagelet_domain": want.StageletDomain, "stagelet_port": want.StageletPort}
+	body := map[string]any{"name": want.Name, "provider": want.Provider, "preview_domain": want.PreviewDomain, "preview_port": want.PreviewPort}
 	if err := api.Do(ctx, http.MethodPost, base, body, &created); err != nil {
 		return Environment{}, fmt.Errorf("create environment %q: %w", want.Name, err)
 	}

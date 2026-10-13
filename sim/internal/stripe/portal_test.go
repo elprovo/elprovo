@@ -21,7 +21,7 @@ func TestPortalCancelsAtPeriodEndAndResumes(t *testing.T) {
 		t.Fatalf("portal session = %v, want a billing_portal.session on the hosted pages", ps)
 	}
 	page := env.getPage(portalURL)
-	for _, want := range []string{"Team Stagelet", "Your plan renews on", "Visa •••• 4242", "Return to app.example"} {
+	for _, want := range []string{"Team Preview", "Your plan renews on", "Visa •••• 4242", "Return to app.example"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("portal page lacks %q", want)
 		}

@@ -1,4 +1,4 @@
-// Package digitalocean runs stagelet machines as DigitalOcean droplets. The
+// Package digitalocean runs preview machines as DigitalOcean droplets. The
 // agent creates each droplet through the API and hands it a host key that the
 // agent generated, so it never has to trust an unknown host key. It then
 // drives the droplet over SSH as root with its own key.
@@ -17,8 +17,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // Config says where and how the provider creates droplets. When VPCUUID is
@@ -31,7 +31,7 @@ type Config struct {
 	Size   string
 	// Image is a stock image; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is a Stagely golden image that already has
+	// GoldenImage, when set, is a Elprovo golden image that already has
 	// Docker, Compose and BuildKit. It replaces Image.
 	GoldenImage  string
 	Tag          string
@@ -248,7 +248,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if !known {
-		if err := p.api.addSSHKey(ctx, "stagely-agent "+fingerprint, public); err != nil {
+		if err := p.api.addSSHKey(ctx, "elprovo-agent "+fingerprint, public); err != nil {
 			return "", err
 		}
 	}

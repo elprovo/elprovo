@@ -178,8 +178,8 @@ func TestNoCredentialsMeansNotSignedIn(t *testing.T) {
 
 func TestPlainHTTPWorksOnlyForLocalhost(t *testing.T) {
 	for server, ok := range map[string]bool{
-		"http://localhost:8080": true, "http://127.0.0.1:8080": true, "https://stagely.example.com": true,
-		"http://stagely.example.com": false, "ftp://stagely.example.com": false, "stagely.example.com": false,
+		"http://localhost:8080": true, "http://127.0.0.1:8080": true, "https://elprovo.example.com": true,
+		"http://elprovo.example.com": false, "ftp://elprovo.example.com": false, "elprovo.example.com": false,
 	} {
 		if err := checkServer(server); (err == nil) != ok {
 			t.Fatalf("checkServer(%q) = %v, want allowed %v", server, err, ok)

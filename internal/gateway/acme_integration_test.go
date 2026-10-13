@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 	"golang.org/x/crypto/acme/autocert"
 )
 
@@ -27,11 +27,11 @@ import (
 const (
 	pebbleDirectory    = "https://localhost:14000/dir"
 	pebbleRootsURL     = "https://localhost:15000/roots/0"
-	tlsALPNHost        = "tls-alpn.stagelets.example.com"
-	httpHost           = "http.stagelets.example.com"
+	tlsALPNHost        = "tls-alpn.previews.example.com"
+	httpHost           = "http.previews.example.com"
 	pebbleTLSALPNPort  = "127.0.0.1:14001"
 	pebbleHTTPPort     = "127.0.0.1:14002"
-	pebbleCAFileEnvVar = "STAGELY_PEBBLE_CA"
+	pebbleCAFileEnvVar = "ELPROVO_PEBBLE_CA"
 )
 
 func TestACMEIssuesCertificateThroughTLSALPN01(t *testing.T) {
@@ -87,7 +87,7 @@ func pebbleCAFile(t *testing.T) string {
 
 func gatewayRouting(hostName string) *Gateway {
 	gw := New(&fakeControlPlane{}, 50*time.Second, time.Now, slog.New(slog.DiscardHandler))
-	gw.SetRoutes([]protocol.Route{{StageletID: "s1", Host: hostName, Upstream: "127.0.0.1:1"}})
+	gw.SetRoutes([]protocol.Route{{PreviewID: "s1", Host: hostName, Upstream: "127.0.0.1:1"}})
 	return gw
 }
 

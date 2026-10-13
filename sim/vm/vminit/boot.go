@@ -19,7 +19,7 @@ const rfc2822 = "Mon, 02 Jan 2006 15:04:05 -0700"
 
 func boot() error {
 	if err := enableCgroupNesting(); err != nil {
-		fmt.Fprintln(os.Stderr, "stagely-vm-init: Docker inside the machine may fail: enable cgroup nesting:", err)
+		fmt.Fprintln(os.Stderr, "elprovo-vm-init: Docker inside the machine may fail: enable cgroup nesting:", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -36,13 +36,13 @@ func boot() error {
 	}
 	go sup.serveControl(ln)
 	if err := restoreFirewall(ctx, "/"); err != nil {
-		fmt.Fprintln(os.Stderr, "stagely-vm-init: apply the kept firewall:", err)
+		fmt.Fprintln(os.Stderr, "elprovo-vm-init: apply the kept firewall:", err)
 	}
 	if err := restoreAddresses(ctx, "/"); err != nil {
-		fmt.Fprintln(os.Stderr, "stagely-vm-init: add the kept extra addresses:", err)
+		fmt.Fprintln(os.Stderr, "elprovo-vm-init: add the kept extra addresses:", err)
 	}
 	if err := trustSimulationCA(ctx, "/"); err != nil {
-		fmt.Fprintln(os.Stderr, "stagely-vm-init: trust the simulation's CA certificates:", err)
+		fmt.Fprintln(os.Stderr, "elprovo-vm-init: trust the simulation's CA certificates:", err)
 	}
 	done := make(chan struct{})
 	go func() {
@@ -84,7 +84,7 @@ func startBootUnits(ctx context.Context, sup *supervisor) {
 			return
 		}
 		if err := sup.start(name); err != nil {
-			fmt.Fprintf(os.Stderr, "stagely-vm-init: start %s: %v\n", name, err)
+			fmt.Fprintf(os.Stderr, "elprovo-vm-init: start %s: %v\n", name, err)
 		}
 	}
 }
@@ -183,7 +183,7 @@ func openLog(root, path string) *os.File {
 
 // simulationCA is the PEM bundle that the simulation's -machine-ca names, as
 // the simulation copies it into the machine.
-const simulationCA = "usr/local/share/ca-certificates/stagely-sim.crt"
+const simulationCA = "usr/local/share/ca-certificates/elprovo-sim.crt"
 
 // trustSimulationCA adds the simulation's CA certificates to the machine's
 // trust store before any service starts, so services trust them as they trust

@@ -1,28 +1,28 @@
-# stagely-sim
+# elprovo-sim
 
-Local simulations of the outside services Stagely depends on, behind their real API contracts. Stagely's own code talks to each service through its documented HTTP API with a configurable base URL; pointing it at `stagely-sim` instead of the real service is configuration only.
+Local simulations of the outside services Elprovo depends on, behind their real API contracts. Elprovo's own code talks to each service through its documented HTTP API with a configurable base URL; pointing it at `elprovo-sim` instead of the real service is configuration only.
 
-This is a separate Go module. No Stagely product binary imports it.
+This is a separate Go module. No Elprovo product binary imports it.
 
 ## Run
 
 ```sh
-cd sim && go run ./cmd/stagely-sim -h
+cd sim && go run ./cmd/elprovo-sim -h
 ```
 
 `-data-dir` keeps each simulation's state as JSON, so a restart keeps every object.
 
-`sim/Dockerfile` builds a `stagely-sim` image with the Docker CLI and git with its HTTP backend, for running the simulations inside a Compose project. Its state lives in the `/data` volume. A simulated cloud creates its machines with the Docker CLI, so mount the Docker socket:
+`sim/Dockerfile` builds a `elprovo-sim` image with the Docker CLI and git with its HTTP backend, for running the simulations inside a Compose project. Its state lives in the `/data` volume. A simulated cloud creates its machines with the Docker CLI, so mount the Docker socket:
 
 ```sh
-docker build -t stagely-sim sim
+docker build -t elprovo-sim sim
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -p 127.0.0.1:9300:9300 \
-  stagely-sim -digitalocean -do-addr :9300
+  elprovo-sim -digitalocean -do-addr :9300
 ```
 
 ## Simulations
 
-Each simulation lives in `internal/<service>/`, registers its flags in `cmd/stagely-sim/simulations.go`, and documents below which official sources it follows and what it covers.
+Each simulation lives in `internal/<service>/`, registers its flags in `cmd/elprovo-sim/simulations.go`, and documents below which official sources it follows and what it covers.
 
 | Service | Package | Follows |
 | --- | --- | --- |
@@ -38,14 +38,14 @@ Each simulation lives in `internal/<service>/`, registers its flags in `cmd/stag
 
 ## Stripe
 
-The Stripe simulation serves the calls Stagely makes to sell subscription plans: a hosted Checkout page with optional free trials, subscriptions with invoices, payments and plan changes, the billing portal, test clocks, and events delivered to signed webhooks. It runs two listeners: the API, like `api.stripe.com`, and the hosted pages, like `checkout.stripe.com` and `billing.stripe.com`. The hosted-pages listener also serves the `/_sim/` admin API.
+The Stripe simulation serves the calls Elprovo makes to sell subscription plans: a hosted Checkout page with optional free trials, subscriptions with invoices, payments and plan changes, the billing portal, test clocks, and events delivered to signed webhooks. It runs two listeners: the API, like `api.stripe.com`, and the hosted pages, like `checkout.stripe.com` and `billing.stripe.com`. The hosted-pages listener also serves the `/_sim/` admin API.
 
 ```sh
-go run ./cmd/stagely-sim -stripe \
+go run ./cmd/elprovo-sim -stripe \
   -stripe-webhook url=http://localhost:8080/webhooks/stripe,secret=whsec_local
 ```
 
-Point a Stripe SDK at `http://localhost:9200` with the key `sk_test_stagely`. In stripe-go, set the API backend URL with `stripe.GetBackendWithConfig`. In stripe-node, set `host`, `port` and `protocol`. State is kept in `<data-dir>/stripe/state.json`.
+Point a Stripe SDK at `http://localhost:9200` with the key `sk_test_elprovo`. In stripe-go, set the API backend URL with `stripe.GetBackendWithConfig`. In stripe-node, set `host`, `port` and `protocol`. State is kept in `<data-dir>/stripe/state.json`.
 
 ### Flags
 
@@ -55,17 +55,17 @@ Point a Stripe SDK at `http://localhost:9200` with the key `sk_test_stagely`. In
 | `-stripe-api-addr` | `:9200` | Listen address of the API |
 | `-stripe-web-addr` | `:9201` | Listen address of the hosted pages and the admin API |
 | `-stripe-web-url` | `http://localhost:9201` | Public base URL of the hosted pages. Checkout Session, portal session and invoice URLs use it. |
-| `-stripe-secret-key` | `sk_test_stagely` | Secret key that the API accepts. Repeat the flag to accept several keys. Each key must start with `sk_test_`. |
+| `-stripe-secret-key` | `sk_test_elprovo` | Secret key that the API accepts. Repeat the flag to accept several keys. Each key must start with `sk_test_`. |
 | `-stripe-api-version` | `2026-09-30.endive` | API version written into events. stripe-go's `webhook.ConstructEvent` rejects an event whose release train (`endive`) differs from the SDK's, so match it to the SDK. |
-| `-stripe-plan-name` | `Team Stagelet` | Name of the seeded product `prod_team_stagelet` |
-| `-stripe-plan-amount` | `2000` | Amount of the seeded price `price_team_stagelet`, in the smallest currency unit |
+| `-stripe-plan-name` | `Team Preview` | Name of the seeded product `prod_team_preview` |
+| `-stripe-plan-amount` | `2000` | Amount of the seeded price `price_team_preview`, in the smallest currency unit |
 | `-stripe-plan-currency` | `usd` | Currency of the seeded price |
 | `-stripe-plan-interval` | `month` | Interval of the seeded price: `day`, `week`, `month` or `year` |
 | `-stripe-catalog` | none | JSON file of the prices to seed instead of the `-stripe-plan-*` price. See [Price catalog](#price-catalog). |
 | `-stripe-webhook` | none | Webhook endpoint that receives every event, as `url=...,secret=whsec_...`. Repeatable. |
 | `-stripe-mark-unpaid` | off | When every payment retry fails, mark the subscription `unpaid` instead of canceling it |
 
-Without `-stripe-catalog`, the simulation seeds one price with the lookup key `team_stagelet`, so code can find it with `GET /v1/prices?lookup_keys[]=team_stagelet` in the simulation and in Stripe alike. Every start updates the seeded product and price from the flags.
+Without `-stripe-catalog`, the simulation seeds one price with the lookup key `team_preview`, so code can find it with `GET /v1/prices?lookup_keys[]=team_preview` in the simulation and in Stripe alike. Every start updates the seeded product and price from the flags.
 
 ### Price catalog
 
@@ -88,7 +88,7 @@ Without `-stripe-catalog`, the simulation seeds one price with the lookup key `t
 
 Each price is active and recurring with an interval count of 1. IDs come from the names: `team_monthly` becomes `price_team_monthly`, and `Team` becomes `prod_team`. A product's `default_price` is its first price in the file. The simulation checks the file at start and stops with a message that names the entry and the problem: invalid JSON, an unknown field, a repeated lookup key, two names that give the same ID, a missing or negative amount, or an invalid currency or interval.
 
-Seeded products and prices carry the metadata `stagely_sim_seed: true`. At each start, the simulation deactivates seeded prices and products that the current seed no longer names, and removes the lookup key from those prices.
+Seeded products and prices carry the metadata `elprovo_sim_seed: true`. At each start, the simulation deactivates seeded prices and products that the current seed no longer names, and removes the lookup key from those prices.
 
 ### Coverage
 
@@ -169,7 +169,7 @@ The dunning rule: the simulation retries a failed invoice 3, 5 and 7 days after 
 
 ### Webhooks
 
-Every state change records an event and queues it for each enabled endpoint whose `enabled_events` holds the event type or `*`. Endpoints come from `-stripe-webhook` or `POST /v1/webhook_endpoints`. A flag endpoint receives every event and carries the metadata `stagely_sim_flag: true`. At each start, the simulation deletes the flag endpoints that the flags no longer name. Endpoints created through the API stay until they are deleted. A delivery is a `POST` with the event JSON and the header `Stripe-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>" keyed with the whole whsec_ secret>`. Each attempt is signed again with a new timestamp.
+Every state change records an event and queues it for each enabled endpoint whose `enabled_events` holds the event type or `*`. Endpoints come from `-stripe-webhook` or `POST /v1/webhook_endpoints`. A flag endpoint receives every event and carries the metadata `elprovo_sim_flag: true`. At each start, the simulation deletes the flag endpoints that the flags no longer name. Endpoints created through the API stay until they are deleted. A delivery is a `POST` with the event JSON and the header `Stripe-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>" keyed with the whole whsec_ secret>`. Each attempt is signed again with a new timestamp.
 
 Deliveries run in the background, four at a time, so their order is not guaranteed, as in Stripe. Each attempt has a 10-second timeout. Any 2xx status is a success; redirects and other statuses are failures. A failed delivery is retried 1 second, 10 seconds, 1 minute and 10 minutes later. After five attempts it gives up. A delivery to an endpoint that was disabled or deleted stops. The queue is in memory: deliveries that are still pending when the simulation stops are lost. To send them again, use the redelivery admin call.
 
@@ -221,18 +221,18 @@ curl -X POST http://localhost:9201/_sim/checkout/sessions/cs_test_123/complete \
 
 ## GitHub
 
-The GitHub simulation serves the calls Stagely makes to GitHub: GitHub App authentication and installation tokens, sign-in through the GitHub App web application flow, the app installation flow, the REST endpoints that read plan inputs and report results on pull requests, and signed webhooks. Repositories are real bare git repositories, so `git clone` and `git push` work. It runs two listeners: the web host, like `github.com`, and the API host, like `api.github.com`. The web host also serves the `/_sim/` admin API.
+The GitHub simulation serves the calls Elprovo makes to GitHub: GitHub App authentication and installation tokens, sign-in through the GitHub App web application flow, the app installation flow, the REST endpoints that read plan inputs and report results on pull requests, and signed webhooks. Repositories are real bare git repositories, so `git clone` and `git push` work. It runs two listeners: the web host, like `github.com`, and the API host, like `api.github.com`. The web host also serves the `/_sim/` admin API.
 
 ```sh
-go run ./cmd/stagely-sim -github \
+go run ./cmd/elprovo-sim -github \
   -github-default-user octo \
-  -github-default-app-name "Stagely Local" \
+  -github-default-app-name "Elprovo Local" \
   -github-default-app-webhook-url http://localhost:8080/webhooks/github \
   -github-default-app-callback-urls http://localhost:8080/auth/github/callback \
   -github-default-app-setup-url http://localhost:8080/github/setup
 ```
 
-Point Stagely's GitHub web base URL at `http://localhost:9100` and its API base URL at `http://localhost:9101`. State is kept in `<data-dir>/github/state.json`, bare repositories in `<data-dir>/github/repos/<owner>/<repo>.git`, and each app's private key in `<data-dir>/github/apps/<slug>.private-key.pem`.
+Point Elprovo's GitHub web base URL at `http://localhost:9100` and its API base URL at `http://localhost:9101`. State is kept in `<data-dir>/github/state.json`, bare repositories in `<data-dir>/github/repos/<owner>/<repo>.git`, and each app's private key in `<data-dir>/github/apps/<slug>.private-key.pem`.
 
 ### Flags
 
@@ -310,7 +310,7 @@ Each event goes to every installation that covers the repository and whose app s
 | `issue_comment` | `created`, `edited`, `deleted`. `issue.pull_request` is always set, because every issue is a pull request. |
 | `push` | none. `created`, `deleted`, `forced`, `commits` with `added`, `removed` and `modified`, `head_commit`, `compare` and `pusher`. |
 
-A delivery is a `POST` with `Content-Type: application/json`, `User-Agent: GitHub-Hookshot/stagely-sim`, `X-GitHub-Event`, `X-GitHub-Delivery` (a GUID), `X-GitHub-Hook-ID`, `X-GitHub-Hook-Installation-Target-Type: integration`, `X-GitHub-Hook-Installation-Target-ID` (the app id), `X-Hub-Signature-256: sha256=<hex HMAC-SHA256 of the body keyed with the webhook secret>` and the older `X-Hub-Signature: sha1=...`. Deliveries run in the background, four at a time, with a 10-second timeout, so their order is not guaranteed. Like GitHub, the simulation does not retry a failed delivery. The last 1000 deliveries are logged with their result; a redelivery keeps the original `X-GitHub-Delivery` GUID.
+A delivery is a `POST` with `Content-Type: application/json`, `User-Agent: GitHub-Hookshot/elprovo-sim`, `X-GitHub-Event`, `X-GitHub-Delivery` (a GUID), `X-GitHub-Hook-ID`, `X-GitHub-Hook-Installation-Target-Type: integration`, `X-GitHub-Hook-Installation-Target-ID` (the app id), `X-Hub-Signature-256: sha256=<hex HMAC-SHA256 of the body keyed with the webhook secret>` and the older `X-Hub-Signature: sha1=...`. Deliveries run in the background, four at a time, with a 10-second timeout, so their order is not guaranteed. Like GitHub, the simulation does not retry a failed delivery. The last 1000 deliveries are logged with their result; a redelivery keeps the original `X-GitHub-Delivery` GUID.
 
 ### Admin API
 
@@ -334,14 +334,14 @@ curl -X PUT localhost:9100/_sim/repos/acme/web/collaborators/mona -d '{"permissi
 Create a GitHub App. The answer has the app id, slug, client ID and secret, webhook secret, the private key PEM and the path of the key file. `permissions` defaults to `metadata` and `contents` read, and `pull_requests`, `issues`, `statuses` and `deployments` write. Read an app's credentials again by slug:
 
 ```sh
-curl -X POST localhost:9100/_sim/apps -d '{"name":"Stagely Dev","owner":"octo","webhook_url":"http://localhost:8080/webhooks/github","callback_urls":["http://localhost:8080/auth/github/callback"],"setup_url":"http://localhost:8080/github/setup"}'
-curl localhost:9100/_sim/apps/stagely-dev
+curl -X POST localhost:9100/_sim/apps -d '{"name":"Elprovo Dev","owner":"octo","webhook_url":"http://localhost:8080/webhooks/github","callback_urls":["http://localhost:8080/auth/github/callback"],"setup_url":"http://localhost:8080/github/setup"}'
+curl localhost:9100/_sim/apps/elprovo-dev
 ```
 
 Install an app on an account without the browser. `repository_selection` is `all` or `selected`, with repository names. It answers 201 for a new installation and 200 for an update, and sends the same webhooks as the installation page:
 
 ```sh
-curl -X POST localhost:9100/_sim/apps/stagely-dev/installations -d '{"account":"acme","repository_selection":"selected","repositories":["web"]}'
+curl -X POST localhost:9100/_sim/apps/elprovo-dev/installations -d '{"account":"acme","repository_selection":"selected","repositories":["web"]}'
 ```
 
 Create a personal token for a user, for git and API calls with the user's access:
@@ -356,15 +356,15 @@ Act on pull requests as a user. Opening needs a pushed head branch with commits 
 curl -X POST localhost:9100/_sim/repos/acme/web/pulls -d '{"user":"octo","head":"feature","title":"Add feature","body":"Details"}'
 curl -X PATCH localhost:9100/_sim/repos/acme/web/pulls/1 -d '{"user":"octo","state":"closed"}'
 curl -X PUT localhost:9100/_sim/repos/acme/web/pulls/1/merge -d '{"user":"octo"}'
-curl -X POST localhost:9100/_sim/repos/acme/web/issues/1/comments -d '{"user":"mona","body":"/stagely deploy"}'
-curl -X POST localhost:9100/_sim/repos/acme/web/issues/1/labels -d '{"user":"octo","labels":["stagelet"]}'
-curl -X DELETE 'localhost:9100/_sim/repos/acme/web/issues/1/labels/stagelet?user=octo'
+curl -X POST localhost:9100/_sim/repos/acme/web/issues/1/comments -d '{"user":"mona","body":"/elprovo deploy"}'
+curl -X POST localhost:9100/_sim/repos/acme/web/issues/1/labels -d '{"user":"octo","labels":["preview"]}'
+curl -X DELETE 'localhost:9100/_sim/repos/acme/web/issues/1/labels/preview?user=octo'
 ```
 
 List deliveries, newest first, optionally for one app, and deliver one again:
 
 ```sh
-curl 'localhost:9100/_sim/deliveries?app=stagely-dev'
+curl 'localhost:9100/_sim/deliveries?app=elprovo-dev'
 curl -X POST localhost:9100/_sim/deliveries/42/redeliver
 ```
 
@@ -390,25 +390,25 @@ curl -X POST localhost:9100/_sim/deliveries/42/redeliver
 
 ## Machines
 
-A machine is a Docker container that behaves like a fresh Ubuntu 24.04 cloud VM. The simulated clouds run their servers as machines: a DigitalOcean droplet or an EC2 instance is one machine. The `docker` CLI must work where `stagely-sim` runs.
+A machine is a Docker container that behaves like a fresh Ubuntu 24.04 cloud VM. The simulated clouds run their servers as machines: a DigitalOcean droplet or an EC2 instance is one machine. The `docker` CLI must work where `elprovo-sim` runs.
 
-The image is built from `vm/` the first time a machine is needed, and tagged `stagely-sim-vm:<hash of vm/>`. The first build downloads Ubuntu packages and takes a few minutes; later builds reuse Docker's cache. A change under `vm/` gives a new tag. The image has `openssh-server`, `docker.io`, `docker-compose-v2`, `docker-buildx`, `ca-certificates`, `curl`, `iproute2`, `iptables`, `iputils-arping`, `jq`, `python3-yaml` and `sudo`, which Ubuntu's cloud images also ship.
+The image is built from `vm/` the first time a machine is needed, and tagged `elprovo-sim-vm:<hash of vm/>`. The first build downloads Ubuntu packages and takes a few minutes; later builds reuse Docker's cache. A change under `vm/` gives a new tag. The image has `openssh-server`, `docker.io`, `docker-compose-v2`, `docker-buildx`, `ca-certificates`, `curl`, `iproute2`, `iptables`, `iputils-arping`, `jq`, `python3-yaml` and `sudo`, which Ubuntu's cloud images also ship.
 
 Each machine:
 
-- runs privileged, so Docker works inside it, with Docker's init (tini) as PID 1 and `stagely-vm-init` under it;
+- runs privileged, so Docker works inside it, with Docker's init (tini) as PID 1 and `elprovo-vm-init` under it;
 - keeps `/var/lib/docker` on an anonymous volume, which is deleted with the machine;
 - has `/run` on tmpfs, as on a VM;
 - resolves the host names its cloud names, such as Google Cloud's `metadata.google.internal`, through `/etc/hosts`;
 - has a private address on the Docker network the cloud names (DigitalOcean: `-do-network`, AWS: `-aws-network`, Google Cloud: `-gcp-network`, Hetzner: `-hcloud-network`, Vultr: `-vultr-network`) and a public address on the network with the same name and a `-public` suffix. The simulation creates both networks when they are missing. Addresses are static: they come from the top of each subnet, unless the cloud names the public address (Vultr: an instance's main reserved IP), and stay the same when the machine stops and starts.
 
-`-machine-ca <file>` names a PEM file of CA certificates that every machine trusts, as a cloud image trusts the public CAs. The simulation copies the file into each machine as `/usr/local/share/ca-certificates/stagely-sim.crt`, and the machine adds it to its trust store before any service starts. Use it to give a simulated service, such as a container registry, a TLS certificate that machines accept.
+`-machine-ca <file>` names a PEM file of CA certificates that every machine trusts, as a cloud image trusts the public CAs. The simulation copies the file into each machine as `/usr/local/share/ca-certificates/elprovo-sim.crt`, and the machine adds it to its trust store before any service starts. Use it to give a simulated service, such as a container registry, a TLS certificate that machines accept.
 
 To reach a machine, a container joins the private network for private addresses and the `-public` network for public addresses; the `-public` network plays the internet. On macOS (colima, Docker Desktop), container addresses are not reachable from the host, so publish ports instead (DigitalOcean: `-do-publish`), or run the client in a container on the networks.
 
 ### Boot
 
-The simulation copies the NoCloud seed files into the container before it starts (with `docker cp`, so the data directory needs no file sharing with the Docker VM): `/var/lib/cloud/seed/nocloud/meta-data`, written as JSON, which is valid YAML, with `instance-id`, `local-hostname`, `local-ipv4`, `public-ipv4` and `public-keys`; and `/var/lib/cloud/seed/nocloud/user-data`. Then `stagely-vm-init`:
+The simulation copies the NoCloud seed files into the container before it starts (with `docker cp`, so the data directory needs no file sharing with the Docker VM): `/var/lib/cloud/seed/nocloud/meta-data`, written as JSON, which is valid YAML, with `instance-id`, `local-hostname`, `local-ipv4`, `public-ipv4` and `public-keys`; and `/var/lib/cloud/seed/nocloud/user-data`. Then `elprovo-vm-init`:
 
 1. Applies the firewall the machine last received, before any service listens.
 2. Runs the `init` stage: `bootcmd` on every boot; `write_files` and `ssh` once per instance.
@@ -460,15 +460,15 @@ Other directives are logged as warnings in the unit's journal. `Type=forking`, t
 
 ### Extra addresses
 
-A cloud points a reserved IP at a machine with `docker exec -i <machine> stagely-vm-init addresses`, which reads `{"addresses": [...]}`: the machine's whole list of extra IPv4 addresses. The machine adds each new one as a `/32` on the interface that holds its public address, announces it with a gratuitous ARP so neighbors stop sending to an old MAC address, removes the ones no longer listed, and keeps the list for later boots. Other containers on the public network then reach the machine at the address. A new machine, including one booted from a snapshot, starts with no extra addresses.
+A cloud points a reserved IP at a machine with `docker exec -i <machine> elprovo-vm-init addresses`, which reads `{"addresses": [...]}`: the machine's whole list of extra IPv4 addresses. The machine adds each new one as a `/32` on the interface that holds its public address, announces it with a gratuitous ARP so neighbors stop sending to an old MAC address, removes the ones no longer listed, and keeps the list for later boots. Other containers on the public network then reach the machine at the address. A new machine, including one booted from a snapshot, starts with no extra addresses.
 
 ### Firewall
 
-A cloud pushes a firewall to a running machine with `docker exec -i <machine> stagely-vm-init firewall`, which reads JSON rules, applies them and keeps them for later boots. The rules sit in the `mangle` table's `PREROUTING` and `POSTROUTING` chains for the machine's outside interfaces (`eth*`), so they also cover ports that Docker inside the machine publishes, which never reach `INPUT`. Established connections, loopback traffic and traffic between containers inside the machine always pass; every other new connection that no rule allows is dropped. Rules are IPv4 only. DNS through Docker's embedded resolver (`127.0.0.11`) works whatever the rules say.
+A cloud pushes a firewall to a running machine with `docker exec -i <machine> elprovo-vm-init firewall`, which reads JSON rules, applies them and keeps them for later boots. The rules sit in the `mangle` table's `PREROUTING` and `POSTROUTING` chains for the machine's outside interfaces (`eth*`), so they also cover ports that Docker inside the machine publishes, which never reach `INPUT`. Established connections, loopback traffic and traffic between containers inside the machine always pass; every other new connection that no rule allows is dropped. Rules are IPv4 only. DNS through Docker's embedded resolver (`127.0.0.11`) works whatever the rules say.
 
 ### Instance metadata
 
-Every cloud serves a VM's metadata, including its user data, at `169.254.169.254`, from outside the VM. A machine does the same: the cloud gives it a set of documents by path, and the `stagely-metadata` unit serves them on `http://169.254.169.254/`. The server runs in its own network namespace, joined to the machine by a veth pair (`md0` in the machine, with the address `169.254.0.1`), so the machine routes requests to it as to a neighbor. Requests from containers inside the machine therefore cross Docker's `FORWARD` chain, as on a cloud VM, and rules in `DOCKER-USER` apply to them. A path that ends in `/` lists the names under it, one per line, with `/` after each directory. Other paths answer 404, and methods other than `GET` and `HEAD` answer 405. The documents are fixed when the machine is created.
+Every cloud serves a VM's metadata, including its user data, at `169.254.169.254`, from outside the VM. A machine does the same: the cloud gives it a set of documents by path, and the `elprovo-metadata` unit serves them on `http://169.254.169.254/`. The server runs in its own network namespace, joined to the machine by a veth pair (`md0` in the machine, with the address `169.254.0.1`), so the machine routes requests to it as to a neighbor. Requests from containers inside the machine therefore cross Docker's `FORWARD` chain, as on a cloud VM, and rules in `DOCKER-USER` apply to them. A path that ends in `/` lists the names under it, one per line, with `/` after each directory. Other paths answer 404, and methods other than `GET` and `HEAD` answer 405. The documents are fixed when the machine is created.
 
 ### Checks
 
@@ -484,12 +484,12 @@ The `simdocker` tests boot machines from seed data, check that the firewall admi
 The DigitalOcean simulation serves the DigitalOcean API v2. Each droplet is a [machine](#machines), and its firewalls are enforced inside the machine. The container registry is a CNCF Distribution registry (`registry:2`) that you run; the simulation hands out its endpoint and basic-auth credentials.
 
 ```sh
-go run ./cmd/stagely-sim -digitalocean -do-publish tag=stagely-gateway:443=8443,80=8081
+go run ./cmd/elprovo-sim -digitalocean -do-publish tag=elprovo-gateway:443=8443,80=8081
 ```
 
-Point clients at `http://localhost:9300` with the token `dop_v1_stagely_sim`: godo with `godo.SetBaseURL`, Terraform with `api_endpoint = "http://localhost:9300"` (no path; the provider adds `/v2/`), the agent with `-do-api-url`, and `stagely setup digitalocean` with `-do-api-url`, which it passes to the module and the agent. State is kept in `<data-dir>/digitalocean/state.json`.
+Point clients at `http://localhost:9300` with the token `dop_v1_elprovo_sim`: godo with `godo.SetBaseURL`, Terraform with `api_endpoint = "http://localhost:9300"` (no path; the provider adds `/v2/`), the agent with `-do-api-url`, and `elprovo setup digitalocean` with `-do-api-url`, which it passes to the module and the agent. State is kept in `<data-dir>/digitalocean/state.json`.
 
-At start, the simulation matches stored droplets with the machines Docker has: a droplet takes its status and addresses from its machine, a droplet whose machine is gone is removed with a warning, an action that was running when the simulation stopped is marked `errored`, and a machine of this account that no droplet owns is deleted. Machines carry the labels `stagely-sim.cloud=digitalocean`, `stagely-sim.account=<account uuid>` and `stagely-sim.resource=<droplet id>`, and are named `stagely-sim-do-<account>-<droplet id>`.
+At start, the simulation matches stored droplets with the machines Docker has: a droplet takes its status and addresses from its machine, a droplet whose machine is gone is removed with a warning, an action that was running when the simulation stopped is marked `errored`, and a machine of this account that no droplet owns is deleted. Machines carry the labels `elprovo-sim.cloud=digitalocean`, `elprovo-sim.account=<account uuid>` and `elprovo-sim.resource=<droplet id>`, and are named `elprovo-sim-do-<account>-<droplet id>`.
 
 ### Flags
 
@@ -497,13 +497,13 @@ At start, the simulation matches stored droplets with the machines Docker has: a
 | --- | --- | --- |
 | `-digitalocean` | off | Run the DigitalOcean simulation |
 | `-do-addr` | `:9300` | Listen address of the API |
-| `-do-token` | `dop_v1_stagely_sim` | Token that the API accepts. Repeatable. All tokens act on one account. |
+| `-do-token` | `dop_v1_elprovo_sim` | Token that the API accepts. Repeatable. All tokens act on one account. |
 | `-do-regions` | `nyc1,nyc3,sfo3,ams3,fra1,lon1,sgp1,tor1,blr1,syd1` | Region slugs. Each gets a default VPC named `default-<region>`. |
-| `-do-network` | `stagely-sim` | Docker network for private addresses. Public addresses use `<network>-public`. |
+| `-do-network` | `elprovo-sim` | Docker network for private addresses. Public addresses use `<network>-public`. |
 | `-do-publish` | none | Publish ports of matching droplets on `127.0.0.1` of the Docker host, as `tag=<tag>:<port>=<host port>,...` or `name=<droplet name>:...`. Repeatable. |
 | `-do-registry-endpoint` | `localhost:5000` | `host:port` of the registry that Docker credentials name |
 | `-do-registry-api` | `http://<registry endpoint>` | Base URL the simulation uses to list repositories |
-| `-do-registry-username`, `-do-registry-password` | `stagely`, `stagely` | Basic-auth credentials of the registry |
+| `-do-registry-username`, `-do-registry-password` | `elprovo`, `elprovo` | Basic-auth credentials of the registry |
 
 A publish rule gives its host ports to the first droplet that matches it when that droplet is created, because a host port can be bound only once. A later matching droplet gets no published ports while the first exists, and the simulation logs a warning. Traffic through a published port reaches the machine from the Docker network's gateway address, so a firewall on that droplet must allow it, for example with `0.0.0.0/0`.
 
@@ -543,7 +543,7 @@ Every request behaves as follows:
 - **Pagination.** `page` and `per_page` (default 20, at most 200). Lists have `links.pages` with absolute `first`, `prev`, `next` and `last` URLs where they apply, and `meta.total`.
 - **Actions.** A droplet is `locked` while one of its actions runs, from `create` through deletion. An action or a delete on a locked droplet gets a 422 (`Droplet already has a pending event.`), as in DigitalOcean. A droplet becomes `active` when its machine starts, before cloud-init finishes, as on DigitalOcean.
 - **Firewalls.** Each droplet's machine enforces the union of the firewalls that name it or one of its tags. Droplet and tag sources resolve to the droplets' private and public addresses, so a firewall follows droplets as they come and go. A new droplet boots with its firewall in place. A firewall shows `status: waiting` with `pending_changes` until every running droplet it applies to has its rules, then `succeeded`. Failed pushes are retried every 5 seconds.
-- **Snapshots.** A snapshot commits the machine with `docker commit` into the image `stagely-sim-do-snapshot:<account>-<id>`, which new droplets in the same region can boot. Deleting the snapshot removes the image.
+- **Snapshots.** A snapshot commits the machine with `docker commit` into the image `elprovo-sim-do-snapshot:<account>-<id>`, which new droplets in the same region can boot. Deleting the snapshot removes the image.
 
 ### Differences from DigitalOcean
 
@@ -567,11 +567,11 @@ mise exec -- sim/scripts/check-digitalocean.sh terraform       # needs Docker, G
 mise exec -- sim/scripts/check-digitalocean.sh image           # needs Docker and Go
 ```
 
-Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9390 (`STAGELY_SIM_CHECK_PORT` changes it), and removes all of it when it ends.
+Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9390 (`ELPROVO_SIM_CHECK_PORT` changes it), and removes all of it when it ends.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/digitalocean/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. The unchanged adapter registers its SSH key, creates a stagelet and a neighbor droplet with its tag, connects over SSH with the host keys it put in the user data, and waits for `cloud-init status --wait` and `docker compose version`. The test puts a cloud firewall on the tag that lets in TCP only from its own address, as setup's module lets in only the agent and the gateway, and waits until the firewall reports `succeeded`. On the stagelet it builds and starts a Compose project that pulls `busybox` from Docker Hub and fetches a page from it on the droplet's address. It checks that the neighbor can connect out to the test but not to the stagelet's published port, and that a container can't reach the metadata service. The adapter deletes both droplets, waiting until `GET` answers 404. The script then checks that no machine is left.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/digitalocean/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. The unchanged adapter registers its SSH key, creates a preview and a neighbor droplet with its tag, connects over SSH with the host keys it put in the user data, and waits for `cloud-init status --wait` and `docker compose version`. The test puts a cloud firewall on the tag that lets in TCP only from its own address, as setup's module lets in only the agent and the gateway, and waits until the firewall reports `succeeded`. On the preview it builds and starts a Compose project that pulls `busybox` from Docker Hub and fetches a page from it on the droplet's address. It checks that the neighbor can connect out to the test but not to the preview's published port, and that a container can't reach the metadata service. The adapter deletes both droplets, waiting until `GET` answers 404. The script then checks that no machine is left.
 - `terraform` applies `internal/digitalocean/testdata/terraform` with OpenTofu and `digitalocean/digitalocean` 2.102.0, the version that `terraform/digitalocean` pins: a VPC, an SSH key, a tag, two droplets with the tag and user data, a firewall on the tag, a reserved IP assigned to a droplet, a container registry and Docker credentials. It checks that two machines exist, that `terraform plan -detailed-exitcode` finds no changes, and that no machine is left after `terraform destroy`. It downloads the provider and needs internet access for the revoke call described above.
-- `image` builds the golden image in `images/digitalocean` with Packer 1.16.1 and its `digitalocean` plugin, in a container on both simulation networks: a build droplet, the provisioners, a snapshot, and the build droplet's deletion. It checks that no machine is left, then runs the `agent` check with `STAGELY_SIM_DO_GOLDEN_IMAGE` set to the snapshot, so the adapter's droplets boot from it.
+- `image` builds the golden image in `images/digitalocean` with Packer 1.16.1 and its `digitalocean` plugin, in a container on both simulation networks: a build droplet, the provisioners, a snapshot, and the build droplet's deletion. It checks that no machine is left, then runs the `agent` check with `ELPROVO_SIM_DO_GOLDEN_IMAGE` set to the snapshot, so the adapter's droplets boot from it.
 
 ### Sources
 
@@ -588,14 +588,14 @@ Run the scripts from the repository root. Each starts its own simulation with a 
 The AWS simulation serves the EC2 Query API, STS `GetCallerIdentity` and `GetFederationToken`, the ECR API and the Docker token service of the account's registries, all on one listener. Each instance is a [machine](#machines), and its security groups are enforced inside the machine. The image registry is a CNCF Distribution registry (`registry:2`) that you run under the host name `<account>.dkr.ecr.<region>.amazonaws.com` with the simulation as its token service.
 
 ```sh
-go run ./cmd/stagely-sim -aws -aws-account-id 123456789012
+go run ./cmd/elprovo-sim -aws -aws-account-id 123456789012
 ```
 
-Point clients at `http://localhost:9310` with the access key `AKIASTAGELYSIMULATE` and the secret `stagely-sim-secret-access-key`:
+Point clients at `http://localhost:9310` with the access key `AKIAELPROVOSIMULATE` and the secret `elprovo-sim-secret-access-key`:
 
 - Terraform: `endpoints { ec2 = "http://localhost:9310", ecr = "http://localhost:9310", sts = "http://localhost:9310" }` in the `aws` provider. Keep credential validation on: the simulation answers STS.
 - Packer: `AWS_ENDPOINT_URL=http://localhost:9310` in the environment. The plugin's `custom_endpoint_ec2` is not enough: the client that tags the AMI ignores it.
-- The agent: `-aws-ec2-url`, `-aws-ecr-url` and `-aws-sts-url`; `stagely setup aws`: `-aws-endpoint`, which it passes to the module and the agent.
+- The agent: `-aws-ec2-url`, `-aws-ecr-url` and `-aws-sts-url`; `elprovo setup aws`: `-aws-endpoint`, which it passes to the module and the agent.
 - The AWS SDKs and the AWS CLI: `AWS_ENDPOINT_URL`. curl: `--aws-sigv4 aws:amz:<region>:<service> --user <key>:<secret>`.
 
 The listener routes each request by the service in its signature's credential scope: `ec2`, `sts` or `ecr`, and serves the registry's token service at `GET /v2/token`. State is kept in `<data-dir>/aws/state.json`.
@@ -606,13 +606,13 @@ Run the registry with these settings, and give it a certificate for its host nam
 REGISTRY_AUTH=token
 REGISTRY_AUTH_TOKEN_REALM=http://<simulation address>/v2/token
 REGISTRY_AUTH_TOKEN_SERVICE=<account>.dkr.ecr.<region>.amazonaws.com
-REGISTRY_AUTH_TOKEN_ISSUER=stagely-sim
+REGISTRY_AUTH_TOKEN_ISSUER=elprovo-sim
 REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=<data-dir>/aws/registry-token.pem
 ```
 
 The token service signs Docker in with the user `AWS` and the password of an ECR authorization token that has not expired. On a repository of the registry in the token's region, it grants `pull` when the token's caller may call `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the repository's ARN, and `push` when it may also call `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload` and `ecr:PutImage`. The IAM user may do both everywhere; a federated session may do what its session policy allows. The tokens are RS256 JWTs with the signing certificate in the `x5c` header; the simulation writes that certificate to `registry-token.pem` when it starts.
 
-At start, the simulation matches stored instances with the machines Docker has: an instance takes its state and addresses from its machine, an instance whose machine is gone is terminated with `Server.InternalError`, a termination that was running is finished, an AMI that was being taken fails, and a machine of this account that no instance owns is deleted. Machines carry the labels `stagely-sim.cloud=aws`, `stagely-sim.account=<account id>` and `stagely-sim.resource=<instance id>`, and are named `stagely-sim-aws-<account>-<instance id>`.
+At start, the simulation matches stored instances with the machines Docker has: an instance takes its state and addresses from its machine, an instance whose machine is gone is terminated with `Server.InternalError`, a termination that was running is finished, an AMI that was being taken fails, and a machine of this account that no instance owns is deleted. Machines carry the labels `elprovo-sim.cloud=aws`, `elprovo-sim.account=<account id>` and `elprovo-sim.resource=<instance id>`, and are named `elprovo-sim-aws-<account>-<instance id>`.
 
 ### Flags
 
@@ -620,10 +620,10 @@ At start, the simulation matches stored instances with the machines Docker has: 
 | --- | --- | --- |
 | `-aws` | off | Run the AWS simulation |
 | `-aws-addr` | `127.0.0.1:9310` | Listen address of the EC2, STS and ECR endpoints |
-| `-aws-access-key-id`, `-aws-secret-access-key` | `AKIASTAGELYSIMULATE`, `stagely-sim-secret-access-key` | The one access key that requests must be signed with |
+| `-aws-access-key-id`, `-aws-secret-access-key` | `AKIAELPROVOSIMULATE`, `elprovo-sim-secret-access-key` | The one access key that requests must be signed with |
 | `-aws-account-id` | random, kept in the state | 12-digit account id. Fix it when a registry must answer under the account's host name. |
 | `-aws-regions` | `us-east-1,us-east-2,us-west-2,eu-west-1,eu-central-1` | Region names. Each gets the zones `a`, `b` and `c`, a default VPC, and the stock Ubuntu AMI. |
-| `-aws-network` | `stagely-sim-aws` | Docker network for private addresses. Public addresses use `<network>-public`. |
+| `-aws-network` | `elprovo-sim-aws` | Docker network for private addresses. Public addresses use `<network>-public`. |
 
 ### Coverage
 
@@ -648,7 +648,7 @@ EC2 actions:
 | `CreateTags`, `DeleteTags`, `DescribeTags` | Every resource type above |
 | `DescribeRegions`, `DescribeAvailabilityZones`, `DescribeInstanceTypes`, `DescribeInstanceTypeOfferings`, `DescribeAccountAttributes` | The `-aws-regions`, three zones each, and the instance types `t3.nano` to `t3.2xlarge`, `m7i.large`, `m7i.xlarge` and `c7i.large`, offered in every zone |
 
-STS answers `GetCallerIdentity` with the account id and the IAM user `stagely-sim`, or the federated user of a session. `GetFederationToken` gives the IAM user temporary credentials (`ASIA...` access key, secret and session token) of a federated user with `Name` (2 to 32 characters of `[\w+=,.@-]`), for `DurationSeconds` (900 to 129600, by default 43200), whose permissions are the inline session `Policy` (at most 2048 characters); without a policy, the session may do nothing. Session credentials get `AccessDenied` from it. ECR answers `GetAuthorizationToken`, `CreateRepository`, `DescribeRepositories`, `DeleteRepository`, `CreateRepositoryCreationTemplate`, `DescribeRepositoryCreationTemplates`, `UpdateRepositoryCreationTemplate` and `DeleteRepositoryCreationTemplate`.
+STS answers `GetCallerIdentity` with the account id and the IAM user `elprovo-sim`, or the federated user of a session. `GetFederationToken` gives the IAM user temporary credentials (`ASIA...` access key, secret and session token) of a federated user with `Name` (2 to 32 characters of `[\w+=,.@-]`), for `DurationSeconds` (900 to 129600, by default 43200), whose permissions are the inline session `Policy` (at most 2048 characters); without a policy, the session may do nothing. Session credentials get `AccessDenied` from it. ECR answers `GetAuthorizationToken`, `CreateRepository`, `DescribeRepositories`, `DeleteRepository`, `CreateRepositoryCreationTemplate`, `DescribeRepositoryCreationTemplates`, `UpdateRepositoryCreationTemplate` and `DeleteRepositoryCreationTemplate`.
 
 Every request behaves as follows:
 
@@ -658,7 +658,7 @@ Every request behaves as follows:
 - **Errors.** EC2 answers `<Response><Errors><Error><Code/><Message/></Error></Errors><RequestID/></Response>` with EC2's codes (`InvalidInstanceID.NotFound`, `InvalidParameterValue`, `DependencyViolation`, `IncorrectInstanceState` and the others). STS answers `<ErrorResponse>`, ECR `{"__type", "message"}`.
 - **Unsupported input fails.** An unknown EC2 action is `InvalidAction`, an unknown parameter `UnknownParameter`, an unknown filter `InvalidParameterValue`, and an option the simulation cannot honor (dedicated tenancy, hibernation, instance profiles, Nitro Enclaves, encrypted volumes, extra block devices, IPv6 on subnets) `UnsupportedOperation`. An unknown ECR operation is `UnknownOperationException`, an unknown field `SerializationException`. `DryRun=true` answers `DryRunOperation`.
 - **Security groups.** Each instance's machine enforces the union of its groups' rules. A rule that names a group admits the private addresses of the running instances in that group, as in a VPC, and follows instances as they come and go. Failed pushes are retried every 5 seconds.
-- **Images.** The stock image is Canonical's `ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260918`, owner `099720109477`, with a different id in each region; it boots the base machine image. `CreateImage` commits the instance's machine, running or stopped, into the Docker image `stagely-sim-aws-image:<account>-<snapshot id>` behind a new snapshot; the AMI is `pending` until the commit ends. Deregistering an AMI keeps its snapshot unless `DeleteAssociatedSnapshots` is set; deleting a snapshot removes its Docker image and is refused while an AMI uses it.
+- **Images.** The stock image is Canonical's `ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-20260918`, owner `099720109477`, with a different id in each region; it boots the base machine image. `CreateImage` commits the instance's machine, running or stopped, into the Docker image `elprovo-sim-aws-image:<account>-<snapshot id>` behind a new snapshot; the AMI is `pending` until the commit ends. Deregistering an AMI keeps its snapshot unless `DeleteAssociatedSnapshots` is set; deleting a snapshot removes its Docker image and is refused while an AMI uses it.
 - **Instance metadata.** Each machine serves `http://169.254.169.254/latest/meta-data/` (`ami-id`, `instance-id`, `instance-type`, `hostname`, `local-hostname`, `local-ipv4`, `public-ipv4`, `public-hostname`, `mac`, `reservation-id`, `security-groups`, `placement/availability-zone`, `placement/availability-zone-id`, `placement/region`, `public-keys/0/openssh-key`, `network/interfaces/macs/<mac>/...`), `/latest/user-data` and `/latest/dynamic/instance-identity/document`.
 - **ECR tokens.** `GetAuthorizationToken` returns base64 `AWS:<password>` with a new password for each call, `expiresAt` 12 hours ahead and the proxy endpoint `https://<account>.dkr.ecr.<region>.amazonaws.com`. The token may do in the registry what its caller may do.
 
@@ -684,11 +684,11 @@ mise exec -- sim/scripts/check-aws.sh terraform       # also needs OpenTofu
 mise exec -- sim/scripts/check-aws.sh image           # needs Docker, Go, curl and python3
 ```
 
-Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks, a random access key and port 9394 (`STAGELY_SIM_CHECK_PORT` changes it), and removes all of it when it ends. They keep AWS clients away from your own AWS configuration.
+Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks, a random access key and port 9394 (`ELPROVO_SIM_CHECK_PORT` changes it), and removes all of it when it ends. They keep AWS clients away from your own AWS configuration.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/aws/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. The test creates a security group that lets in TCP only from its own addresses, as the stagelet group lets in only the agent and the gateway. The unchanged adapter imports its key pair, launches a stagelet and a neighbor instance of the stock AMI into the default VPC in that group, connects over SSH as root with the host keys it put in the user data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project that pulls `busybox` from Docker Hub on the stagelet, and fetches a page from it on its public address. The test then checks that the neighbor can connect out to the test but not to the stagelet's published port, at its public or private address; and that a container cannot reach the metadata service. The script runs CNCF Distribution 2.8.3 as the account's ECR registry with a certificate from the check's CA, which the machines trust through `-machine-ca`, and the simulation as its token service. The stagelet signs in with a build worker's registry credentials and pushes an image, then with a stagelet machine's credentials pulls it and is refused a push. The adapter terminates both instances, waiting until EC2 reports them `terminated`. The script then checks that no machine is left.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/aws/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. The test creates a security group that lets in TCP only from its own addresses, as the preview group lets in only the agent and the gateway. The unchanged adapter imports its key pair, launches a preview and a neighbor instance of the stock AMI into the default VPC in that group, connects over SSH as root with the host keys it put in the user data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project that pulls `busybox` from Docker Hub on the preview, and fetches a page from it on its public address. The test then checks that the neighbor can connect out to the test but not to the preview's published port, at its public or private address; and that a container cannot reach the metadata service. The script runs CNCF Distribution 2.8.3 as the account's ECR registry with a certificate from the check's CA, which the machines trust through `-machine-ca`, and the simulation as its token service. The preview signs in with a build worker's registry credentials and pushes an image, then with a preview machine's credentials pulls it and is refused a push. The adapter terminates both instances, waiting until EC2 reports them `terminated`. The script then checks that no machine is left.
 - `terraform` applies `terraform/aws` through `internal/aws/testdata/terraform` with OpenTofu and `hashicorp/aws` 6.66.0, the version the module pins: a VPC, an internet gateway, a subnet, a route table, three security groups, a key pair, the agent and gateway instances, an Elastic IP with its association and an ECR repository creation template. It checks that two machines exist, signs in as root with the operator key to the agent host and to the gateway's Elastic IP from the public network and reads the files their user data wrote, checks that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider.
-- `image` builds the golden image in `images/aws` with Packer 1.16.1 and its `amazon` plugin 1.8.2, in a container on both simulation networks with `AWS_ENDPOINT_URL` set: the source AMI lookup, a temporary key pair and security group, a build instance, the provisioners, a stop, `CreateImage`, the AMI and snapshot tags, and the cleanup. It checks that no machine is left, then runs the `agent` check with `STAGELY_SIM_AWS_GOLDEN_IMAGE` set to the AMI, so the adapter's instance boots from it.
+- `image` builds the golden image in `images/aws` with Packer 1.16.1 and its `amazon` plugin 1.8.2, in a container on both simulation networks with `AWS_ENDPOINT_URL` set: the source AMI lookup, a temporary key pair and security group, a build instance, the provisioners, a stop, `CreateImage`, the AMI and snapshot tags, and the cleanup. It checks that no machine is left, then runs the `agent` check with `ELPROVO_SIM_AWS_GOLDEN_IMAGE` set to the AMI, so the adapter's instance boots from it.
 
 ### Sources
 
@@ -704,7 +704,7 @@ Run the scripts from the repository root. Each starts its own simulation with a 
 The Google Cloud simulation serves one project: the OAuth 2.0 token endpoint for service account keys, the Compute Engine API v1, Artifact Registry repositories, IAM service accounts and impersonation, and the Docker token service of Artifact Registry's registry hosts. Each instance is a [machine](#machines), and firewall rules are enforced inside the machine. The registry itself is a CNCF Distribution registry (`registry:2`) that you run with the simulation as its token service.
 
 ```sh
-go run ./cmd/stagely-sim -gcp
+go run ./cmd/elprovo-sim -gcp
 ```
 
 On its first start the simulation makes the project's service account and one key, and writes the key file that Google Cloud would let you download to `<data-dir>/gcp/service-account.json`. Its `token_uri` is `-gcp-token-uri`, by default `http://<gcp-addr>/token`; a client that reaches the simulation at another address needs a copy with its own `token_uri`. State is kept in `<data-dir>/gcp/state.json`, so a restart keeps the key, the issued tokens and every resource.
@@ -714,10 +714,10 @@ Point clients at the simulation with the key file:
 - the agent: `-gcp-compute-url http://localhost:9320/compute/v1/`, `-gcp-iam-credentials-url http://localhost:9320/v1/` and the key in `GOOGLE_CREDENTIALS`;
 - Terraform's `hashicorp/google` provider: `compute_custom_endpoint = "http://localhost:9320/compute/v1/"`, `artifact_registry_custom_endpoint` and `iam_beta_custom_endpoint` set to `"http://localhost:9320/v1/"`, and the key in `GOOGLE_CREDENTIALS`;
 - Packer's `googlecompute` plugin: `custom_endpoints = { compute = "http://localhost:9320/compute/v1/" }` and the key in `GOOGLE_APPLICATION_CREDENTIALS`;
-- `stagely setup gcp`: `-gcp-compute-url`, `-gcp-artifact-registry-url`, `-gcp-iam-url` and `-gcp-iam-credentials-url`, which it passes to the module and the agent;
-- `curl`: `Authorization: Bearer ya29.stagely-sim`, the `-gcp-access-token`.
+- `elprovo setup gcp`: `-gcp-compute-url`, `-gcp-artifact-registry-url`, `-gcp-iam-url` and `-gcp-iam-credentials-url`, which it passes to the module and the agent;
+- `curl`: `Authorization: Bearer ya29.elprovo-sim`, the `-gcp-access-token`.
 
-At start, the simulation creates its Docker networks when they are missing and matches stored instances with the machines Docker has: an instance takes its addresses and state from its machine, an instance whose machine is gone is removed with a warning, an operation that was running when the simulation stopped ends with an error, and a machine of this project that no instance owns is deleted. Machines carry the labels `stagely-sim.cloud=gcp`, `stagely-sim.account=<account uuid>` and `stagely-sim.resource=<instance id>`, and are named `stagely-sim-gcp-<account>-<instance id>`.
+At start, the simulation creates its Docker networks when they are missing and matches stored instances with the machines Docker has: an instance takes its addresses and state from its machine, an instance whose machine is gone is removed with a warning, an operation that was running when the simulation stopped ends with an error, and a machine of this project that no instance owns is deleted. Machines carry the labels `elprovo-sim.cloud=gcp`, `elprovo-sim.account=<account uuid>` and `elprovo-sim.resource=<instance id>`, and are named `elprovo-sim-gcp-<account>-<instance id>`.
 
 ### Flags
 
@@ -725,10 +725,10 @@ At start, the simulation creates its Docker networks when they are missing and m
 | --- | --- | --- |
 | `-gcp` | off | Run the Google Cloud simulation |
 | `-gcp-addr` | `127.0.0.1:9320` | Listen address of all the simulated APIs |
-| `-gcp-project` | `stagely-sim` | Project ID |
-| `-gcp-access-token` | `ya29.stagely-sim` | Access token that the APIs accept besides the tokens the simulation issues. Repeatable. |
+| `-gcp-project` | `elprovo-sim` | Project ID |
+| `-gcp-access-token` | `ya29.elprovo-sim` | Access token that the APIs accept besides the tokens the simulation issues. Repeatable. |
 | `-gcp-zones` | `us-central1-a,b,c,f`, `us-east1-b,c,d`, `europe-west1-b,c,d` | Zones; their regions are the region part of each name |
-| `-gcp-network` | `stagely-sim-gcp` | Docker network for internal addresses. External addresses use `<network>-public`. |
+| `-gcp-network` | `elprovo-sim-gcp` | Docker network for internal addresses. External addresses use `<network>-public`. |
 | `-gcp-token-uri` | `http://<gcp-addr>/token` | `token_uri` written into the key file |
 
 ### Coverage
@@ -770,7 +770,7 @@ An instance insert takes one network interface and one boot disk made from an im
 
 The instance is `PROVISIONING` while its machine is created and `RUNNING` once it starts, before cloud-init finishes. The machine boots the image's content: the [machine](#machines) image for the public images, or the Docker image a custom image holds. On the machine, `metadata.google.internal` resolves to `169.254.169.254`. Its NoCloud seed takes `user-data` (decoded when `user-data-encoding` is `base64`) and every key of `ssh-keys`, and the machine starts with the firewall its network's rules give it. An instance with a static address answers at it once the insert finishes; the machine holds it as an [extra address](#extra-addresses).
 
-A delete marks the instance `STOPPING`, removes the machine, and then the instance, so `GET` answers 404 only when the machine is gone. A delete while the insert runs is a 400 `resourceNotReady`; a delete that fails ends its operation with an error and leaves the instance `RUNNING`. A boot disk with `autoDelete: false` outlives its instance: the simulation commits the machine to the Docker image `stagely-sim-gcp-disk:<account>-<disk id>` first. An image made from that disk shares its Docker image, which is removed when neither a disk nor an image uses it.
+A delete marks the instance `STOPPING`, removes the machine, and then the instance, so `GET` answers 404 only when the machine is gone. A delete while the insert runs is a 400 `resourceNotReady`; a delete that fails ends its operation with an error and leaves the instance `RUNNING`. A boot disk with `autoDelete: false` outlives its instance: the simulation commits the machine to the Docker image `elprovo-sim-gcp-disk:<account>-<disk id>` first. An image made from that disk shares its Docker image, which is removed when neither a disk nor an image uses it.
 
 ### Firewall rules
 
@@ -788,7 +788,7 @@ Run a registry for each location that you need, under the location's host name o
 REGISTRY_AUTH=token
 REGISTRY_AUTH_TOKEN_REALM=http://<simulation address>/v2/token
 REGISTRY_AUTH_TOKEN_SERVICE=us-central1-docker.pkg.dev
-REGISTRY_AUTH_TOKEN_ISSUER=stagely-sim
+REGISTRY_AUTH_TOKEN_ISSUER=elprovo-sim
 REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=<data-dir>/gcp/registry-token.pem
 ```
 
@@ -818,11 +818,11 @@ mise exec -- sim/scripts/check-gcp.sh terraform      # needs Docker, Go and Open
 mise exec -- sim/scripts/check-gcp.sh image          # needs Docker and Go
 ```
 
-Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9393 (`STAGELY_SIM_CHECK_PORT` changes it), and removes all of it when it ends. The simulation starts with a CA the script makes, which machines trust.
+Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9393 (`ELPROVO_SIM_CHECK_PORT` changes it), and removes all of it when it ends. The simulation starts with a CA the script makes, which machines trust.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/gcp/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway` with a key file whose `token_uri` points there. The script runs CNCF Distribution 2.8.3 as `us-central1-docker.pkg.dev` with a certificate from the CA and the simulation as its token service. The test, with the agent's key, makes what setup's module makes: a custom mode network whose only firewall rule lets the test's addresses reach the stagelet tag, a Docker repository, and push and pull service accounts that the key's account may impersonate. The unchanged adapter creates a stagelet and a neighbor instance, connects over SSH with the host keys it put in the user data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project on the stagelet that pulls `busybox` from Docker Hub, and fetches a page from it on the internal address. The neighbor can connect out but not to the stagelet's published port; the stagelet resolves `metadata.google.internal` to the metadata server, and a container on it can't connect there. The stagelet signs in to the registry with the push account's token and pushes an image, then with the pull account's token pulls it and is refused a push. The adapter lists its instances by label and deletes both, waiting until `GET` answers 404. The script then checks that no machine is left.
-- `terraform` applies `terraform/google-cloud`, the module that `stagely setup gcp` applies, with OpenTofu and `hashicorp/google` 8.4.0, the version it pins: a network and subnetwork, four firewall rules, a static address, the agent and gateway hosts, an Artifact Registry repository, and the registry's push and pull service accounts with their roles. The hosts get user data with a host key, as setup writes it. The script checks that two machines exist, signs in as root to the agent's address and to the gateway's static address trusting only that host key, gets a token of each registry account with the key's account, as the agent does, checks that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider, which also calls Google's userinfo endpoint, as described above.
-- `image` builds the golden image in `images/google-cloud` with Packer 1.16.1 and its `googlecompute` plugin 1.2.7, in a container on both simulation networks: a build instance whose boot disk outlives it, the provisioners, the instance's deletion, an image of the disk, and the disk's deletion. It checks that the image exists and no machine is left, then runs the `agent` check with `STAGELY_SIM_GCP_GOLDEN_IMAGE` set to the image, so the adapter's instance boots from it.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/gcp/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway` with a key file whose `token_uri` points there. The script runs CNCF Distribution 2.8.3 as `us-central1-docker.pkg.dev` with a certificate from the CA and the simulation as its token service. The test, with the agent's key, makes what setup's module makes: a custom mode network whose only firewall rule lets the test's addresses reach the preview tag, a Docker repository, and push and pull service accounts that the key's account may impersonate. The unchanged adapter creates a preview and a neighbor instance, connects over SSH with the host keys it put in the user data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project on the preview that pulls `busybox` from Docker Hub, and fetches a page from it on the internal address. The neighbor can connect out but not to the preview's published port; the preview resolves `metadata.google.internal` to the metadata server, and a container on it can't connect there. The preview signs in to the registry with the push account's token and pushes an image, then with the pull account's token pulls it and is refused a push. The adapter lists its instances by label and deletes both, waiting until `GET` answers 404. The script then checks that no machine is left.
+- `terraform` applies `terraform/google-cloud`, the module that `elprovo setup gcp` applies, with OpenTofu and `hashicorp/google` 8.4.0, the version it pins: a network and subnetwork, four firewall rules, a static address, the agent and gateway hosts, an Artifact Registry repository, and the registry's push and pull service accounts with their roles. The hosts get user data with a host key, as setup writes it. The script checks that two machines exist, signs in as root to the agent's address and to the gateway's static address trusting only that host key, gets a token of each registry account with the key's account, as the agent does, checks that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider, which also calls Google's userinfo endpoint, as described above.
+- `image` builds the golden image in `images/google-cloud` with Packer 1.16.1 and its `googlecompute` plugin 1.2.7, in a container on both simulation networks: a build instance whose boot disk outlives it, the provisioners, the instance's deletion, an image of the disk, and the disk's deletion. It checks that the image exists and no machine is left, then runs the `agent` check with `ELPROVO_SIM_GCP_GOLDEN_IMAGE` set to the image, so the adapter's instance boots from it.
 
 ### Sources
 
@@ -840,12 +840,12 @@ Run the scripts from the repository root. Each starts its own simulation with a 
 The Hetzner Cloud simulation serves the Hetzner Cloud API v1. Each server is a [machine](#machines): its primary IPv4 address is the machine's public address, its firewalls are enforced inside the machine, and the machine serves Hetzner's instance metadata. Hetzner has no managed container registry, so the simulation has none; run CNCF Distribution (`registry:2`) for images.
 
 ```sh
-go run ./cmd/stagely-sim -hetzner
+go run ./cmd/elprovo-sim -hetzner
 ```
 
-Point clients at `http://localhost:9400/v1` with the token `stagely-sim-hcloud-` followed by 45 zeros: hcloud-go with `hcloud.WithEndpoint`, Terraform with the provider's `endpoint` argument or `HCLOUD_ENDPOINT`, Packer with the `endpoint` option, the agent with `-hcloud-api-url`, and `stagely setup hetzner` with `-hcloud-api-url`, which it passes to the module and the agent. Every client takes the base URL with the `/v1` path. State is kept in `<data-dir>/hetzner/state.json`.
+Point clients at `http://localhost:9400/v1` with the token `elprovo-sim-hcloud-` followed by 45 zeros: hcloud-go with `hcloud.WithEndpoint`, Terraform with the provider's `endpoint` argument or `HCLOUD_ENDPOINT`, Packer with the `endpoint` option, the agent with `-hcloud-api-url`, and `elprovo setup hetzner` with `-hcloud-api-url`, which it passes to the module and the agent. Every client takes the base URL with the `/v1` path. State is kept in `<data-dir>/hetzner/state.json`.
 
-At start, the simulation matches stored servers with the machines Docker has: a server takes its status and private address from its machine, a server whose machine is gone is removed with a warning, an action that was running when the simulation stopped ends with `error`, a snapshot that was being taken is dropped, and a machine of this project that no server owns is deleted. Machines carry the labels `stagely-sim.cloud=hetzner`, `stagely-sim.account=<project uuid>` and `stagely-sim.resource=<server id>`, and are named `stagely-sim-hz-<project>-<server id>`.
+At start, the simulation matches stored servers with the machines Docker has: a server takes its status and private address from its machine, a server whose machine is gone is removed with a warning, an action that was running when the simulation stopped ends with `error`, a snapshot that was being taken is dropped, and a machine of this project that no server owns is deleted. Machines carry the labels `elprovo-sim.cloud=hetzner`, `elprovo-sim.account=<project uuid>` and `elprovo-sim.resource=<server id>`, and are named `elprovo-sim-hz-<project>-<server id>`.
 
 ### Flags
 
@@ -853,8 +853,8 @@ At start, the simulation matches stored servers with the machines Docker has: a 
 | --- | --- | --- |
 | `-hetzner` | off | Run the Hetzner Cloud simulation |
 | `-hcloud-addr` | `127.0.0.1:9400` | Listen address of the API |
-| `-hcloud-token` | `stagely-sim-hcloud-000…` | Token that the API accepts. It must be 64 characters long, as Hetzner's tokens are, because the Terraform provider refuses other lengths. Repeatable. All tokens act on one project. |
-| `-hcloud-network` | `stagely-sim-hetzner` | Docker network for private addresses. Public addresses use `<network>-public`. |
+| `-hcloud-token` | `elprovo-sim-hcloud-000…` | Token that the API accepts. It must be 64 characters long, as Hetzner's tokens are, because the Terraform provider refuses other lengths. Repeatable. All tokens act on one project. |
+| `-hcloud-network` | `elprovo-sim-hetzner` | Docker network for private addresses. Public addresses use `<network>-public`. |
 
 The simulation has no flag that publishes machine ports on the Docker host. On macOS, reach machines from a container on the two networks, as the checks do.
 
@@ -887,7 +887,7 @@ Every request behaves as follows:
 - **Sorting and labels.** `sort` takes the fields each list documents, with `:asc` or `:desc`; another field is a 422. Labels follow Hetzner's key and value rules, and the `hetzner.cloud/` prefix is reserved. `label_selector` supports `k==v`, `k=v`, `k!=v`, `k`, `!k`, `k in (…)` and `k notin (…)`, joined by commas.
 - **Actions.** Actions are `running` while their Docker work runs, then `success` or `error`. While a server action runs, another action or a delete on that server gets a 423 `locked`. A server becomes `running` when its machine starts, before cloud-init finishes, as on Hetzner.
 - **Firewalls.** Each server's machine enforces the union of the firewalls that apply to it directly or through a label selector. Inbound traffic needs a rule; outbound traffic is open unless a firewall has outbound rules, as on Hetzner. On a server attached to a network, all traffic to and from the private Docker network passes, because Hetzner's firewalls do not filter private networks. A new server boots with its firewall in place. A firewall action stays `running`, and the server reports the firewall as `pending`, until every server it covers has the new rules; then `success` and `applied`. Failed pushes are retried every 5 seconds.
-- **Snapshots.** `create_image` commits the machine with `docker commit` into the image `stagely-sim-hz-snapshot:<project>-<id>`, which new servers can boot by the snapshot's id.
+- **Snapshots.** `create_image` commits the machine with `docker commit` into the image `elprovo-sim-hz-snapshot:<project>-<id>`, which new servers can boot by the snapshot's id.
 
 ### Differences from Hetzner Cloud
 
@@ -913,11 +913,11 @@ mise exec -- sim/scripts/check-hetzner.sh terraform       # needs Docker, Go and
 mise exec -- sim/scripts/check-hetzner.sh image           # needs Docker and Go
 ```
 
-Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9391 (`STAGELY_SIM_CHECK_PORT` changes it), and removes all of it when it ends.
+Run the scripts from the repository root. Each starts its own simulation with a temporary data directory, its own Docker networks and port 9391 (`ELPROVO_SIM_CHECK_PORT` changes it), and removes all of it when it ends.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/hetzner/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. As setup's module does, the test makes a network whose range is the private Docker network's, and a firewall without rules on the label, and waits for its actions. It lets only its own private address, the agent's here, connect to servers on the network. The unchanged adapter registers its SSH key, creates a stagelet and a neighbor server with its label on the network, with user data that holds the host keys and the rules for the network, connects over SSH on their private addresses, and waits for `cloud-init status --wait` and `docker compose version`. On the stagelet it builds and starts a Compose project that pulls `busybox` from Docker Hub, fetches a page from it on the server's private address, and reads the server's hostname from the metadata service. It checks that the neighbor can connect out to the test over the network but not to the stagelet's published port or SSH port, which only the stagelet's own rules refuse, and that a container on the stagelet can't connect to the test over the network or reach the metadata service. The adapter deletes both servers, waiting until `GET` answers 404. The script then checks that no machine is left.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/hetzner/sim_test.go`) and runs it in a container on both simulation networks, which reaches the simulation through `host-gateway`. As setup's module does, the test makes a network whose range is the private Docker network's, and a firewall without rules on the label, and waits for its actions. It lets only its own private address, the agent's here, connect to servers on the network. The unchanged adapter registers its SSH key, creates a preview and a neighbor server with its label on the network, with user data that holds the host keys and the rules for the network, connects over SSH on their private addresses, and waits for `cloud-init status --wait` and `docker compose version`. On the preview it builds and starts a Compose project that pulls `busybox` from Docker Hub, fetches a page from it on the server's private address, and reads the server's hostname from the metadata service. It checks that the neighbor can connect out to the test over the network but not to the preview's published port or SSH port, which only the preview's own rules refuse, and that a container on the preview can't connect to the test over the network or reach the metadata service. The adapter deletes both servers, waiting until `GET` answers 404. The script then checks that no machine is left.
 - `terraform` applies the bootstrap module `terraform/hetzner`, then `internal/hetzner/testdata/terraform`, with OpenTofu and `hetznercloud/hcloud` 1.69.0. The module makes a network with a subnet, an SSH key, a primary IP, three firewalls, one without rules on a label selector, two servers, one of them on the primary IP, and their network attachments. The test configuration makes a network with a subnet, an SSH key, a firewall with inbound and outbound rules on a label selector, a primary IP, two labeled servers and their network attachments. For each, the script checks that two machines exist, that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider.
-- `image` builds the golden image in `images/hetzner` with Packer 1.16.1 and its `hcloud` plugin, in a container on both simulation networks: a temporary SSH key, a build server, the provisioners, a shutdown, a snapshot, and the build server's and the key's deletion. It checks that no machine is left, then runs the `agent` check with `STAGELY_SIM_HCLOUD_GOLDEN_IMAGE` set to the snapshot, so the adapter's servers boot from it.
+- `image` builds the golden image in `images/hetzner` with Packer 1.16.1 and its `hcloud` plugin, in a container on both simulation networks: a temporary SSH key, a build server, the provisioners, a shutdown, a snapshot, and the build server's and the key's deletion. It checks that no machine is left, then runs the `agent` check with `ELPROVO_SIM_HCLOUD_GOLDEN_IMAGE` set to the snapshot, so the adapter's servers boot from it.
 
 ### Sources
 
@@ -933,12 +933,12 @@ Run the scripts from the repository root. Each starts its own simulation with a 
 The Vultr simulation serves the Vultr API v2. Each instance is a [machine](#machines), and its firewall group is enforced inside the machine. A container registry's images live in a CNCF Distribution registry (`registry:2`) that you run under the registry's host name, `<region>.vultrcr.com`; the simulation hands out its root user's credentials.
 
 ```sh
-go run ./cmd/stagely-sim -vultr
+go run ./cmd/elprovo-sim -vultr
 ```
 
-Point the agent at `http://localhost:9400` with `-vultr-api-url` and the key `STAGELYSIMVULTRAPIKEY000000000000001` in `VULTR_API_KEY`. govultr takes another URL with `SetBaseURL`. The Terraform provider and the Packer plugin always call `https://api.vultr.com`, so for them the simulation must answer under that name: give it a certificate for `api.vultr.com` with `-vultr-tls-cert` and `-vultr-tls-key`, run it on a Docker network with the alias `api.vultr.com`, and run the clients on that network, trusting the certificate's CA. `sim/scripts/check-vultr.sh` and a Compose project set this up the same way. State is kept in `<data-dir>/vultr/state.json`.
+Point the agent at `http://localhost:9400` with `-vultr-api-url` and the key `ELPROVOSIMVULTRAPIKEY000000000000001` in `VULTR_API_KEY`. govultr takes another URL with `SetBaseURL`. The Terraform provider and the Packer plugin always call `https://api.vultr.com`, so for them the simulation must answer under that name: give it a certificate for `api.vultr.com` with `-vultr-tls-cert` and `-vultr-tls-key`, run it on a Docker network with the alias `api.vultr.com`, and run the clients on that network, trusting the certificate's CA. `sim/scripts/check-vultr.sh` and a Compose project set this up the same way. State is kept in `<data-dir>/vultr/state.json`.
 
-At start, the simulation matches stored instances with the machines Docker has: an instance takes its power state and addresses from its machine, an instance whose machine is gone or whose deletion was interrupted is removed with a warning, a snapshot that was being taken is dropped, and a machine of this account that no instance owns is deleted. Machines carry the labels `stagely-sim.cloud=vultr`, `stagely-sim.account=<account id>` and `stagely-sim.resource=<instance id>`, and are named `stagely-sim-vultr-<account>-<instance id>`.
+At start, the simulation matches stored instances with the machines Docker has: an instance takes its power state and addresses from its machine, an instance whose machine is gone or whose deletion was interrupted is removed with a warning, a snapshot that was being taken is dropped, and a machine of this account that no instance owns is deleted. Machines carry the labels `elprovo-sim.cloud=vultr`, `elprovo-sim.account=<account id>` and `elprovo-sim.resource=<instance id>`, and are named `elprovo-sim-vultr-<account>-<instance id>`.
 
 ### Flags
 
@@ -946,10 +946,10 @@ At start, the simulation matches stored instances with the machines Docker has: 
 | --- | --- | --- |
 | `-vultr` | off | Run the Vultr simulation |
 | `-vultr-addr` | `127.0.0.1:9400` | Listen address of the API |
-| `-vultr-api-key` | `STAGELYSIMVULTRAPIKEY000000000000001` | API key that the API accepts. Repeatable. All keys act on one account. |
-| `-vultr-network` | `stagely-sim-vultr` | Docker network for private addresses. Public addresses use `<network>-public`. |
+| `-vultr-api-key` | `ELPROVOSIMVULTRAPIKEY000000000000001` | API key that the API accepts. Repeatable. All keys act on one account. |
+| `-vultr-network` | `elprovo-sim-vultr` | Docker network for private addresses. Public addresses use `<network>-public`. |
 | `-vultr-tls-cert`, `-vultr-tls-key` | none | PEM certificate and key to serve the API over HTTPS with, such as one for `api.vultr.com` |
-| `-vultr-registry-username`, `-vultr-registry-password` | `stagely`, `stagely` | Root user of every container registry, which the registry you run must accept |
+| `-vultr-registry-username`, `-vultr-registry-password` | `elprovo`, `elprovo` | Root user of every container registry, which the registry you run must accept |
 
 ### Coverage
 
@@ -966,7 +966,7 @@ At start, the simulation matches stored instances with the machines Docker has: 
 | `GET`/`POST /v2/firewalls`, `GET`/`PUT`/`DELETE /v2/firewalls/{id}` | At most 50 rules a group. Deleting a group takes it off its instances, which then accept all traffic. |
 | `GET`/`POST /v2/firewalls/{id}/rules`, `GET`/`DELETE /v2/firewalls/{id}/rules/{rule}` | `ip_type` `v4` or `v6`, `protocol` `tcp`, `udp` or `icmp`, `subnet` and `subnet_size`, `port` (a port or a range such as `8000:9000`, for tcp and udp only), `notes`. Rules are echoed with `action: accept`. |
 | `GET`/`POST /v2/reserved-ips`, `GET`/`PATCH`/`DELETE /v2/reserved-ips/{id}`, `POST .../attach`, `POST .../detach` | IPv4 only, from the middle of the public network upward. `attach` routes the address to an instance in its region, whose machine then answers at it; attaching it to the instance that has it already succeeds, and an address attached elsewhere must be detached first. Deleting an attached address takes it off its instance. A deleted instance releases its addresses. |
-| `GET`/`POST /v2/snapshots`, `GET`/`PUT`/`DELETE /v2/snapshots/{id}` | A snapshot commits the instance's machine with `docker commit` into the image `stagely-sim-vultr-snapshot:<account>-<id>`, `pending` until done, then `complete` with its size. A failed commit removes the snapshot. Filter `description`. Deleting a snapshot removes the image. |
+| `GET`/`POST /v2/snapshots`, `GET`/`PUT`/`DELETE /v2/snapshots/{id}` | A snapshot commits the instance's machine with `docker commit` into the image `elprovo-sim-vultr-snapshot:<account>-<id>`, `pending` until done, then `complete` with its size. A failed commit removes the snapshot. Filter `description`. Deleting a snapshot removes the image. |
 | `POST /v2/registry`, `GET /v2/registries`, `GET`/`PUT`/`DELETE /v2/registry/{id}`, `GET /v2/registry/plan/list` | `name` (lowercase letters and digits, unique), `region` (any region), `plan` (`start_up`, `business`, `premium`, `enterprise`, with the storage and prices of Vultr's docs), `public`. The registry is `<region>.vultrcr.com/<name>`, and its `root_user` holds the `-vultr-registry-*` credentials. |
 | `OPTIONS /v2/registry/{id}/docker-credentials` | `{"auths": {"<region>.vultrcr.com": {"auth": "<base64 user:password>"}}}` with the root user's static credentials. `expiry_seconds` and `read_write` are validated; a malformed one is a 422. The agent asks for credentials here for each machine. As on Vultr, other methods get a 405. |
 | Metadata service, inside each instance: `GET http://169.254.169.254/v1.json` and `/v1/` | `v1.json` has `hostname`, `instanceid`, `instance-v2-id`, `interfaces` (the public one and, in a VPC, a private one with `network-v2-id`), `public-keys`, `region` (`regioncode`, `countrycode`) and `bgp` with empty values, plus `user-data` and `vendor-data`, which cloud-init's Vultr datasource reads. The tree has `hostname`, `instanceid`, `instance-v2-id`, `public-keys`, `region/` and `interfaces/<n>/` with `network-type`, `network-v2-id` and `ipv4/address`, `gateway` and `netmask`. |
@@ -1003,11 +1003,11 @@ mise exec -- sim/scripts/check-vultr.sh terraform          # needs Docker, Go an
 mise exec -- sim/scripts/check-vultr.sh image              # needs Docker, Go and openssl
 ```
 
-Run the scripts from the repository root. Each builds `stagely-sim` for Linux, makes a CA and a certificate for `api.vultr.com`, and runs the simulation in a `docker:29.8.1-cli` container with the Docker socket, on its own public network under the alias `api.vultr.com`. Its port is published on `127.0.0.1:9390` (`STAGELY_SIM_CHECK_PORT` changes it). The script removes the containers, networks, machines and snapshot images of its run when it ends.
+Run the scripts from the repository root. Each builds `elprovo-sim` for Linux, makes a CA and a certificate for `api.vultr.com`, and runs the simulation in a `docker:29.8.1-cli` container with the Docker socket, on its own public network under the alias `api.vultr.com`. Its port is published on `127.0.0.1:9390` (`ELPROVO_SIM_CHECK_PORT` changes it). The script removes the containers, networks, machines and snapshot images of its run when it ends.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/vultr/sim_test.go`) and runs it in an `ubuntu:24.04` container on both networks that trusts the CA. The unchanged adapter calls `https://api.vultr.com`. As setup's module does, the test creates a VPC whose range is the private Docker network's and a firewall group without rules, and lets only its own private address, the agent's here, connect to instances in the VPC. The adapter gets push and pull registry credentials for a registry the test creates, registers its SSH key, and creates a stagelet and a neighbor instance in the group and the VPC, with user data that holds the host keys and the rules for the VPC, connects over SSH on their private addresses, and waits for `cloud-init status --wait` and `docker compose version`. On the stagelet it builds and starts a Compose project that pulls `busybox` from Docker Hub. The test fetches a page from it on its private address, checks that the neighbor can connect out to `api.vultr.com` and to the test over the VPC but not to the stagelet's published port or SSH port, which only the stagelet's own rules refuse, and that a container on the stagelet can't connect to the test over the VPC or reach the metadata service. The adapter deletes both instances, waiting until `GET` answers 404. The script then checks that no machine is left.
-- `terraform` runs OpenTofu 1.12.6 in the `ghcr.io/opentofu/opentofu:1.12.6` container with `vultr/vultr` 2.32.0, the version that `terraform/vultr` pins. It applies `internal/vultr/testdata/terraform`: an SSH key, a firewall group with IPv4 and IPv6 rules, two instances in the group, a reserved IP attached to one, a container registry and the `vultr_os` data source. Then it applies `terraform/vultr`, which adds a VPC, with the variables `stagely setup` passes. For each it checks that two machines exist, that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider.
-- `image` builds the golden image in `images/vultr` with Packer 1.16.1 and its `vultr` plugin 2.7.0, in a container on both networks that trusts the CA: a build instance, the provisioners, a snapshot, and the build instance's deletion. It checks that no machine is left, then runs the `agent` check with `STAGELY_SIM_VULTR_GOLDEN_IMAGE` set to the snapshot, so the adapter's instance boots from it.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/vultr/sim_test.go`) and runs it in an `ubuntu:24.04` container on both networks that trusts the CA. The unchanged adapter calls `https://api.vultr.com`. As setup's module does, the test creates a VPC whose range is the private Docker network's and a firewall group without rules, and lets only its own private address, the agent's here, connect to instances in the VPC. The adapter gets push and pull registry credentials for a registry the test creates, registers its SSH key, and creates a preview and a neighbor instance in the group and the VPC, with user data that holds the host keys and the rules for the VPC, connects over SSH on their private addresses, and waits for `cloud-init status --wait` and `docker compose version`. On the preview it builds and starts a Compose project that pulls `busybox` from Docker Hub. The test fetches a page from it on its private address, checks that the neighbor can connect out to `api.vultr.com` and to the test over the VPC but not to the preview's published port or SSH port, which only the preview's own rules refuse, and that a container on the preview can't connect to the test over the VPC or reach the metadata service. The adapter deletes both instances, waiting until `GET` answers 404. The script then checks that no machine is left.
+- `terraform` runs OpenTofu 1.12.6 in the `ghcr.io/opentofu/opentofu:1.12.6` container with `vultr/vultr` 2.32.0, the version that `terraform/vultr` pins. It applies `internal/vultr/testdata/terraform`: an SSH key, a firewall group with IPv4 and IPv6 rules, two instances in the group, a reserved IP attached to one, a container registry and the `vultr_os` data source. Then it applies `terraform/vultr`, which adds a VPC, with the variables `elprovo setup` passes. For each it checks that two machines exist, that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider.
+- `image` builds the golden image in `images/vultr` with Packer 1.16.1 and its `vultr` plugin 2.7.0, in a container on both networks that trusts the CA: a build instance, the provisioners, a snapshot, and the build instance's deletion. It checks that no machine is left, then runs the `agent` check with `ELPROVO_SIM_VULTR_GOLDEN_IMAGE` set to the snapshot, so the adapter's instance boots from it.
 
 ### Sources
 
@@ -1023,12 +1023,12 @@ Run the scripts from the repository root. Each builds `stagely-sim` for Linux, m
 The Azure simulation serves Azure Resource Manager, its metadata document for custom clouds, and the client credentials grant of the Microsoft Entra ID token endpoint, all on one address. Each virtual machine is a [machine](#machines), and its network security groups are enforced inside the machine. The container registry is a CNCF Distribution registry (`registry:2`) that you run under `<registry name>.azurecr.io` on the simulated network; the simulation keeps the registry's management record and hands out its credentials.
 
 ```sh
-go run ./cmd/stagely-sim -azure -azure-tls-cert sim.pem -azure-tls-key sim-key.pem
+go run ./cmd/elprovo-sim -azure -azure-tls-cert sim.pem -azure-tls-key sim-key.pem
 ```
 
-The Terraform provider reads the metadata document only over HTTPS, so give the simulation a certificate that clients trust. Then point clients at `https://<host>:9305` with the tenant `0000a2e0-0000-4000-8000-000000000001`, the subscription `0000a2e0-0000-4000-8000-000000000002`, the client id `0000a2e0-0000-4000-8000-000000000003` and the secret `stagely-sim-secret`: the Terraform provider with `metadata_host = "<host>:9305"`, the Packer plugin with `metadata_host = "https://<host>:9305"`, the agent with `-azure-arm-url`, and `stagely setup azure` with `-azure-arm-url`. Each client reads the login endpoint and the token audience from the metadata document. State is kept in `<data-dir>/azure/state.json`.
+The Terraform provider reads the metadata document only over HTTPS, so give the simulation a certificate that clients trust. Then point clients at `https://<host>:9305` with the tenant `0000a2e0-0000-4000-8000-000000000001`, the subscription `0000a2e0-0000-4000-8000-000000000002`, the client id `0000a2e0-0000-4000-8000-000000000003` and the secret `elprovo-sim-secret`: the Terraform provider with `metadata_host = "<host>:9305"`, the Packer plugin with `metadata_host = "https://<host>:9305"`, the agent with `-azure-arm-url`, and `elprovo setup azure` with `-azure-arm-url`. Each client reads the login endpoint and the token audience from the metadata document. State is kept in `<data-dir>/azure/state.json`.
 
-At start, the simulation matches stored virtual machines with the machines Docker has: a virtual machine takes its power state from its machine, a virtual machine whose machine is gone is removed with a warning, a create or delete that a restart interrupted ends `Failed`, and a machine of this simulation that no virtual machine owns is deleted. Machines carry the labels `stagely-sim.cloud=azure`, `stagely-sim.account=<account uuid>` and `stagely-sim.resource=<vmId>`, and are named `stagely-sim-az-<account>-<vmId>`.
+At start, the simulation matches stored virtual machines with the machines Docker has: a virtual machine takes its power state from its machine, a virtual machine whose machine is gone is removed with a warning, a create or delete that a restart interrupted ends `Failed`, and a machine of this simulation that no virtual machine owns is deleted. Machines carry the labels `elprovo-sim.cloud=azure`, `elprovo-sim.account=<account uuid>` and `elprovo-sim.resource=<vmId>`, and are named `elprovo-sim-az-<account>-<vmId>`.
 
 ### Flags
 
@@ -1039,11 +1039,11 @@ At start, the simulation matches stored virtual machines with the machines Docke
 | `-azure-tls-cert`, `-azure-tls-key` | none | Certificate and key to serve HTTPS with; plain HTTP without them |
 | `-azure-tenant` | `0000a2e0-0000-4000-8000-000000000001` | Tenant that the token endpoint serves |
 | `-azure-subscription` | `0000a2e0-0000-4000-8000-000000000002` | The one subscription |
-| `-azure-client-id`, `-azure-client-secret` | `0000a2e0-0000-4000-8000-000000000003`, `stagely-sim-secret` | The one service principal |
+| `-azure-client-id`, `-azure-client-secret` | `0000a2e0-0000-4000-8000-000000000003`, `elprovo-sim-secret` | The one service principal |
 | `-azure-locations` | `eastus,eastus2,westus2,westus3,centralus,northeurope,westeurope,uksouth,germanywestcentral,swedencentral,francecentral,southeastasia,australiaeast,canadacentral,japaneast` | Locations that resources may use |
-| `-azure-network` | `stagely-sim-azure` | Docker network for private addresses. Public addresses use `<network>-public`. |
+| `-azure-network` | `elprovo-sim-azure` | Docker network for private addresses. Public addresses use `<network>-public`. |
 | `-azure-registry-domain` | `azurecr.io` | Domain of registry login servers |
-| `-azure-registry-username`, `-azure-registry-password` | `stagely`, `stagely` | The user name of generated token credentials, and the password of every credential the simulation hands out |
+| `-azure-registry-username`, `-azure-registry-password` | `elprovo`, `elprovo` | The user name of generated token credentials, and the password of every credential the simulation hands out |
 
 ### Coverage
 
@@ -1060,7 +1060,7 @@ At start, the simulation matches stored virtual machines with the machines Docke
 | `Microsoft.Compute/virtualMachines`: `PUT`, `GET` (`$expand=instanceView`, `userData`), `PATCH` (tags), `DELETE`, `GET .../instanceView`, lists in a group and in the subscription | Linux with SSH keys at `/home/<admin>/.ssh/authorized_keys`; reserved admin names are refused. `storageProfile.imageReference` is `Canonical:ubuntu-24_04-lts:server`, `server-gen1` or `minimal` at `latest` or `24.04.202609240`, or a managed image of the subscription. The OS disk comes from the image and is created as a managed disk; `deleteOption` of the OS disk and the network interface is honored. `customData` is never returned. Sizes: see `catalog.go`. |
 | `POST .../virtualMachines/{name}/powerOff`, `deallocate`, `start`, `restart`, `generalize` | Power actions are long-running operations. `generalize` needs a stopped machine, and a generalized machine never starts again. |
 | `Microsoft.Compute/disks`: `GET`, `DELETE`, list | OS disks only. An attached disk cannot be deleted. |
-| `Microsoft.Compute/images`: `PUT`, `GET`, `DELETE`, list | From `sourceVirtualMachine`, which must be generalized. The capture commits the machine into the Docker image `stagely-sim-az-image:<account>-<guid>`; deleting the image removes it. |
+| `Microsoft.Compute/images`: `PUT`, `GET`, `DELETE`, list | From `sourceVirtualMachine`, which must be generalized. The capture commits the machine into the Docker image `elprovo-sim-az-image:<account>-<guid>`; deleting the image removes it. |
 | `Microsoft.ContainerRegistry/registries`: `PUT`, `GET`, `PATCH`, `DELETE`, `POST .../listCredentials`, `GET .../replications`, `POST /subscriptions/{sub}/providers/Microsoft.ContainerRegistry/checkNameAvailability` | The login server is `<name>.<-azure-registry-domain>`. With the admin user on, its credentials are the registry name and `-azure-registry-password`. |
 | Registry tokens: `PUT`, `GET`, `DELETE` `.../tokens/{name}`, `GET .../tokens`, `GET .../scopeMaps/{name}`, `POST .../generateCredentials` | Tokens over the built-in scope maps `_repositories_pull`, `_repositories_push`, `_repositories_admin` and the `_metadata` variants. Generated passwords record their expiry. |
 | `Microsoft.Resources/deployments`: `PUT`, `GET`, `DELETE`, `POST .../validate`, `GET .../operations` (also under `resourceGroups/{group}/deployments`) | Incremental template deployments of public IPs, networks, security groups, network interfaces and virtual machines, in `dependsOn` order, through the same handlers as direct requests. Template functions: `parameters`, `variables`, `concat`, `format`, `resourceId`, `resourceGroup`, `subscription`, `not`, `empty`, `equals`, `if`, `toLower`, `toUpper`, and property access. Resources with a false `condition` are skipped. |
@@ -1104,11 +1104,11 @@ mise exec -- sim/scripts/check-azure.sh terraform        # needs Docker, Go and 
 mise exec -- sim/scripts/check-azure.sh image            # needs Docker, Go and openssl
 ```
 
-Run the scripts from the repository root. Each makes a CA and a certificate for `stagely-sim-host`, starts its own simulation over HTTPS with a temporary data directory, its own Docker networks and port 9395 (`STAGELY_SIM_CHECK_PORT` changes it), and removes all of it when it ends. Clients run in containers that trust the CA through `SSL_CERT_FILE` and reach the simulation as `stagely-sim-host` through `host-gateway`.
+Run the scripts from the repository root. Each makes a CA and a certificate for `elprovo-sim-host`, starts its own simulation over HTTPS with a temporary data directory, its own Docker networks and port 9395 (`ELPROVO_SIM_CHECK_PORT` changes it), and removes all of it when it ends. Clients run in containers that trust the CA through `SSL_CERT_FILE` and reach the simulation as `elprovo-sim-host` through `host-gateway`.
 
-- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/azure/sim_test.go`) and runs it in a container on both simulation networks. The test makes a resource group, a stagelet subnet with a network security group that lets in only the test's addresses and denies the rest, a private subnet beside it, and a registry. The unchanged adapter creates a stagelet and a neighbor, connects over SSH with the host keys it put in the custom data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project that pulls `busybox` from Docker Hub, fetches a page from it on the stagelet's private address, checks that the neighbor can connect out but not to the stagelet's port, that a third machine in a subnet with `defaultOutboundAccess: false` cannot connect out, that a container cannot reach the metadata service, and that a container's connection to the wireserver's HTTP port is refused while its DNS port is not, gets pull and push registry credentials, and deletes the machines, waiting until `GET` answers 404. The script then checks that no machine is left.
+- `agent` cross-compiles the `simdocker` test of the agent's adapter (`internal/agent/provider/azure/sim_test.go`) and runs it in a container on both simulation networks. The test makes a resource group, a preview subnet with a network security group that lets in only the test's addresses and denies the rest, a private subnet beside it, and a registry. The unchanged adapter creates a preview and a neighbor, connects over SSH with the host keys it put in the custom data, waits for `cloud-init status --wait` and `docker compose version`, builds and starts a Compose project that pulls `busybox` from Docker Hub, fetches a page from it on the preview's private address, checks that the neighbor can connect out but not to the preview's port, that a third machine in a subnet with `defaultOutboundAccess: false` cannot connect out, that a container cannot reach the metadata service, and that a container's connection to the wireserver's HTTP port is refused while its DNS port is not, gets pull and push registry credentials, and deletes the machines, waiting until `GET` answers 404. The script then checks that no machine is left.
 - `terraform` applies `terraform/azure` with OpenTofu 1.12.6 (the `ghcr.io/opentofu/opentofu:1.12.6` image) and `hashicorp/azurerm` 5.7.0, the version the module pins. It checks that two machines exist, that `tofu plan -detailed-exitcode` finds no changes, and that no machine is left after `tofu destroy`. It downloads the provider.
-- `image` builds the golden image in `images/azure` with Packer 1.16.1 and its `azure` plugin 2.6.4, in a container on both simulation networks: a temporary resource group, a template deployment of the build machine with its network, the provisioners over SSH on its public IP, deallocation, generalization, the image capture, and the deletion of each resource and the group. It checks that no machine is left, then runs the `agent` check with `STAGELY_SIM_AZURE_GOLDEN_IMAGE` set to the image, so the adapter's machines boot from it.
+- `image` builds the golden image in `images/azure` with Packer 1.16.1 and its `azure` plugin 2.6.4, in a container on both simulation networks: a temporary resource group, a template deployment of the build machine with its network, the provisioners over SSH on its public IP, deallocation, generalization, the image capture, and the deletion of each resource and the group. It checks that no machine is left, then runs the `agent` check with `ELPROVO_SIM_AZURE_GOLDEN_IMAGE` set to the image, so the adapter's machines boot from it.
 
 ### Sources
 

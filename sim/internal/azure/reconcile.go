@@ -3,7 +3,7 @@ package azure
 import (
 	"context"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // reconcile matches stored virtual machines with the machines Docker has,

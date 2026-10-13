@@ -16,18 +16,18 @@ func TestIptablesRulesAllowPeersAndDropTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `*mangle
-:STAGELY-FIREWALL-IN - [0:0]
-:STAGELY-FIREWALL-OUT - [0:0]
--A STAGELY-FIREWALL-IN ! -i eth+ -j RETURN
--A STAGELY-FIREWALL-IN -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
--A STAGELY-FIREWALL-IN -p tcp --dport 22 -s 10.0.0.5/32 -j RETURN
--A STAGELY-FIREWALL-IN -p tcp --dport 22 -s 10.1.0.0/16 -j RETURN
--A STAGELY-FIREWALL-IN -p icmp -s 0.0.0.0/0 -j RETURN
--A STAGELY-FIREWALL-IN -j DROP
--A STAGELY-FIREWALL-OUT ! -o eth+ -j RETURN
--A STAGELY-FIREWALL-OUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
--A STAGELY-FIREWALL-OUT -p udp --dport 8000:9000 -d 192.168.1.0/24 -j RETURN
--A STAGELY-FIREWALL-OUT -j DROP
+:ELPROVO-FIREWALL-IN - [0:0]
+:ELPROVO-FIREWALL-OUT - [0:0]
+-A ELPROVO-FIREWALL-IN ! -i eth+ -j RETURN
+-A ELPROVO-FIREWALL-IN -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+-A ELPROVO-FIREWALL-IN -p tcp --dport 22 -s 10.0.0.5/32 -j RETURN
+-A ELPROVO-FIREWALL-IN -p tcp --dport 22 -s 10.1.0.0/16 -j RETURN
+-A ELPROVO-FIREWALL-IN -p icmp -s 0.0.0.0/0 -j RETURN
+-A ELPROVO-FIREWALL-IN -j DROP
+-A ELPROVO-FIREWALL-OUT ! -o eth+ -j RETURN
+-A ELPROVO-FIREWALL-OUT -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+-A ELPROVO-FIREWALL-OUT -p udp --dport 8000:9000 -d 192.168.1.0/24 -j RETURN
+-A ELPROVO-FIREWALL-OUT -j DROP
 COMMIT
 `
 	if rules != want {
@@ -40,7 +40,7 @@ func TestIptablesRulesWithoutPolicyEmptyTheChains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rules != "*mangle\n:STAGELY-FIREWALL-IN - [0:0]\n:STAGELY-FIREWALL-OUT - [0:0]\nCOMMIT\n" {
+	if rules != "*mangle\n:ELPROVO-FIREWALL-IN - [0:0]\n:ELPROVO-FIREWALL-OUT - [0:0]\nCOMMIT\n" {
 		t.Fatalf("rules:\n%s", rules)
 	}
 }

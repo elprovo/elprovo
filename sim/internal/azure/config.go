@@ -10,7 +10,7 @@ const (
 	defaultTenant       = "0000a2e0-0000-4000-8000-000000000001"
 	defaultSubscription = "0000a2e0-0000-4000-8000-000000000002"
 	defaultClientID     = "0000a2e0-0000-4000-8000-000000000003"
-	defaultClientSecret = "stagely-sim-secret"
+	defaultClientSecret = "elprovo-sim-secret"
 	defaultLocations    = "eastus,eastus2,westus2,westus3,centralus,northeurope,westeurope,uksouth,germanywestcentral,swedencentral,francecentral,southeastasia,australiaeast,canadacentral,japaneast"
 )
 
@@ -44,10 +44,10 @@ func registerFlags(fs *flag.FlagSet, cfg *config, locations *string) {
 	fs.StringVar(&cfg.clientID, "azure-client-id", defaultClientID, "client id of the service principal that may get tokens")
 	fs.StringVar(&cfg.clientSecret, "azure-client-secret", defaultClientSecret, "client secret of the service principal")
 	fs.StringVar(locations, "azure-locations", defaultLocations, "comma-separated location names that resources may use")
-	fs.StringVar(&cfg.network, "azure-network", "stagely-sim-azure", "Docker network for virtual machines' private addresses; public addresses use <network>-public")
+	fs.StringVar(&cfg.network, "azure-network", "elprovo-sim-azure", "Docker network for virtual machines' private addresses; public addresses use <network>-public")
 	fs.StringVar(&cfg.registry.domain, "azure-registry-domain", "azurecr.io", "domain of container registry login servers, <registry name>.<domain>")
-	fs.StringVar(&cfg.registry.username, "azure-registry-username", "stagely", "user name that every container registry token's generated credentials carry")
-	fs.StringVar(&cfg.registry.password, "azure-registry-password", "stagely", "password of every container registry's admin user, whose name is the registry name, and of every generated token credential")
+	fs.StringVar(&cfg.registry.username, "azure-registry-username", "elprovo", "user name that every container registry token's generated credentials carry")
+	fs.StringVar(&cfg.registry.password, "azure-registry-password", "elprovo", "password of every container registry's admin user, whose name is the registry name, and of every generated token credential")
 }
 
 func (c *config) finish(locations string) error {

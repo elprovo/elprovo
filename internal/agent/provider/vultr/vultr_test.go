@@ -25,7 +25,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
 // testNetworkAccess lets the agent at 10.42.0.2 and the gateway at
@@ -253,8 +253,8 @@ func newProvider(t *testing.T, configure func(*Config)) (*Provider, *fakeCloud) 
 	server := httptest.NewServer(cloud)
 	t.Cleanup(server.Close)
 	cfg := Config{
-		APIURL: server.URL, APIKey: "vultr-key", Region: "fra", Plan: "vc2-2c-4gb", OSID: 2284, Tag: "stagely-stagelet",
-		FirewallGroupID: "fw-stagelets", VPCID: "vpc-1", Network: testNetworkAccess, RegistryID: "reg-1", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		APIURL: server.URL, APIKey: "vultr-key", Region: "fra", Plan: "vc2-2c-4gb", OSID: 2284, Tag: "elprovo-preview",
+		FirewallGroupID: "fw-previews", VPCID: "vpc-1", Network: testNetworkAccess, RegistryID: "reg-1", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 	}
 	if configure != nil {
 		configure(&cfg)
@@ -272,27 +272,27 @@ func TestCreateMakesAnInstanceTheAgentCanDrive(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]
-	if req.Region != "fra" || req.Plan != "vc2-2c-4gb" || req.OSID != 2284 || req.SnapshotID != "" || req.Label != "stagely-a1" || req.Hostname != "stagely-a1" {
+	if req.Region != "fra" || req.Plan != "vc2-2c-4gb" || req.OSID != 2284 || req.SnapshotID != "" || req.Label != "elprovo-a1" || req.Hostname != "elprovo-a1" {
 		t.Fatalf("create request = %+v", req)
 	}
-	if !slices.Equal(req.Tags, []string{"stagely-stagelet"}) || req.FirewallGroupID != "fw-stagelets" || len(req.SSHKeyIDs) != 1 || !slices.Equal(req.AttachVPC, []string{"vpc-1"}) {
+	if !slices.Equal(req.Tags, []string{"elprovo-preview"}) || req.FirewallGroupID != "fw-previews" || len(req.SSHKeyIDs) != 1 || !slices.Equal(req.AttachVPC, []string{"vpc-1"}) {
 		t.Fatalf("create request = %+v", req)
 	}
 	userData, _ := base64.StdEncoding.DecodeString(req.UserData)
 	if !strings.Contains(string(userData), "docker-compose-v2") || !strings.Contains(string(userData), "DOCKER-USER -d 169.254.169.254") {
 		t.Fatalf("user data does not install Docker Compose or keep containers away from the metadata service:\n%s", userData)
 	}
-	for _, rule := range []string{"STAGELY-PRIVATE -s 10.42.0.2 -j RETURN", "STAGELY-PRIVATE -s 10.42.0.3 -j RETURN", "DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE"} {
+	for _, rule := range []string{"ELPROVO-PRIVATE -s 10.42.0.2 -j RETURN", "ELPROVO-PRIVATE -s 10.42.0.3 -j RETURN", "DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE"} {
 		if !strings.Contains(string(userData), rule) {
 			t.Fatalf("user data lacks %q, so the VPC's other instances could connect to it:\n%s", rule, userData)
 		}
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
@@ -303,16 +303,16 @@ func TestCreateMakesAnInstanceTheAgentCanDrive(t *testing.T) {
 func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 	p, _ := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPublic, _ := ssh.NewPublicKey(other.Public())
-	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
-	if err := p.Run(ctx, "stagely-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
+	if err := p.Run(ctx, "elprovo-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
 		t.Fatalf("Run err = %v, want a failed handshake", err)
 	}
 }
@@ -320,7 +320,7 @@ func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 func TestCopyInStreamsTheFile(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	local := filepath.Join(t.TempDir(), "source.tar.gz")
@@ -328,7 +328,7 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := p.CopyIn(ctx, "stagely-a1", local, "/tmp/source.tar.gz"); err != nil {
+	if err := p.CopyIn(ctx, "elprovo-a1", local, "/tmp/source.tar.gz"); err != nil {
 		t.Fatalf("CopyIn: %v", err)
 	}
 	last := len(cloud.commands) - 1
@@ -340,11 +340,11 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 func TestAddressIsTheInstancesPrivateAddress(t *testing.T) {
 	p, _ := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	addr, err := p.Address(ctx, "stagely-a1")
+	addr, err := p.Address(ctx, "elprovo-a1")
 
 	if err != nil || addr != "127.0.0.1" {
 		t.Fatalf("Address = %q, %v; want the address in the VPC", addr, err)
@@ -372,10 +372,10 @@ func TestNewRefusesToRunWithoutTheVPC(t *testing.T) {
 func TestAgentWaitsForAnAddressWhileTheInstanceIsPending(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	cloud.mu.Lock()
-	cloud.instances = append(cloud.instances, instance{ID: "i-9", Label: "stagely-a1", Tags: []string{"stagely-stagelet"}, Status: "pending", PowerStatus: "running", MainIP: "0.0.0.0"})
+	cloud.instances = append(cloud.instances, instance{ID: "i-9", Label: "elprovo-a1", Tags: []string{"elprovo-preview"}, Status: "pending", PowerStatus: "running", MainIP: "0.0.0.0"})
 	cloud.mu.Unlock()
 
-	if addr, err := p.Address(context.Background(), "stagely-a1"); err == nil {
+	if addr, err := p.Address(context.Background(), "elprovo-a1"); err == nil {
 		t.Fatalf("Address of a pending instance = %q, want an error", addr)
 	}
 }
@@ -386,7 +386,7 @@ func TestSSHKeyIsAddedOnceAndFoundAgainByItsKeyData(t *testing.T) {
 	public := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p.machines.Signer.PublicKey())))
 	cloud.keys = []sshKey{{ID: "other-1", SSHKey: agentLikeKey(t)}, {ID: "other-2", SSHKey: agentLikeKey(t)}, {ID: "mine", SSHKey: public + " added by hand"}}
 
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatalf("Create %s: %v", name, err)
 		}
@@ -410,16 +410,16 @@ func TestAgentClaimsOnlyItsTaggedInstancesWithTheName(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	ctx := context.Background()
 	cloud.mu.Lock()
-	cloud.addInstance(instance{ID: "foreign", Label: "stagely-a1", Tags: []string{"web"}}, "")
-	cloud.addInstance(instance{ID: "mine", Label: "stagely-a1", Tags: []string{"web", "stagely-stagelet"}}, "")
-	cloud.addInstance(instance{ID: "worker", Label: "stagely-build-1", Tags: []string{"stagely-stagelet"}}, "")
+	cloud.addInstance(instance{ID: "foreign", Label: "elprovo-a1", Tags: []string{"web"}}, "")
+	cloud.addInstance(instance{ID: "mine", Label: "elprovo-a1", Tags: []string{"web", "elprovo-preview"}}, "")
+	cloud.addInstance(instance{ID: "worker", Label: "elprovo-build-1", Tags: []string{"elprovo-preview"}}, "")
 	cloud.mu.Unlock()
 
 	names, err := p.List(ctx)
-	if err != nil || !slices.Equal(names, []string{"stagely-a1", "stagely-build-1"}) {
+	if err != nil || !slices.Equal(names, []string{"elprovo-a1", "elprovo-build-1"}) {
 		t.Fatalf("List = %q, %v; want only the tagged instances", names, err)
 	}
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	cloud.mu.Lock()
@@ -456,17 +456,17 @@ func TestRegistryCredentialsAreScopedAndExpire(t *testing.T) {
 func TestDeleteWaitsUntilTheInstanceIsGone(t *testing.T) {
 	p, _ := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -474,14 +474,14 @@ func TestDeleteWaitsUntilTheInstanceIsGone(t *testing.T) {
 func TestDeleteOfAnInstanceBeingDestroyedWaitsForIt(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.mu.Lock()
 	cloud.deletePoll["i-1"] = 2
 	cloud.mu.Unlock()
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete of an instance Vultr is destroying: %v", err)
 	}
 }
@@ -489,7 +489,7 @@ func TestDeleteOfAnInstanceBeingDestroyedWaitsForIt(t *testing.T) {
 func TestDeleteFailsWhileTheInstanceStillExists(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.mu.Lock()
@@ -497,7 +497,7 @@ func TestDeleteFailsWhileTheInstanceStillExists(t *testing.T) {
 	cloud.mu.Unlock()
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
 }
@@ -505,7 +505,7 @@ func TestDeleteFailsWhileTheInstanceStillExists(t *testing.T) {
 func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 	p, _ := newProvider(t, nil)
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -513,7 +513,7 @@ func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
 	p, cloud := newProvider(t, nil)
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -539,7 +539,7 @@ func cloudConfigSections(userData string) []string {
 func TestGoldenImageReplacesTheOperatingSystemAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, func(c *Config) { c.GoldenImage = "snap-1" })
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]
@@ -552,7 +552,7 @@ func TestGoldenImageReplacesTheOperatingSystemAndItsPackages(t *testing.T) {
 func TestAPIErrorsCarryVultrsMessage(t *testing.T) {
 	p, _ := newProvider(t, func(c *Config) { c.APIKey = "wrong" })
 
-	_, err := p.Exists(context.Background(), "stagely-a1")
+	_, err := p.Exists(context.Background(), "elprovo-a1")
 
 	if err == nil || !strings.Contains(err.Error(), "Invalid API token.") {
 		t.Fatalf("err = %v, want Vultr's message", err)

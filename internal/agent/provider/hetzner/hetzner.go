@@ -1,4 +1,4 @@
-// Package hetzner runs stagelet machines as Hetzner Cloud servers. The agent
+// Package hetzner runs preview machines as Hetzner Cloud servers. The agent
 // creates each server through the API with a label it owns and hands it a
 // host key that the agent generated, so it never has to trust an unknown
 // host key. Every server joins the environment's private network, and the
@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // Config says where and how the provider creates servers.
@@ -31,7 +31,7 @@ type Config struct {
 	ServerType string
 	// Image is a stock image; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is the id of a Stagely golden image snapshot
+	// GoldenImage, when set, is the id of a Elprovo golden image snapshot
 	// that already has Docker, Compose and BuildKit. It replaces Image.
 	GoldenImage string
 	// Label is key=value. Every server the provider creates has it, and the
@@ -259,7 +259,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context) (int64, error) {
 	}
 	if id == 0 {
 		public := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(p.machines.Signer.PublicKey())))
-		if id, err = p.api.addSSHKey(ctx, "stagely-agent-"+strings.ReplaceAll(fingerprint, ":", ""), public); err != nil {
+		if id, err = p.api.addSSHKey(ctx, "elprovo-agent-"+strings.ReplaceAll(fingerprint, ":", ""), public); err != nil {
 			return 0, err
 		}
 	}

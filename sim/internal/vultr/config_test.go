@@ -3,7 +3,7 @@ package vultr
 import "testing"
 
 func TestFinishFillsDefaults(t *testing.T) {
-	cfg := config{network: "stagely-sim-vultr"}
+	cfg := config{network: "elprovo-sim-vultr"}
 
 	if err := cfg.finish(nil); err != nil {
 		t.Fatal(err)
@@ -15,7 +15,7 @@ func TestFinishFillsDefaults(t *testing.T) {
 }
 
 func TestFinishNeedsBothTLSFiles(t *testing.T) {
-	cfg := config{network: "stagely-sim-vultr", tlsCert: "api.crt"}
+	cfg := config{network: "elprovo-sim-vultr", tlsCert: "api.crt"}
 
 	if err := cfg.finish(nil); err == nil {
 		t.Fatal("a certificate without a key was accepted")

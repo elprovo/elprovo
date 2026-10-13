@@ -1,4 +1,4 @@
-// Package aws simulates the parts of AWS that Stagely, its Terraform module
+// Package aws simulates the parts of AWS that Elprovo, its Terraform module
 // and its Packer template use: the EC2 Query API (instances, key pairs, VPCs,
 // subnets, internet gateways, route tables, security groups, Elastic IPs,
 // AMIs, snapshots and volumes), STS GetCallerIdentity and
@@ -26,9 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (

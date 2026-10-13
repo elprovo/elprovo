@@ -22,7 +22,7 @@ func TestRecordsSurviveAReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "agent", "journal.db")
 	j := open(t, path)
-	if err := j.SetMachine(ctx, "stagely-s1", "creating"); err != nil {
+	if err := j.SetMachine(ctx, "elprovo-s1", "creating"); err != nil {
 		t.Fatal(err)
 	}
 	if err := j.StartJob(ctx, "op1", "lt1", []byte(`{"kind":"deploy"}`)); err != nil {
@@ -40,7 +40,7 @@ func TestRecordsSurviveAReopen(t *testing.T) {
 
 	reopened := open(t, path)
 	machines, err := reopened.Machines(ctx)
-	if err != nil || !reflect.DeepEqual(machines, map[string]string{"stagely-s1": "creating"}) {
+	if err != nil || !reflect.DeepEqual(machines, map[string]string{"elprovo-s1": "creating"}) {
 		t.Fatalf("Machines = %v, %v; want the create intent", machines, err)
 	}
 	jobs, err := reopened.Jobs(ctx)
@@ -59,10 +59,10 @@ func TestRecordsSurviveAReopen(t *testing.T) {
 func TestClearedRecordsAreGone(t *testing.T) {
 	ctx := context.Background()
 	j := open(t, filepath.Join(t.TempDir(), "journal.db"))
-	if err := j.SetMachine(ctx, "stagely-s1", "deleting"); err != nil {
+	if err := j.SetMachine(ctx, "elprovo-s1", "deleting"); err != nil {
 		t.Fatal(err)
 	}
-	if err := j.SetMachine(ctx, "stagely-s1", ""); err != nil {
+	if err := j.SetMachine(ctx, "elprovo-s1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := j.StartJob(ctx, "op1", "lt1", []byte(`{}`)); err != nil {

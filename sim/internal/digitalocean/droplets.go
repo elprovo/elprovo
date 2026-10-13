@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const maxUserData = 64 << 10
@@ -257,7 +257,7 @@ func (s *Simulation) createDroplets(r *http.Request) (int, any, error) {
 func (s *Simulation) machineSpec(a *account, d *droplet, plan dropletPlan, userData string) machines.Spec {
 	id := strconv.FormatInt(d.ID, 10)
 	return machines.Spec{
-		Name:     fmt.Sprintf("stagely-sim-do-%s-%s", a.UUID[:8], id),
+		Name:     fmt.Sprintf("elprovo-sim-do-%s-%s", a.UUID[:8], id),
 		Hostname: hostname(d.Name),
 		Cloud:    cloudLabel, Account: a.UUID, Resource: id,
 		Image: plan.imageRef,

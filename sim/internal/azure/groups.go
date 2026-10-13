@@ -34,7 +34,7 @@ func (s *Simulation) renderGroup(g *group) groupJSON {
 func (s *Simulation) getSubscription(*http.Request, params) (reply, error) {
 	return okReply(map[string]any{
 		"id": "/subscriptions/" + s.cfg.subscription, "subscriptionId": s.cfg.subscription, "tenantId": s.cfg.tenant,
-		"displayName": "Stagely simulation", "state": "Enabled", "authorizationSource": "RoleBased",
+		"displayName": "Elprovo simulation", "state": "Enabled", "authorizationSource": "RoleBased",
 		"subscriptionPolicies": map[string]string{"locationPlacementId": "Public_2014-09-01", "quotaId": "PayAsYouGo_2014-09-01", "spendingLimit": "Off"},
 	}), nil
 }

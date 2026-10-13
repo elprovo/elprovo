@@ -75,7 +75,7 @@ func TestKeyFileNamesTheServiceAccountAndTheTokenURI(t *testing.T) {
 	k := e.keyFile()
 
 	if k.Type != "service_account" || k.ProjectID != testProject || k.TokenURI != "http://sim.test/token" ||
-		k.ClientEmail != "stagely-sim@"+testProject+".iam.gserviceaccount.com" || len(k.PrivateKeyID) != 40 ||
+		k.ClientEmail != "elprovo-sim@"+testProject+".iam.gserviceaccount.com" || len(k.PrivateKeyID) != 40 ||
 		!strings.HasPrefix(k.PrivateKey, "-----BEGIN PRIVATE KEY-----") {
 		t.Fatalf("key file = %+v", k)
 	}

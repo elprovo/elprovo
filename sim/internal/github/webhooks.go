@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/state"
+	"github.com/elprovo/elprovo/sim/internal/state"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	deliveryWorkers = 4
 	deliveryQueue   = 256
 	maxDeliveries   = 1000
-	hookUserAgent   = "GitHub-Hookshot/stagely-sim"
+	hookUserAgent   = "GitHub-Hookshot/elprovo-sim"
 )
 
 type delivery struct {

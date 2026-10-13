@@ -11,10 +11,10 @@ variable "ssh_public_key" {
 
 variable "name" {
   type    = string
-  default = "stagely-sim-check"
+  default = "elprovo-sim-check"
 }
 
-module "stagely" {
+module "elprovo" {
   source = "./module"
 
   endpoint       = var.endpoint
@@ -26,29 +26,29 @@ module "stagely" {
   agent_user_data   = <<-EOT
     #cloud-config
     write_files:
-      - path: /etc/stagely-check
+      - path: /etc/elprovo-check
         content: "agent\n"
   EOT
   gateway_user_data = <<-EOT
     #cloud-config
     write_files:
-      - path: /etc/stagely-check
+      - path: /etc/elprovo-check
         content: "gateway\n"
   EOT
 }
 
 output "agent_address" {
-  value = module.stagely.agent_address
+  value = module.elprovo.agent_address
 }
 
 output "gateway_ip" {
-  value = module.stagely.gateway_ip
+  value = module.elprovo.gateway_ip
 }
 
 output "registry" {
-  value = module.stagely.registry
+  value = module.elprovo.registry
 }
 
 output "image_id" {
-  value = module.stagely.image_id
+  value = module.elprovo.image_id
 }

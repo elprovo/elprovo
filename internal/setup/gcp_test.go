@@ -13,21 +13,21 @@ const testServiceAccountKey = `{
   "project_id": "acme-prod",
   "private_key_id": "key-1",
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n",
-  "client_email": "stagely@acme-prod.iam.gserviceaccount.com",
+  "client_email": "elprovo@acme-prod.iam.gserviceaccount.com",
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
 func gcpOutputs() map[string]any {
 	return map[string]any{
-		"subnetwork": "projects/acme-prod/regions/us-central1/subnetworks/prod-stagely", "stagelet_tag": "prod-stagelet",
-		"registry": "us-central1-docker.pkg.dev/acme-prod/stagely", "machine_prefix": "stagely-prod-",
+		"subnetwork": "projects/acme-prod/regions/us-central1/subnetworks/prod-elprovo", "preview_tag": "prod-preview",
+		"registry": "us-central1-docker.pkg.dev/acme-prod/elprovo", "machine_prefix": "elprovo-prod-",
 		"registry_push_account": "prod-push@acme-prod.iam.gserviceaccount.com", "registry_pull_account": "prod-pull@acme-prod.iam.gserviceaccount.com",
 	}
 }
 
 func TestGoogleCloudGivesTheAgentItsFlagsAndTheKey(t *testing.T) {
 	g := GoogleCloud{
-		Credentials: []byte(testServiceAccountKey), Region: "us-central1", Zone: "us-central1-a", RegistryName: "stagely",
+		Credentials: []byte(testServiceAccountKey), Region: "us-central1", Zone: "us-central1-a", RegistryName: "elprovo",
 		ComputeEndpoint: "http://sim:9320/compute/v1/", IAMEndpoint: "http://sim:9320/v1/", IAMCredentialsEndpoint: "http://sim:9320/v1/",
 	}
 
@@ -36,18 +36,18 @@ func TestGoogleCloudGivesTheAgentItsFlagsAndTheKey(t *testing.T) {
 		t.Fatalf("Cloud: %v", err)
 	}
 
-	compact := `{"type":"service_account","project_id":"acme-prod","private_key_id":"key-1","private_key":"-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n","client_email":"stagely@acme-prod.iam.gserviceaccount.com","token_uri":"https://oauth2.googleapis.com/token"}`
+	compact := `{"type":"service_account","project_id":"acme-prod","private_key_id":"key-1","private_key":"-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n","client_email":"elprovo@acme-prod.iam.gserviceaccount.com","token_uri":"https://oauth2.googleapis.com/token"}`
 	if cloud.Provider != "gcp" || cloud.Vars["project"] != "acme-prod" || cloud.Vars["zone"] != "us-central1-a" || cloud.TofuEnv[0] != "GOOGLE_CREDENTIALS="+compact {
 		t.Fatalf("cloud = %+v", cloud)
 	}
-	if cloud.Vars["agent_service_account"] != "stagely@acme-prod.iam.gserviceaccount.com" || cloud.Vars["iam_endpoint"] != "http://sim:9320/v1/" {
+	if cloud.Vars["agent_service_account"] != "elprovo@acme-prod.iam.gserviceaccount.com" || cloud.Vars["iam_endpoint"] != "http://sim:9320/v1/" {
 		t.Fatalf("module variables = %v; want the agent's account, which may impersonate the registry accounts", cloud.Vars)
 	}
 	args, env, err := cloud.Agent(gcpOutputs())
 	want := []string{
-		"-gcp-project", "acme-prod", "-gcp-zone", "us-central1-a", "-registry", "us-central1-docker.pkg.dev/acme-prod/stagely",
-		"-machine-prefix", "stagely-prod-", "-gcp-subnetwork", "projects/acme-prod/regions/us-central1/subnetworks/prod-stagely",
-		"-gcp-tag", "prod-stagelet", "-gcp-registry-push-account", "prod-push@acme-prod.iam.gserviceaccount.com",
+		"-gcp-project", "acme-prod", "-gcp-zone", "us-central1-a", "-registry", "us-central1-docker.pkg.dev/acme-prod/elprovo",
+		"-machine-prefix", "elprovo-prod-", "-gcp-subnetwork", "projects/acme-prod/regions/us-central1/subnetworks/prod-elprovo",
+		"-gcp-tag", "prod-preview", "-gcp-registry-push-account", "prod-push@acme-prod.iam.gserviceaccount.com",
 		"-gcp-registry-pull-account", "prod-pull@acme-prod.iam.gserviceaccount.com",
 		"-gcp-compute-url", "http://sim:9320/compute/v1/", "-gcp-iam-credentials-url", "http://sim:9320/v1/",
 	}
@@ -58,7 +58,7 @@ func TestGoogleCloudGivesTheAgentItsFlagsAndTheKey(t *testing.T) {
 	if len(env) != 1 || env["GOOGLE_CREDENTIALS"] != encoded {
 		t.Fatalf("agent env = %v; want only the key, and no registry credentials that would reach machines", env)
 	}
-	svc := service{name: "stagely-agent", args: args, env: env}
+	svc := service{name: "elprovo-agent", args: args, env: env}
 	if _, err := svc.unit(); err != nil {
 		t.Fatalf("unit: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestGoogleCloudGivesTheAgentItsFlagsAndTheKey(t *testing.T) {
 }
 
 func TestGoogleCloudPassesTheGoldenImage(t *testing.T) {
-	g := GoogleCloud{Credentials: []byte(testServiceAccountKey), Project: "acme-other", Region: "europe-west1", Zone: "europe-west1-b", RegistryName: "stagely", GoldenImage: "stagely-20261001"}
+	g := GoogleCloud{Credentials: []byte(testServiceAccountKey), Project: "acme-other", Region: "europe-west1", Zone: "europe-west1-b", RegistryName: "elprovo", GoldenImage: "elprovo-20261001"}
 
 	cloud, err := g.Cloud(fstest.MapFS{})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestGoogleCloudPassesTheGoldenImage(t *testing.T) {
 	}
 	args, _, err := cloud.Agent(gcpOutputs())
 
-	if err != nil || args[1] != "acme-other" || !reflect.DeepEqual(args[len(args)-2:], []string{"-gcp-golden-image", "stagely-20261001"}) {
+	if err != nil || args[1] != "acme-other" || !reflect.DeepEqual(args[len(args)-2:], []string{"-gcp-golden-image", "elprovo-20261001"}) {
 		t.Fatalf("agent args = %v, %v; want the given project and -gcp-golden-image", args, err)
 	}
 	if strings.Contains(strings.Join(args, " "), "key-1") {
@@ -88,7 +88,7 @@ func TestGoogleCloudPassesTheGoldenImage(t *testing.T) {
 }
 
 func TestGoogleCloudRejectsAZoneOutsideTheRegion(t *testing.T) {
-	g := GoogleCloud{Credentials: []byte(testServiceAccountKey), Region: "us-central1", Zone: "europe-west1-b", RegistryName: "stagely"}
+	g := GoogleCloud{Credentials: []byte(testServiceAccountKey), Region: "us-central1", Zone: "europe-west1-b", RegistryName: "elprovo"}
 
 	if _, err := g.Cloud(fstest.MapFS{}); err == nil || !strings.Contains(err.Error(), "not in region") {
 		t.Fatalf("Cloud err = %v, want the zone rejected", err)

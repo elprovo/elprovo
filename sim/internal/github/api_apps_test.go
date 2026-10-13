@@ -29,8 +29,8 @@ func TestAppJWTAuthenticatesAsTheApp(t *testing.T) {
 			}
 			var got appJSON
 			r.decode(t, &got)
-			if got.ID != a.ID || got.Slug != "stagely-dev" || got.Owner.Login != "octo" {
-				t.Fatalf("GET /app = %+v, want app %d stagely-dev owned by octo", got, a.ID)
+			if got.ID != a.ID || got.Slug != "elprovo-dev" || got.Owner.Login != "octo" {
+				t.Fatalf("GET /app = %+v, want app %d elprovo-dev owned by octo", got, a.ID)
 			}
 		})
 	}

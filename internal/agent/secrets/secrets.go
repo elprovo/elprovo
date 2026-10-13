@@ -241,7 +241,7 @@ func (r Resolver) Resolve(keys []string) (map[string]string, error) {
 		out[k] = v
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("the agent has no secret %s; set it with `stagely-agent secrets set`", strings.Join(quoteAll(missing), ", "))
+		return nil, fmt.Errorf("the agent has no secret %s; set it with `elprovo-agent secrets set`", strings.Join(quoteAll(missing), ", "))
 	}
 	return out, nil
 }

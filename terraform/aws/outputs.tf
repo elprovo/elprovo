@@ -9,27 +9,27 @@ output "gateway_address" {
 }
 
 output "gateway_ip" {
-  description = "Stable address that stagelet host names point at."
+  description = "Stable address that preview host names point at."
   value       = aws_eip.gateway.public_ip
 }
 
 output "subnet_id" {
-  description = "Subnet that the agent puts stagelet machines in."
+  description = "Subnet that the agent puts preview machines in."
   value       = aws_subnet.environment.id
 }
 
-output "stagelet_security_group_id" {
+output "preview_security_group_id" {
   description = "Security group that the agent puts on every machine it creates."
-  value       = aws_security_group.stagelets.id
+  value       = aws_security_group.previews.id
 }
 
-output "stagelet_group" {
-  description = "Value of the stagely-group tag the agent must put on every machine it creates."
-  value       = local.stagelet_group
+output "preview_group" {
+  description = "Value of the elprovo-group tag the agent must put on every machine it creates."
+  value       = local.preview_group
 }
 
 output "image_id" {
-  description = "AMI that stagelet machines boot without a golden image."
+  description = "AMI that preview machines boot without a golden image."
   value       = local.image
 }
 

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // reconcile matches stored servers with the machines Docker has. A server

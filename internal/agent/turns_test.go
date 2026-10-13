@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
-const stageletMachine = "stagely-5e1a9c0b7d42"
+const previewMachine = "elprovo-5e1a9c0b7d42"
 
 // logSignal is a log handler that closes ready on the first record whose
 // message contains want.
@@ -51,7 +51,7 @@ func awaitSignal(t *testing.T, ready <-chan struct{}, what string) {
 	}
 }
 
-// exclusiveMachines counts the commands running on the stagelet's machine at
+// exclusiveMachines counts the commands running on the preview's machine at
 // once, and holds the first `compose up` there until its job is cancelled.
 type exclusiveMachines struct {
 	*fakeMachines
@@ -63,7 +63,7 @@ type exclusiveMachines struct {
 }
 
 func (m *exclusiveMachines) Run(ctx context.Context, name string, stdin io.Reader, stdout, stderr io.Writer, args ...string) error {
-	if name != stageletMachine {
+	if name != previewMachine {
 		return m.fakeMachines.Run(ctx, name, stdin, stdout, stderr, args...)
 	}
 	m.mu.Lock()
@@ -85,7 +85,7 @@ func (m *exclusiveMachines) Run(ctx context.Context, name string, stdin io.Reade
 	return m.fakeMachines.Run(ctx, name, stdin, stdout, stderr, args...)
 }
 
-func TestANewerJobForAStageletWaitsUntilTheStaleOneReturns(t *testing.T) {
+func TestANewerJobForAPreviewWaitsUntilTheStaleOneReturns(t *testing.T) {
 	host, port := healthyApp(t)
 	machines := &exclusiveMachines{fakeMachines: newFakeMachines(host), upStarted: make(chan struct{})}
 	r := newRunner(t, machines)
@@ -94,7 +94,7 @@ func TestANewerJobForAStageletWaitsUntilTheStaleOneReturns(t *testing.T) {
 	s.push(t, protocol.TypeJob, deployJob(port))
 	awaitSignal(t, machines.upStarted, "the first deploy starts its project")
 
-	s.push(t, protocol.TypeJob, protocol.Job{ID: "op2", LeaseToken: "lt2", Kind: protocol.JobReset, StageletID: "5e1a9c0b7d42", Reset: &protocol.ResetSpec{
+	s.push(t, protocol.TypeJob, protocol.Job{ID: "op2", LeaseToken: "lt2", Kind: protocol.JobReset, PreviewID: "5e1a9c0b7d42", Reset: &protocol.ResetSpec{
 		Bundle: json.RawMessage(`{"services":{"web":{"image":"registry.example.com/acme/web/web@sha256:aa"}}}`), PublicService: "web", PublicPort: port, HealthPath: "/healthz",
 	}})
 	awaitSignal(t, waiting, "the reset waits for the deploy")
@@ -107,7 +107,7 @@ func TestANewerJobForAStageletWaitsUntilTheStaleOneReturns(t *testing.T) {
 	machines.mu.Lock()
 	defer machines.mu.Unlock()
 	if machines.most != 1 {
-		t.Fatalf("%d commands ran on %s at once, want the jobs one after another", machines.most, stageletMachine)
+		t.Fatalf("%d commands ran on %s at once, want the jobs one after another", machines.most, previewMachine)
 	}
 }
 
@@ -158,7 +158,7 @@ func TestAnAdoptedJobWaitsForTheMachinesARestartInterruptedToBeDeleted(t *testin
 	host, port := healthyApp(t)
 	ctx := context.Background()
 	j := openJournal(t, filepath.Join(t.TempDir(), "journal.db"))
-	if err := j.SetMachine(ctx, stageletMachine, protocol.MachineCreating); err != nil {
+	if err := j.SetMachine(ctx, previewMachine, protocol.MachineCreating); err != nil {
 		t.Fatal(err)
 	}
 	spec, _ := json.Marshal(deployJob(port))
@@ -166,7 +166,7 @@ func TestAnAdoptedJobWaitsForTheMachinesARestartInterruptedToBeDeleted(t *testin
 		t.Fatal(err)
 	}
 	fm := newFakeMachines(host)
-	fm.existing[stageletMachine] = true
+	fm.existing[previewMachine] = true
 	machines := &slowDeleteMachines{fakeMachines: fm, deleting: make(chan struct{}), release: make(chan struct{})}
 	releaseDelete := sync.OnceFunc(func() { close(machines.release) })
 	t.Cleanup(releaseDelete)
@@ -190,9 +190,9 @@ func TestAnAdoptedJobWaitsForTheMachinesARestartInterruptedToBeDeleted(t *testin
 	machines.mu.Lock()
 	defer machines.mu.Unlock()
 	if len(machines.duringWork) != 0 {
-		t.Fatalf("while recovery deleted %s the job did %q, want nothing", stageletMachine, machines.duringWork)
+		t.Fatalf("while recovery deleted %s the job did %q, want nothing", previewMachine, machines.duringWork)
 	}
-	if exists, _ := fm.Exists(ctx, stageletMachine); !exists {
+	if exists, _ := fm.Exists(ctx, previewMachine); !exists {
 		t.Fatal("the machine is gone after the deploy, want it created again")
 	}
 }

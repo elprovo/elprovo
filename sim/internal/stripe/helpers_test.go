@@ -36,7 +36,7 @@ func newTestEnv(t *testing.T, configure ...func(*config)) *testEnv {
 		webURL:          "http://" + web.Listener.Addr().String(),
 		secretKeys:      []string{testKey},
 		apiVersion:      defaultAPIVersion,
-		plan:            planConfig{name: "Team Stagelet", amount: 2000, currency: "usd", interval: "month"},
+		plan:            planConfig{name: "Team Preview", amount: 2000, currency: "usd", interval: "month"},
 		deliveryRetries: []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond},
 	}
 	for _, c := range configure {

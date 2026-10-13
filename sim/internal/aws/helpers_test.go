@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const (
@@ -257,7 +257,7 @@ func (c *testClock) advance(d time.Duration) {
 func testConfig() config {
 	return config{
 		accessKeyID: testAccessKey, secretAccessKey: testSecretKey, regions: []string{testRegion, "eu-central-1"},
-		network: "stagely-sim-unit",
+		network: "elprovo-sim-unit",
 	}
 }
 

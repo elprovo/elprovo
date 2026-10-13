@@ -1,4 +1,4 @@
-// Package vultr runs stagelet machines as Vultr instances. The agent creates
+// Package vultr runs preview machines as Vultr instances. The agent creates
 // each instance through the API and hands it a host key that the agent
 // generated, so it never has to trust an unknown host key. Every instance
 // joins the environment's VPC, and the agent drives it over SSH as root with
@@ -20,8 +20,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // Config says where and how the provider creates instances. Instances join
@@ -35,7 +35,7 @@ type Config struct {
 	Plan   string
 	// OSID is a stock operating system; cloud-init installs Docker on it.
 	OSID int
-	// GoldenImage, when set, is the snapshot id of a Stagely golden image
+	// GoldenImage, when set, is the snapshot id of a Elprovo golden image
 	// that already has Docker, Compose and BuildKit. It replaces OSID.
 	GoldenImage     string
 	Tag             string
@@ -275,7 +275,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context) (string, error) {
 			return k.ID, nil
 		}
 	}
-	id, err := p.api.addSSHKey(ctx, "stagely-agent "+ssh.FingerprintSHA256(p.machines.Signer.PublicKey()), public)
+	id, err := p.api.addSSHKey(ctx, "elprovo-agent "+ssh.FingerprintSHA256(p.machines.Signer.PublicKey()), public)
 	if err != nil {
 		return "", err
 	}

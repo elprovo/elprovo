@@ -65,7 +65,7 @@ func Init(ctx context.Context, dir, defaultBranch string) (*Repo, error) {
 // SeedFromDir commits every file under src, except ignored ones, as the
 // first commit of branch.
 func (r *Repo) SeedFromDir(ctx context.Context, src, branch, message string, sig Signature) (string, error) {
-	tmp, err := os.MkdirTemp("", "stagely-sim-index-*")
+	tmp, err := os.MkdirTemp("", "elprovo-sim-index-*")
 	if err != nil {
 		return "", fmt.Errorf("create index directory: %w", err)
 	}

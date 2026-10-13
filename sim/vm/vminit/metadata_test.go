@@ -12,7 +12,7 @@ func TestMetadataServesDocumentsAndListsDirectories(t *testing.T) {
 		"/metadata/v1/hostname":                          "web-1",
 		"/metadata/v1/interfaces/private/0/type":         "private",
 		"/metadata/v1/interfaces/public/0/type":          "public",
-		"/metadata/v1/tags/stagely-stagelet":             "stagely-stagelet",
+		"/metadata/v1/tags/elprovo-preview":              "elprovo-preview",
 		"/metadata/v1/interfaces/private/0/ipv4/address": "10.0.0.2",
 	}
 	tests := []struct {

@@ -120,7 +120,7 @@ func composeCommand(src string, files []string, config map[string]string) ([]str
 		}
 		args = append(args, k+"="+config[k])
 	}
-	args = append(args, "docker", "compose", "--project-name", "stagelet")
+	args = append(args, "docker", "compose", "--project-name", "preview")
 	if len(files) == 0 {
 		return nil, errors.New("no Compose files")
 	}

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/registrytoken"
+	"github.com/elprovo/elprovo/sim/internal/registrytoken"
 )
 
-// pullPolicy is the session policy of a stagelet machine's registry token:
+// pullPolicy is the session policy of a preview machine's registry token:
 // pull from the repositories under acme/ in us-east-1.
 func pullPolicy(account string) string {
 	return `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ecr:GetAuthorizationToken","Resource":"*"},` +
@@ -65,7 +65,7 @@ func actions(access []registrytoken.Access, repository string) []string {
 func TestRegistryTokenOfAPullOnlySessionPullsButCannotPush(t *testing.T) {
 	e := newEnv(t)
 	account := e.callerAccount()
-	creds, _ := e.federationToken("stagely-registry-pull", pullPolicy(account))
+	creds, _ := e.federationToken("elprovo-registry-pull", pullPolicy(account))
 	_, out := e.ecrAs(creds, "GetAuthorizationToken", map[string]any{})
 	user, password := e.authorizationToken(out)
 	registry := account + ".dkr.ecr.us-east-1.amazonaws.com"

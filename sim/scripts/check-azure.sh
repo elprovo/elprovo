@@ -9,7 +9,7 @@
 # The simulation serves HTTPS with a certificate from a CA that the run
 # makes, because the Terraform provider reads the cloud's metadata document
 # only over HTTPS. Each client runs in a container that trusts the CA and
-# reaches the simulation as stagely-sim-host through host-gateway.
+# reaches the simulation as elprovo-sim-host through host-gateway.
 #
 # agent runs the agent's Azure provider test (internal/agent/provider/azure,
 # build tag simdocker) in a container on the simulation's private and
@@ -39,13 +39,13 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-azcheck-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9395}
+network="elprovo-sim-azcheck-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9395}
 tenant=0000a2e0-0000-4000-8000-0000000000c1
 subscription=0000a2e0-0000-4000-8000-0000000000c2
 client_id=0000a2e0-0000-4000-8000-0000000000c3
 client_secret="check-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
-arm_url="https://stagely-sim-host:$port"
+arm_url="https://elprovo-sim-host:$port"
 sim_pid=""
 
 account() {
@@ -53,7 +53,7 @@ account() {
 }
 
 machines_left() {
-	docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | wc -l | tr -d ' '
 }
 
 cleanup() {
@@ -64,8 +64,8 @@ cleanup() {
 	fi
 	docker rm --force "$network-agent" "$network-packer" "$network-tofu" >/dev/null 2>&1 || true
 	if [ -n "$(account)" ]; then
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-az-image:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
-		docker ps --all --quiet --filter "label=stagely-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-az-image:$(account | cut -c1-8)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter "label=elprovo-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	if [ "$status" -ne 0 ] && [ -f "$work/sim.log" ]; then
@@ -79,20 +79,20 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 make_certificates() {
-	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=stagely-sim-check-ca \
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=elprovo-sim-check-ca \
 		-addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign \
 		-keyout "$work/ca.key" -out "$work/ca.pem" 2>/dev/null
-	openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj /CN=stagely-sim-host \
+	openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -subj /CN=elprovo-sim-host \
 		-keyout "$work/tls.key" -out "$work/tls.csr" 2>/dev/null
-	printf 'subjectAltName=DNS:stagely-sim-host,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' >"$work/tls.ext"
+	printf 'subjectAltName=DNS:elprovo-sim-host,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' >"$work/tls.ext"
 	openssl x509 -req -in "$work/tls.csr" -CA "$work/ca.pem" -CAkey "$work/ca.key" -CAcreateserial -days 1 \
 		-extfile "$work/tls.ext" -out "$work/tls.pem" 2>/dev/null
 }
 
 start_simulation() {
 	make_certificates
-	(cd "$repo/sim" && go build -o "$work/stagely-sim" ./cmd/stagely-sim)
-	"$work/stagely-sim" -azure -data-dir "$work/data" -azure-network "$network" -azure-addr ":$port" \
+	(cd "$repo/sim" && go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
+	"$work/elprovo-sim" -azure -data-dir "$work/data" -azure-network "$network" -azure-addr ":$port" \
 		-azure-tls-cert "$work/tls.pem" -azure-tls-key "$work/tls.key" -azure-tenant "$tenant" -azure-subscription "$subscription" \
 		-azure-client-id "$client_id" -azure-client-secret "$client_secret" >"$work/sim.log" 2>&1 &
 	sim_pid=$!
@@ -110,9 +110,9 @@ start_simulation() {
 # client_env prints docker create flags that give a client the
 # simulation's credentials and a trust store with the check's CA.
 client_env() {
-	printf '%s\n' --add-host stagely-sim-host:host-gateway \
+	printf '%s\n' --add-host elprovo-sim-host:host-gateway \
 		-e "ARM_TENANT_ID=$tenant" -e "ARM_SUBSCRIPTION_ID=$subscription" -e "ARM_CLIENT_ID=$client_id" -e "ARM_CLIENT_SECRET=$client_secret" \
-		-e SSL_CERT_FILE=/etc/stagely-sim-check/ca-bundle.pem
+		-e SSL_CERT_FILE=/etc/elprovo-sim-check/ca-bundle.pem
 }
 
 # copy_trust puts the system CA bundle of the container's image, plus the
@@ -124,7 +124,7 @@ copy_trust() {
 	cat "$work/ca.pem" >>"$work/ca-bundle.pem"
 	mkdir -p "$work/trust"
 	cp "$work/ca-bundle.pem" "$work/trust/ca-bundle.pem"
-	docker cp "$work/trust" "$container:/etc/stagely-sim-check"
+	docker cp "$work/trust" "$container:/etc/elprovo-sim-check"
 }
 
 check_agent() {
@@ -133,7 +133,7 @@ check_agent() {
 		-o "$work/provider.test" ./internal/agent/provider/azure)
 	# shellcheck disable=SC2046
 	docker create --name "$network-agent" --network "$network" --network "$network-public" $(client_env) \
-		-e STAGELY_SIM_AZURE_URL="$arm_url" -e STAGELY_SIM_AZURE_GOLDEN_IMAGE="${golden_image:-}" \
+		-e ELPROVO_SIM_AZURE_URL="$arm_url" -e ELPROVO_SIM_AZURE_GOLDEN_IMAGE="${golden_image:-}" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	copy_trust "$network-agent" ubuntu:24.04
@@ -150,14 +150,14 @@ tofu_run() {
 }
 
 check_terraform() {
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
 	image=ghcr.io/opentofu/opentofu:1.12.6
 	# shellcheck disable=SC2046
 	docker create --name "$network-tofu" $(client_env) -e TF_IN_AUTOMATION=1 -e TF_INPUT=0 \
-		-e TF_VAR_metadata_host="stagely-sim-host:$port" -e TF_VAR_name=azcheck -e TF_VAR_location=westeurope \
-		-e TF_VAR_registry_name="stagelycheck$$" -e TF_VAR_operator_cidrs='["0.0.0.0/0"]' \
+		-e TF_VAR_metadata_host="elprovo-sim-host:$port" -e TF_VAR_name=azcheck -e TF_VAR_location=westeurope \
+		-e TF_VAR_registry_name="elprovocheck$$" -e TF_VAR_operator_cidrs='["0.0.0.0/0"]' \
 		-e TF_VAR_ssh_public_key="$(cat "$work/key.pub")" \
-		-e TF_VAR_agent_user_data="$(printf '#cloud-config\nwrite_files:\n  - path: /etc/stagely-check\n    content: agent\n')" \
+		-e TF_VAR_agent_user_data="$(printf '#cloud-config\nwrite_files:\n  - path: /etc/elprovo-check\n    content: agent\n')" \
 		--entrypoint sleep "$image" 3600 >/dev/null
 	mkdir -p "$work/module"
 	cp "$repo"/terraform/azure/*.tf "$repo/terraform/azure/.terraform.lock.hcl" "$work/module/"
@@ -184,16 +184,16 @@ check_image() {
 	# shellcheck disable=SC2046
 	docker create --name "$network-packer" --network "$network" --network "$network-public" $(client_env) -w /images \
 		--entrypoint sh "$image" -c "packer init . && packer build -color=false -var metadata_host=$arm_url -var location=westeurope \
-		-var image_resource_group=stagely-images -var image_name=stagely-image-check ." >/dev/null
+		-var image_resource_group=elprovo-images -var image_name=elprovo-image-check ." >/dev/null
 	docker cp "$repo/images/azure/." "$network-packer:/images/"
 	copy_trust "$network-packer" "$image"
 	token=$(curl -fs --cacert "$work/ca.pem" -d grant_type=client_credentials -d "client_id=$client_id" --data-urlencode "client_secret=$client_secret" \
 		--data-urlencode "scope=https://127.0.0.1:$port/.default" "https://127.0.0.1:$port/$tenant/oauth2/v2.0/token" |
 		python3 -c 'import json, sys; print(json.load(sys.stdin)["access_token"])')
 	curl -fs -o /dev/null --cacert "$work/ca.pem" -X PUT -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-		-d '{"location": "westeurope"}' "https://127.0.0.1:$port/subscriptions/$subscription/resourceGroups/stagely-images?api-version=2023-07-01"
+		-d '{"location": "westeurope"}' "https://127.0.0.1:$port/subscriptions/$subscription/resourceGroups/elprovo-images?api-version=2023-07-01"
 	docker start --attach "$network-packer"
-	golden_image="/subscriptions/$subscription/resourceGroups/stagely-images/providers/Microsoft.Compute/images/stagely-image-check"
+	golden_image="/subscriptions/$subscription/resourceGroups/elprovo-images/providers/Microsoft.Compute/images/elprovo-image-check"
 	if [ "$(machines_left)" != 0 ]; then
 		echo "Packer left its build virtual machine" >&2
 		exit 1

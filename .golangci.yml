@@ -28,9 +28,9 @@ linters:
         gateway:
           files:
             - "**/internal/gateway/**"
-            - "**/cmd/stagely-gateway/**"
+            - "**/cmd/elprovo-gateway/**"
           deny:
-            - pkg: github.com/stagely-dev/stagely/internal/agent
+            - pkg: github.com/elprovo/elprovo/internal/agent
               desc: the gateway holds no credentials, so it must not link agent code
         agent-subpackages:
           files:
@@ -40,13 +40,13 @@ linters:
             - "**/internal/agent/secrets/**"
             - "**/internal/agent/journal/**"
           deny:
-            - pkg: github.com/stagely-dev/stagely/internal/agent
+            - pkg: github.com/elprovo/elprovo/internal/agent
               desc: agent subpackages do not import the runner or each other; the runner passes data between them
         protocol:
           files:
             - "**/protocol/**"
           deny:
-            - pkg: github.com/stagely-dev/stagely/internal
+            - pkg: github.com/elprovo/elprovo/internal
               desc: protocol is imported by the control plane and must not depend on agent or gateway code
   exclusions:
     generated: strict

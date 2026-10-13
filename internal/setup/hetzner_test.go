@@ -26,14 +26,14 @@ func TestHetznerCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	}
 	args, env, err := cloud.Agent(hetznerOutputs())
 	want := []string{
-		"-hcloud-api-url", "http://sim:9400/v1", "-hcloud-location", "fsn1", "-hcloud-label", "stagely=prod-stagelet",
+		"-hcloud-api-url", "http://sim:9400/v1", "-hcloud-location", "fsn1", "-hcloud-label", "elprovo=prod-preview",
 		"-hcloud-network", "4242", "-hcloud-network-range", "10.42.0.0/20", "-hcloud-network-allow", "10.42.0.2,10.42.0.3",
-		"-machine-prefix", "stagely-prod-", "-registry", "registry.example.com/acme",
+		"-machine-prefix", "elprovo-prod-", "-registry", "registry.example.com/acme",
 	}
 	if err != nil || !slices.Equal(args, want) {
 		t.Fatalf("agent args = %v, %v; want %v", args, err, want)
 	}
-	if env["HCLOUD_TOKEN"] != "hcloud-secret" || env["STAGELY_REGISTRY_USERNAME"] != "robot" || env["STAGELY_REGISTRY_PASSWORD"] != "registry-secret" {
+	if env["HCLOUD_TOKEN"] != "hcloud-secret" || env["ELPROVO_REGISTRY_USERNAME"] != "robot" || env["ELPROVO_REGISTRY_PASSWORD"] != "registry-secret" {
 		t.Fatalf("agent env = %v; want the token and the registry credentials", env)
 	}
 	if joined := strings.Join(args, " "); strings.Contains(joined, "hcloud-secret") || strings.Contains(joined, "registry-secret") {
@@ -43,7 +43,7 @@ func TestHetznerCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 
 func hetznerOutputs() map[string]any {
 	return map[string]any{
-		"stagelet_label": "stagely=prod-stagelet", "machine_prefix": "stagely-prod-",
+		"preview_label": "elprovo=prod-preview", "machine_prefix": "elprovo-prod-",
 		"network_id": "4242", "agent_private_ip": "10.42.0.2", "gateway_private_ip": "10.42.0.3",
 	}
 }

@@ -1,7 +1,7 @@
 // Package machines runs simulated cloud VMs as Docker containers and drives
 // them through the docker CLI. Every simulated cloud uses it. A machine runs
 // the image built from sim/vm: Ubuntu with OpenSSH, Docker and the Compose
-// plugin, booted by stagely-vm-init, which applies NoCloud seed data the way
+// plugin, booted by elprovo-vm-init, which applies NoCloud seed data the way
 // cloud-init does.
 //
 // Each machine has a private address on one Docker network and a public
@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	labelCloud    = "stagely-sim.cloud"
-	labelAccount  = "stagely-sim.account"
-	labelResource = "stagely-sim.resource"
+	labelCloud    = "elprovo-sim.cloud"
+	labelAccount  = "elprovo-sim.account"
+	labelResource = "elprovo-sim.resource"
 	stopSeconds   = "30"
 )
 
@@ -234,7 +234,7 @@ func (b *Backend) Start(ctx context.Context, id string) (Machine, error) {
 	return b.Inspect(ctx, id)
 }
 
-// Stop stops the machine: gracefully, so stagely-vm-init stops its units
+// Stop stops the machine: gracefully, so elprovo-vm-init stops its units
 // first, or at once, like pulling the power cable.
 func (b *Backend) Stop(ctx context.Context, id string, graceful bool) error {
 	if graceful {
@@ -279,7 +279,7 @@ func (b *Backend) SetFirewall(ctx context.Context, id string, fw *Firewall) erro
 	if err != nil {
 		return err
 	}
-	_, err = b.docker(ctx, bytes.NewReader(data), "exec", "--interactive", id, "stagely-vm-init", "firewall")
+	_, err = b.docker(ctx, bytes.NewReader(data), "exec", "--interactive", id, "elprovo-vm-init", "firewall")
 	return err
 }
 
@@ -291,7 +291,7 @@ func (b *Backend) SetAddresses(ctx context.Context, id string, addrs []string) e
 	if err != nil {
 		return err
 	}
-	_, err = b.docker(ctx, bytes.NewReader(data), "exec", "--interactive", id, "stagely-vm-init", "addresses")
+	_, err = b.docker(ctx, bytes.NewReader(data), "exec", "--interactive", id, "elprovo-vm-init", "addresses")
 	return err
 }
 

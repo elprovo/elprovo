@@ -35,23 +35,23 @@ variable "os_id" {
 
 variable "snapshot_description" {
   type    = string
-  default = "stagely-{{timestamp}}"
+  default = "elprovo-{{timestamp}}"
 }
 
-source "vultr" "stagely" {
+source "vultr" "elprovo" {
   api_key              = var.api_key
   region_id            = var.region
   plan_id              = var.plan
   os_id                = var.os_id
   ssh_username         = "root"
   snapshot_description = var.snapshot_description
-  instance_label       = "stagely-image-build"
-  tags                 = ["stagely-image-build"]
+  instance_label       = "elprovo-image-build"
+  tags                 = ["elprovo-image-build"]
   state_timeout        = "15m"
 }
 
 build {
-  sources = ["source.vultr.stagely"]
+  sources = ["source.vultr.elprovo"]
 
   provisioner "shell" {
     environment_vars = ["DEBIAN_FRONTEND=noninteractive"]

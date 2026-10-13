@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const callbackURL = "https://stagely.test/auth/github/callback"
+const callbackURL = "https://elprovo.test/auth/github/callback"
 
 func oauthFixture(t *testing.T) (*testSim, appCredentials) {
 	t.Helper()
@@ -71,8 +71,8 @@ func TestWebFlowSignsInAuthorizesAndIssuesUserTokens(t *testing.T) {
 	ts.signIn(client, "octo")
 
 	consent := do(t, client, http.MethodGet, ts.web.URL+loginQuery.Get("return_to"), nil, nil)
-	if consent.status != http.StatusOK || !strings.Contains(string(consent.body), "Authorize Stagely Dev") {
-		t.Fatalf("consent page = %d, want the Authorize Stagely Dev page", consent.status)
+	if consent.status != http.StatusOK || !strings.Contains(string(consent.body), "Authorize Elprovo Dev") {
+		t.Fatalf("consent page = %d, want the Authorize Elprovo Dev page", consent.status)
 	}
 	r = postForm(t, client, ts.web.URL+"/login/oauth/authorize",
 		url.Values{"client_id": {a.ClientID}, "redirect_uri": {callbackURL}, "state": {"xyz"}, "decision": {"authorize"}})

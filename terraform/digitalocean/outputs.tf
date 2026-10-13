@@ -9,12 +9,12 @@ output "gateway_address" {
 }
 
 output "gateway_ip" {
-  description = "Stable address that stagelet host names point at."
+  description = "Stable address that preview host names point at."
   value       = digitalocean_reserved_ip.gateway.ip_address
 }
 
 output "vpc_id" {
-  description = "VPC that the agent puts stagelet machines in."
+  description = "VPC that the agent puts preview machines in."
   value       = digitalocean_vpc.environment.id
 }
 
@@ -23,12 +23,12 @@ output "registry" {
   value       = "registry.digitalocean.com/${var.registry_name}"
 }
 
-output "stagelet_tag" {
+output "preview_tag" {
   description = "Tag the agent must put on every machine it creates."
-  value       = digitalocean_tag.stagelet.id
+  value       = digitalocean_tag.preview.id
 }
 
-output "stagelet_domain" {
-  description = "Domain that stagelet host names live under, when DNS is managed here."
-  value       = var.dns_domain == "" ? "" : "${var.stagelet_subdomain}.${var.dns_domain}"
+output "preview_domain" {
+  description = "Domain that preview host names live under, when DNS is managed here."
+  value       = var.dns_domain == "" ? "" : "${var.preview_subdomain}.${var.dns_domain}"
 }

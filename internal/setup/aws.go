@@ -22,7 +22,7 @@ type AWS struct {
 	// RegistryPrefix is the ECR repository name prefix that build workers
 	// push under; empty means the environment's module name.
 	RegistryPrefix string
-	// GoldenImage is an AMI from images/aws that the agent boots stagelet
+	// GoldenImage is an AMI from images/aws that the agent boots preview
 	// machines and build workers from. Empty means the stock Ubuntu AMI
 	// with cloud-init.
 	GoldenImage string
@@ -58,8 +58,8 @@ func (a AWS) Cloud(module fs.FS) (Cloud, error) {
 			}
 			for _, out := range []struct{ flag, name string }{
 				{"-aws-subnet", "subnet_id"},
-				{"-aws-security-group", "stagelet_security_group_id"},
-				{"-aws-group", "stagelet_group"},
+				{"-aws-security-group", "preview_security_group_id"},
+				{"-aws-group", "preview_group"},
 				{"-aws-image", "image_id"},
 				{"-registry", "registry"},
 			} {

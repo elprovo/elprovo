@@ -61,14 +61,14 @@ func TestFederationTokenGivesCredentialsThatExpireAfterTheRequestedDuration(t *t
 	e := newEnv(t)
 	account := e.callerAccount()
 
-	creds, got := e.federationToken("stagely-registry-pull", tokenOnlyPolicy, "DurationSeconds", "900")
+	creds, got := e.federationToken("elprovo-registry-pull", tokenOnlyPolicy, "DurationSeconds", "900")
 
 	expires, err := time.Parse(time.RFC3339, got.Expiration)
 	if err != nil || expires.Sub(e.clock.Now()).Round(time.Second) != 15*time.Minute {
 		t.Fatalf("Expiration = %q, want 15 minutes from now", got.Expiration)
 	}
 	if !strings.HasPrefix(creds.accessKeyID, "ASIA") || creds.secretAccessKey == "" || creds.sessionToken == "" ||
-		got.Arn != "arn:aws:sts::"+account+":federated-user/stagely-registry-pull" {
+		got.Arn != "arn:aws:sts::"+account+":federated-user/elprovo-registry-pull" {
 		t.Fatalf("GetFederationToken = %+v", got)
 	}
 	status, body := e.sts(creds, "GetCallerIdentity")
@@ -86,7 +86,7 @@ func TestFederationTokenGivesCredentialsThatExpireAfterTheRequestedDuration(t *t
 
 func TestSessionCredentialsMayDoOnlyWhatTheSessionPolicyAllows(t *testing.T) {
 	e := newEnv(t)
-	creds, _ := e.federationToken("stagely-registry-pull", tokenOnlyPolicy)
+	creds, _ := e.federationToken("elprovo-registry-pull", tokenOnlyPolicy)
 
 	if status, out := e.ecrAs(creds, "GetAuthorizationToken", map[string]any{}); status != http.StatusOK {
 		t.Fatalf("GetAuthorizationToken, which the policy allows = %d %+v", status, out)
@@ -106,8 +106,8 @@ func TestSessionCredentialsMayDoOnlyWhatTheSessionPolicyAllows(t *testing.T) {
 
 func TestSessionCredentialsNeedTheirOwnSessionToken(t *testing.T) {
 	e := newEnv(t)
-	creds, _ := e.federationToken("stagely-registry-pull", tokenOnlyPolicy)
-	other, _ := e.federationToken("stagely-registry-push", tokenOnlyPolicy)
+	creds, _ := e.federationToken("elprovo-registry-pull", tokenOnlyPolicy)
+	other, _ := e.federationToken("elprovo-registry-push", tokenOnlyPolicy)
 
 	for name, token := range map[string]string{"no token": "", "another session's token": other.sessionToken} {
 		creds.sessionToken = token
@@ -123,13 +123,13 @@ func TestFederationTokenRefusesInputOutsideItsLimits(t *testing.T) {
 		want   string
 	}{
 		"name too short":          {[]string{"Name", "a", "Policy", tokenOnlyPolicy}, "ValidationError"},
-		"name with a space":       {[]string{"Name", "stagely pull", "Policy", tokenOnlyPolicy}, "ValidationError"},
-		"shorter than 15 minutes": {[]string{"Name", "stagely", "Policy", tokenOnlyPolicy, "DurationSeconds", "899"}, "ValidationError"},
-		"longer than 36 hours":    {[]string{"Name", "stagely", "Policy", tokenOnlyPolicy, "DurationSeconds", "129601"}, "ValidationError"},
-		"policy over 2048 chars":  {[]string{"Name", "stagely", "Policy", tokenOnlyPolicy + strings.Repeat(" ", 2049-len(tokenOnlyPolicy))}, "ValidationError"},
-		"policy with a condition": {[]string{"Name", "stagely", "Policy", `{"Version":"2012-10-17","Statement":{"Effect":"Allow","Action":"*","Resource":"*","Condition":{}}}`}, "MalformedPolicyDocument"},
-		"policy that is not JSON": {[]string{"Name", "stagely", "Policy", "allow everything"}, "MalformedPolicyDocument"},
-		"managed session policy":  {[]string{"Name", "stagely", "PolicyArns.member.1.arn", "arn:aws:iam::aws:policy/AdministratorAccess"}, "UnknownParameter"},
+		"name with a space":       {[]string{"Name", "elprovo pull", "Policy", tokenOnlyPolicy}, "ValidationError"},
+		"shorter than 15 minutes": {[]string{"Name", "elprovo", "Policy", tokenOnlyPolicy, "DurationSeconds", "899"}, "ValidationError"},
+		"longer than 36 hours":    {[]string{"Name", "elprovo", "Policy", tokenOnlyPolicy, "DurationSeconds", "129601"}, "ValidationError"},
+		"policy over 2048 chars":  {[]string{"Name", "elprovo", "Policy", tokenOnlyPolicy + strings.Repeat(" ", 2049-len(tokenOnlyPolicy))}, "ValidationError"},
+		"policy with a condition": {[]string{"Name", "elprovo", "Policy", `{"Version":"2012-10-17","Statement":{"Effect":"Allow","Action":"*","Resource":"*","Condition":{}}}`}, "MalformedPolicyDocument"},
+		"policy that is not JSON": {[]string{"Name", "elprovo", "Policy", "allow everything"}, "MalformedPolicyDocument"},
+		"managed session policy":  {[]string{"Name", "elprovo", "PolicyArns.member.1.arn", "arn:aws:iam::aws:policy/AdministratorAccess"}, "UnknownParameter"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)

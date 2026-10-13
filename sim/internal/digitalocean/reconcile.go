@@ -4,7 +4,7 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func (s *Simulation) reconcile(ctx context.Context) error {

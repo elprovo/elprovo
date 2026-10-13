@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // firewall is a VPC firewall rule. The simulation supports allow rules;

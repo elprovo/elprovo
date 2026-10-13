@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // host runs shell commands as root on a machine setup installs on.
@@ -19,7 +19,7 @@ type host interface {
 	Output(ctx context.Context, stdin io.Reader, command string) ([]byte, error)
 }
 
-// service is a Stagely daemon that setup installs on a host as a systemd
+// service is a Elprovo daemon that setup installs on a host as a systemd
 // service, running as its own system user with its state in
 // /var/lib/<name>.
 type service struct {
@@ -55,7 +55,7 @@ func (s service) unit() (string, error) {
 	var b strings.Builder
 	b.WriteString("[Unit]\nDescription=" + s.name + "\nWants=network-online.target\nAfter=network-online.target\n\n")
 	b.WriteString("[Service]\nUser=" + s.name + "\nGroup=" + s.name + "\n")
-	b.WriteString("EnvironmentFile=/etc/stagely/" + s.name + ".env\n")
+	b.WriteString("EnvironmentFile=/etc/elprovo/" + s.name + ".env\n")
 	b.WriteString("ExecStart=/usr/local/bin/" + s.name + " run " + strings.Join(s.args, " ") + "\n")
 	b.WriteString("StateDirectory=" + s.name + "\nStateDirectoryMode=0700\n")
 	b.WriteString("Restart=always\nRestartSec=5\nNoNewPrivileges=yes\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\n")
@@ -125,7 +125,7 @@ func install(ctx context.Context, h host, name string, s service) error {
 	steps := []installStep{
 		{"create user", "id -u " + user + " >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin " + user, nil},
 		{"install binary", "cat > " + bin + ".new && chmod 0755 " + bin + ".new && mv " + bin + ".new " + bin, func() (io.ReadCloser, error) { return os.Open(s.binary) }},
-		{"write environment", "install -d -m 0755 /etc/stagely && umask 077 && cat > /etc/stagely/" + s.name + ".env", text(s.envFile())},
+		{"write environment", "install -d -m 0755 /etc/elprovo && umask 077 && cat > /etc/elprovo/" + s.name + ".env", text(s.envFile())},
 		{"write unit", "cat > /etc/systemd/system/" + s.name + ".service", text(unit)},
 	}
 	for _, f := range s.files {

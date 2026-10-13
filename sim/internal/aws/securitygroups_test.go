@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func (e *testEnv) createGroup(name, vpc string) string {
@@ -17,26 +17,26 @@ func (e *testEnv) createGroup(name, vpc string) string {
 	return group.ID
 }
 
-// TestStageletGroupAdmitsOnlyTheMembersOfTheAgentGroup is the rule the
-// bootstrap module writes: stagelet machines take TCP only from instances
+// TestPreviewGroupAdmitsOnlyTheMembersOfTheAgentGroup is the rule the
+// bootstrap module writes: preview machines take TCP only from instances
 // in the agent's security group, at their private addresses.
-func TestStageletGroupAdmitsOnlyTheMembersOfTheAgentGroup(t *testing.T) {
+func TestPreviewGroupAdmitsOnlyTheMembersOfTheAgentGroup(t *testing.T) {
 	e := newEnv(t)
 	vpc, subnet := e.vpcWithSubnet("10.10.0.0/16", "10.10.0.0/24")
-	agentGroup, stageletGroup := e.createGroup("agent", vpc), e.createGroup("stagelets", vpc)
-	e.mustEC2(nil, "AuthorizeSecurityGroupIngress", "GroupId", stageletGroup,
+	agentGroup, previewGroup := e.createGroup("agent", vpc), e.createGroup("previews", vpc)
+	e.mustEC2(nil, "AuthorizeSecurityGroupIngress", "GroupId", previewGroup,
 		"IpPermissions.1.IpProtocol", "tcp", "IpPermissions.1.FromPort", "0", "IpPermissions.1.ToPort", "65535",
 		"IpPermissions.1.Groups.1.GroupId", agentGroup)
-	stagelet := e.runInstance("SubnetId", subnet, "SecurityGroupId.1", stageletGroup)
-	e.waitState(stagelet, "running")
+	preview := e.runInstance("SubnetId", subnet, "SecurityGroupId.1", previewGroup)
+	e.waitState(preview, "running")
 
 	agent := e.runInstance("SubnetId", subnet, "SecurityGroupId.1", agentGroup)
 	agentIP := e.waitState(agent, "running").PrivateIP
 
 	want := []machines.Rule{{Protocol: "tcp", Peers: []string{agentIP}}}
-	eventually(t, "the stagelet's machine admits the agent", func() bool { return reflect.DeepEqual(e.policyOf(stagelet), want) })
+	eventually(t, "the preview's machine admits the agent", func() bool { return reflect.DeepEqual(e.policyOf(preview), want) })
 	e.mustEC2(nil, "TerminateInstances", "InstanceId.1", agent)
-	eventually(t, "the stagelet's machine no longer admits the terminated agent", func() bool { return len(e.policyOf(stagelet)) == 0 })
+	eventually(t, "the preview's machine no longer admits the terminated agent", func() bool { return len(e.policyOf(preview)) == 0 })
 }
 
 func TestMachineFirewallFollowsRuleChanges(t *testing.T) {

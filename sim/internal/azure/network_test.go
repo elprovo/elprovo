@@ -55,7 +55,7 @@ func TestResourcesInUseCannotBeDeleted(t *testing.T) {
 
 	e.mustFail(http.StatusBadRequest, "PublicIPAddressCannotBeDeleted", http.MethodDelete, resourcePath("rg", typePublicIP, "ip")+apiVersion, nil)
 	e.mustFail(http.StatusBadRequest, "InUseNetworkSecurityGroupCannotBeDeleted", http.MethodDelete, resourcePath("rg", typeNSG, "fw")+apiVersion, nil)
-	e.mustFail(http.StatusBadRequest, "InUseSubnetCannotBeDeleted", http.MethodDelete, resourcePath("rg", typeVNet, "net")+"/subnets/stagelets"+apiVersion, nil)
+	e.mustFail(http.StatusBadRequest, "InUseSubnetCannotBeDeleted", http.MethodDelete, resourcePath("rg", typeVNet, "net")+"/subnets/previews"+apiVersion, nil)
 	e.mustFail(http.StatusBadRequest, "InUseSubnetCannotBeDeleted", http.MethodDelete, resourcePath("rg", typeVNet, "net")+apiVersion, nil)
 
 	e.wait(e.mustCall(http.StatusAccepted, http.MethodDelete, resourcePath("rg", typeNIC, "nic")+apiVersion, nil, nil))

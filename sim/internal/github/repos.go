@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stagely-dev/stagely/sim/internal/github/gitrepo"
+	"github.com/elprovo/elprovo/sim/internal/github/gitrepo"
 )
 
 type newRepo struct {

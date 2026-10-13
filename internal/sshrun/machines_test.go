@@ -19,7 +19,7 @@ func newMachines(t *testing.T) Machines {
 func TestNewHostKeyPinsThePublicHalfOfTheKeyItReturns(t *testing.T) {
 	m := newMachines(t)
 
-	pemKey, err := m.NewHostKey("stagely-5e1a9c0b7d42")
+	pemKey, err := m.NewHostKey("elprovo-5e1a9c0b7d42")
 	if err != nil {
 		t.Fatalf("NewHostKey: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestNewHostKeyPinsThePublicHalfOfTheKeyItReturns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the returned key does not parse: %v", err)
 	}
-	pinned, err := m.pinnedHostKey("stagely-5e1a9c0b7d42")
+	pinned, err := m.pinnedHostKey("elprovo-5e1a9c0b7d42")
 	if err != nil {
 		t.Fatalf("pinned host key: %v", err)
 	}
@@ -39,19 +39,19 @@ func TestNewHostKeyPinsThePublicHalfOfTheKeyItReturns(t *testing.T) {
 
 func TestRunRefusesAMachineWithoutAPinnedHostKey(t *testing.T) {
 	m := newMachines(t)
-	if _, err := m.NewHostKey("stagely-build-1"); err != nil {
+	if _, err := m.NewHostKey("elprovo-build-1"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := m.Forget("stagely-build-1"); err != nil {
+	if err := m.Forget("elprovo-build-1"); err != nil {
 		t.Fatalf("Forget: %v", err)
 	}
 
-	err := m.Run(t.Context(), "stagely-build-1", nil, nil, nil, "true")
+	err := m.Run(t.Context(), "elprovo-build-1", nil, nil, nil, "true")
 	if !errors.Is(err, ErrNoHostKey) {
 		t.Fatalf("Run after Forget = %v, want ErrNoHostKey", err)
 	}
-	if err := m.Forget("stagely-build-1"); err != nil {
+	if err := m.Forget("elprovo-build-1"); err != nil {
 		t.Fatalf("forgetting a forgotten machine: %v", err)
 	}
 }
@@ -59,7 +59,7 @@ func TestRunRefusesAMachineWithoutAPinnedHostKey(t *testing.T) {
 func TestMachineNamesThatAreNotSafeFileNamesAreRefused(t *testing.T) {
 	m := newMachines(t)
 
-	for _, name := range []string{"../agent", "Stagely", "", "stagely/build"} {
+	for _, name := range []string{"../agent", "Elprovo", "", "elprovo/build"} {
 		if _, err := m.NewHostKey(name); err == nil {
 			t.Errorf("NewHostKey(%q) succeeded, want the name refused", name)
 		}

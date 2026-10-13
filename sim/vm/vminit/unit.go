@@ -239,7 +239,7 @@ func (u *unit) setInstall(key, value string) error {
 }
 
 func (u *unit) unsupported(section, key string) {
-	u.warnings = append(u.warnings, fmt.Sprintf("%s= in section [%s] is not supported by stagely-vm-init, ignoring.", key, section))
+	u.warnings = append(u.warnings, fmt.Sprintf("%s= in section [%s] is not supported by elprovo-vm-init, ignoring.", key, section))
 }
 
 func appendExec(list *[]execLine, value string) error {

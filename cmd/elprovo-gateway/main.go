@@ -1,4 +1,4 @@
-// Command stagely-gateway serves stagelet traffic for one environment.
+// Command elprovo-gateway serves preview traffic for one environment.
 package main
 
 import (
@@ -16,19 +16,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/controlplane"
-	"github.com/stagely-dev/stagely/internal/gateway"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/controlplane"
+	"github.com/elprovo/elprovo/internal/gateway"
+	"github.com/elprovo/elprovo/protocol"
 	"golang.org/x/crypto/acme"
 )
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprintln(os.Stderr, "usage: stagely-gateway run [flags]")
+		fmt.Fprintln(os.Stderr, "usage: elprovo-gateway run [flags]")
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
-		slog.Error("stagely-gateway stopped", "error", err)
+		slog.Error("elprovo-gateway stopped", "error", err)
 		os.Exit(1)
 	}
 }
@@ -54,15 +54,15 @@ func parseFlags(args []string) (options, error) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	fs.StringVar(&o.controlPlane, "control-plane", controlplane.SessionURL(controlplane.HostedURL), "control plane session URL")
 	fs.StringVar(&o.dataDir, "data-dir", defaultDataDir("gateway"), "directory for the gateway key and, with -acme, the certificate cache")
-	fs.StringVar(&o.enrollmentToken, "enrollment-token", os.Getenv("STAGELY_ENROLLMENT_TOKEN"), "one-time enrollment token, needed on first start; defaults to STAGELY_ENROLLMENT_TOKEN")
+	fs.StringVar(&o.enrollmentToken, "enrollment-token", os.Getenv("ELPROVO_ENROLLMENT_TOKEN"), "one-time enrollment token, needed on first start; defaults to ELPROVO_ENROLLMENT_TOKEN")
 	fs.StringVar(&o.listen, "listen", ":8443", "HTTPS listen address")
-	fs.StringVar(&o.tlsCert, "tls-cert", "", "TLS certificate file for the stagelet host names")
+	fs.StringVar(&o.tlsCert, "tls-cert", "", "TLS certificate file for the preview host names")
 	fs.StringVar(&o.tlsKey, "tls-key", "", "TLS key file")
-	fs.BoolVar(&o.acme, "acme", false, "get a certificate for each stagelet host name through ACME, instead of -tls-cert and -tls-key")
+	fs.BoolVar(&o.acme, "acme", false, "get a certificate for each preview host name through ACME, instead of -tls-cert and -tls-key")
 	fs.StringVar(&o.acmeDirectory, "acme-directory", acme.LetsEncryptURL, "ACME directory URL")
 	fs.StringVar(&o.acmeDirectoryCA, "acme-directory-ca", "", "PEM file of extra CA certificates to trust for the ACME directory's HTTPS, for test servers such as Pebble")
 	fs.StringVar(&o.acmeEmail, "acme-email", "", "contact email for the ACME account")
-	fs.StringVar(&extraHosts, "acme-extra-hosts", "", "comma-separated host names that get certificates in addition to the stagelet host names")
+	fs.StringVar(&extraHosts, "acme-extra-hosts", "", "comma-separated host names that get certificates in addition to the preview host names")
 	fs.StringVar(&o.httpListen, "http-listen", ":80", "HTTP listen address with -acme: answers HTTP-01 challenges and redirects other requests to HTTPS")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
@@ -108,12 +108,12 @@ func run(args []string) error {
 	servers := []*http.Server{httpsServer}
 	serveErr := make(chan error, 2)
 	go func() { serveErr <- fmt.Errorf("serve https: %w", httpsServer.ListenAndServeTLS("", "")) }()
-	log.Info("stagely-gateway listening", "addr", opts.listen)
+	log.Info("elprovo-gateway listening", "addr", opts.listen)
 	if challenges != nil {
 		httpServer := &http.Server{Addr: opts.httpListen, Handler: challenges, ReadHeaderTimeout: 10 * time.Second}
 		servers = append(servers, httpServer)
 		go func() { serveErr <- fmt.Errorf("serve http: %w", httpServer.ListenAndServe()) }()
-		log.Info("stagely-gateway answering ACME HTTP-01 challenges", "addr", opts.httpListen)
+		log.Info("elprovo-gateway answering ACME HTTP-01 challenges", "addr", opts.httpListen)
 	}
 
 	var runErr error
@@ -166,7 +166,7 @@ func splitList(s string) []string {
 func defaultDataDir(name string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".stagely", name)
+		return filepath.Join(".elprovo", name)
 	}
-	return filepath.Join(home, ".stagely", name)
+	return filepath.Join(home, ".elprovo", name)
 }

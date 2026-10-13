@@ -6,7 +6,7 @@ import (
 )
 
 func TestLabelSelectorMatchesAsDocumented(t *testing.T) {
-	labels := map[string]string{"env": "production", "tier": "web", "stagely.dev/role": "stagelet"}
+	labels := map[string]string{"env": "production", "tier": "web", "elprovo.com/role": "preview"}
 	cases := []struct {
 		selector string
 		want     bool
@@ -22,7 +22,7 @@ func TestLabelSelectorMatchesAsDocumented(t *testing.T) {
 		{"env notin (testing,staging)", true},
 		{"env=production,tier!=db", true},
 		{"env=production,tier in (db,cache)", false},
-		{"stagely.dev/role=stagelet", true},
+		{"elprovo.com/role=preview", true},
 		{"missing=value", false},
 		{"tier=", false},
 	}

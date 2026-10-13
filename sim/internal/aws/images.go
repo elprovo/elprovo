@@ -128,7 +128,7 @@ func (s *Simulation) createImage(c *ec2Call) (ec2Response, error) {
 		snap := &snapshot{
 			ID: img.SnapshotID, Region: c.region, OwnerID: w.AccountID, VolumeID: i.VolumeID, VolumeSize: size, State: "pending",
 			StartTime: s.now().UTC(), Description: fmt.Sprintf("Created by CreateImage(%s) for %s", id, img.ID),
-			ImageRef: fmt.Sprintf("stagely-sim-aws-image:%s-%s", w.AccountID, img.SnapshotID),
+			ImageRef: fmt.Sprintf("elprovo-sim-aws-image:%s-%s", w.AccountID, img.SnapshotID),
 		}
 		w.Snapshots = append(w.Snapshots, snap)
 		w.Images = append(w.Images, img)

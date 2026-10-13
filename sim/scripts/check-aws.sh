@@ -13,7 +13,7 @@
 # A CNCF Distribution registry answers as the account's ECR registry on the
 # public network, with a certificate from the check's CA, which the machines
 # trust, and with the simulation as its token service; the test pushes with
-# a build worker's registry credentials, pulls with a stagelet machine's and
+# a build worker's registry credentials, pulls with a preview machine's and
 # is refused a push with them.
 #
 # image builds images/aws with Packer against the simulation, which images
@@ -41,8 +41,8 @@ esac
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-network="stagely-sim-aws-check-$$"
-port=${STAGELY_SIM_CHECK_PORT:-9394}
+network="elprovo-sim-aws-check-$$"
+port=${ELPROVO_SIM_CHECK_PORT:-9394}
 region=us-east-1
 access_key="AKIA$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n' | tr a-f A-F)"
 secret_key=$(od -An -N20 -tx1 /dev/urandom | tr -d ' \n')
@@ -57,7 +57,7 @@ account() {
 }
 
 machines_left() {
-	docker ps --all --quiet --filter label=stagely-sim.cloud=aws --filter "label=stagely-sim.account=$(account)" | wc -l | tr -d ' '
+	docker ps --all --quiet --filter label=elprovo-sim.cloud=aws --filter "label=elprovo-sim.account=$(account)" | wc -l | tr -d ' '
 }
 
 cleanup() {
@@ -68,8 +68,8 @@ cleanup() {
 	fi
 	docker rm --force --volumes "$network-agent" "$network-packer" "$network-ssh" "$network-registry" >/dev/null 2>&1 || true
 	if [ -n "$(account)" ]; then
-		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^stagely-sim-aws-image:$(account)-" | xargs docker rmi --force >/dev/null 2>&1 || true
-		docker ps --all --quiet --filter label=stagely-sim.cloud=aws --filter "label=stagely-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
+		docker images --format '{{.Repository}}:{{.Tag}}' | grep "^elprovo-sim-aws-image:$(account)-" | xargs docker rmi --force >/dev/null 2>&1 || true
+		docker ps --all --quiet --filter label=elprovo-sim.cloud=aws --filter "label=elprovo-sim.account=$(account)" | xargs docker rm --force --volumes >/dev/null 2>&1 || true
 	fi
 	docker network rm "$network" "$network-public" >/dev/null 2>&1 || true
 	if [ "$status" -ne 0 ] && [ -f "$work/sim.log" ]; then
@@ -100,14 +100,14 @@ for e in ET.parse(sys.stdin).iter():
 # certificate of the registry under the account's ECR host name.
 make_certs() {
 	mkdir -p "$work/certs"
-	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=stagely-sim-aws-check \
+	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -subj /CN=elprovo-sim-aws-check \
 		-keyout "$work/certs/ca.key" -out "$work/certs/ca.pem" 2>/dev/null
 }
 
 start_simulation() {
-	(cd "$repo/sim" && go build -o "$work/stagely-sim" ./cmd/stagely-sim)
+	(cd "$repo/sim" && go build -o "$work/elprovo-sim" ./cmd/elprovo-sim)
 	make_certs
-	"$work/stagely-sim" -aws -data-dir "$work/data" -aws-network "$network" -aws-addr ":$port" \
+	"$work/elprovo-sim" -aws -data-dir "$work/data" -aws-network "$network" -aws-addr ":$port" \
 		-aws-access-key-id "$access_key" -aws-secret-access-key "$secret_key" -machine-ca "$work/certs/ca.pem" >"$work/sim.log" 2>&1 &
 	sim_pid=$!
 	tries=0
@@ -132,11 +132,11 @@ start_registry() {
 	openssl x509 -req -in "$work/certs/registry.csr" -CA "$work/certs/ca.pem" -CAkey "$work/certs/ca.key" -CAcreateserial -days 1 \
 		-extfile "$work/certs/registry.ext" -out "$work/certs/registry.pem" 2>/dev/null
 	cp "$work/data/aws/registry-token.pem" "$work/certs/token.pem"
-	host_ip=$(docker run --rm --add-host stagely-sim-host:host-gateway ubuntu:24.04 getent hosts stagely-sim-host | cut -d' ' -f1)
+	host_ip=$(docker run --rm --add-host elprovo-sim-host:host-gateway ubuntu:24.04 getent hosts elprovo-sim-host | cut -d' ' -f1)
 	docker create --name "$network-registry" --network "$network-public" --network-alias "$registry_host" \
 		-e REGISTRY_HTTP_ADDR=:443 -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.pem -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
 		-e REGISTRY_AUTH=token -e REGISTRY_AUTH_TOKEN_REALM="http://$host_ip:$port/v2/token" -e REGISTRY_AUTH_TOKEN_SERVICE="$registry_host" \
-		-e REGISTRY_AUTH_TOKEN_ISSUER=stagely-sim -e REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=/certs/token.pem \
+		-e REGISTRY_AUTH_TOKEN_ISSUER=elprovo-sim -e REGISTRY_AUTH_TOKEN_ROOTCERTBUNDLE=/certs/token.pem \
 		registry:2.8.3 >/dev/null
 	docker cp "$work/certs" "$network-registry:/certs"
 	docker start "$network-registry" >/dev/null
@@ -148,11 +148,11 @@ check_agent() {
 	arch=$(docker version --format '{{.Server.Arch}}')
 	(cd "$repo" && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go test -c -tags simdocker \
 		-o "$work/provider.test" ./internal/agent/provider/aws)
-	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
-		-e STAGELY_SIM_AWS_URL="http://stagely-sim-host:$port" -e STAGELY_SIM_AWS_REGION="$region" \
-		-e STAGELY_SIM_AWS_ACCESS_KEY_ID="$access_key" -e STAGELY_SIM_AWS_SECRET_ACCESS_KEY="$secret_key" \
-		-e STAGELY_SIM_AWS_IMAGE="$image" -e STAGELY_SIM_AWS_REGISTRY="$registry_host/stagely-check" \
-		-e STAGELY_SIM_AWS_GOLDEN_IMAGE="${golden_image:-}" \
+	docker create --name "$network-agent" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
+		-e ELPROVO_SIM_AWS_URL="http://elprovo-sim-host:$port" -e ELPROVO_SIM_AWS_REGION="$region" \
+		-e ELPROVO_SIM_AWS_ACCESS_KEY_ID="$access_key" -e ELPROVO_SIM_AWS_SECRET_ACCESS_KEY="$secret_key" \
+		-e ELPROVO_SIM_AWS_IMAGE="$image" -e ELPROVO_SIM_AWS_REGISTRY="$registry_host/elprovo-check" \
+		-e ELPROVO_SIM_AWS_GOLDEN_IMAGE="${golden_image:-}" \
 		ubuntu:24.04 /provider.test -test.v -test.run TestProviderAgainstSimulation -test.timeout 20m >/dev/null
 	docker cp "$work/provider.test" "$network-agent:/provider.test"
 	docker start --attach "$network-agent"
@@ -164,13 +164,13 @@ check_agent() {
 }
 
 # check_root_login signs in as root with the operator key at the address $2
-# from the public network, as stagely setup does, and expects the file that
+# from the public network, as elprovo setup does, and expects the file that
 # the host's user data wrote to say $1.
 check_root_login() {
-	vm_image=$(docker inspect --format '{{.Config.Image}}' "$(docker ps --quiet --filter label=stagely-sim.cloud=aws --filter "label=stagely-sim.account=$(account)" | head -n 1)")
+	vm_image=$(docker inspect --format '{{.Config.Image}}' "$(docker ps --quiet --filter label=elprovo-sim.cloud=aws --filter "label=elprovo-sim.account=$(account)" | head -n 1)")
 	docker create --name "$network-ssh" --network "$network-public" --entrypoint ssh "$vm_image" \
 		-i /key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 "root@$2" \
-		'cloud-init status --wait >/dev/null; cat /etc/stagely-check' >/dev/null
+		'cloud-init status --wait >/dev/null; cat /etc/elprovo-check' >/dev/null
 	docker cp "$work/key" "$network-ssh:/key"
 	tries=0
 	until said=$(docker start --attach "$network-ssh" 2>/dev/null) && [ "$said" = "$1" ]; do
@@ -189,9 +189,9 @@ check_terraform() {
 	cp -R "$repo/sim/internal/aws/testdata/terraform" "$work/tf"
 	cp -R "$repo/terraform/aws" "$work/tf/module"
 	rm -rf "$work/tf/module/.terraform"
-	ssh-keygen -q -t ed25519 -N '' -C stagely-sim-check -f "$work/key"
+	ssh-keygen -q -t ed25519 -N '' -C elprovo-sim-check -f "$work/key"
 	TF_VAR_ssh_public_key=$(cat "$work/key.pub")
-	mkdir -p "${TF_PLUGIN_CACHE_DIR:=$HOME/.cache/stagely/tofu-plugins}"
+	mkdir -p "${TF_PLUGIN_CACHE_DIR:=$HOME/.cache/elprovo/tofu-plugins}"
 	export TF_PLUGIN_CACHE_DIR TF_IN_AUTOMATION=1 TF_INPUT=0 TF_VAR_endpoint="http://127.0.0.1:$port" TF_VAR_ssh_public_key \
 		AWS_ACCESS_KEY_ID="$access_key" AWS_SECRET_ACCESS_KEY="$secret_key" \
 		AWS_ENDPOINT_URL="http://127.0.0.1:$port" AWS_EC2_METADATA_DISABLED=true
@@ -214,14 +214,14 @@ check_terraform() {
 }
 
 check_image() {
-	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host stagely-sim-host:host-gateway \
+	docker create --name "$network-packer" --network "$network" --network "$network-public" --add-host elprovo-sim-host:host-gateway \
 		-e AWS_ACCESS_KEY_ID="$access_key" -e AWS_SECRET_ACCESS_KEY="$secret_key" \
-		-e AWS_ENDPOINT_URL="http://stagely-sim-host:$port" -e AWS_EC2_METADATA_DISABLED=true \
+		-e AWS_ENDPOINT_URL="http://elprovo-sim-host:$port" -e AWS_EC2_METADATA_DISABLED=true \
 		-w /images --entrypoint sh hashicorp/packer:1.16.1 \
-		-c "packer init . && packer build -color=false -var region=$region -var ami_name=stagely-image-check ." >/dev/null
+		-c "packer init . && packer build -color=false -var region=$region -var ami_name=elprovo-image-check ." >/dev/null
 	docker cp "$repo/images/aws/." "$network-packer:/images/"
 	docker start --attach "$network-packer"
-	golden_image=$(ec2 "Action=DescribeImages&Owner.1=self&Filter.1.Name=name&Filter.1.Value.1=stagely-image-check" | xml_values imageId)
+	golden_image=$(ec2 "Action=DescribeImages&Owner.1=self&Filter.1.Name=name&Filter.1.Value.1=elprovo-image-check" | xml_values imageId)
 	if [ -z "$golden_image" ]; then
 		echo "Packer registered no AMI" >&2
 		exit 1

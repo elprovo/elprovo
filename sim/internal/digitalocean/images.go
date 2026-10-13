@@ -12,8 +12,8 @@ func (s *Simulation) getAccount(*http.Request) (int, any, error) {
 	s.store.Read(func(a *account) { uuid = a.UUID })
 	return http.StatusOK, map[string]any{"account": map[string]any{
 		"droplet_limit": dropletLimit, "floating_ip_limit": 3, "reserved_ip_limit": 3, "volume_limit": 100,
-		"email": "sim@stagely.local", "name": "stagely-sim", "uuid": uuid, "email_verified": true,
-		"status": "active", "status_message": "", "team": map[string]string{"uuid": uuid, "name": "stagely-sim"},
+		"email": "sim@elprovo.local", "name": "elprovo-sim", "uuid": uuid, "email_verified": true,
+		"status": "active", "status_message": "", "team": map[string]string{"uuid": uuid, "name": "elprovo-sim"},
 	}}, nil
 }
 

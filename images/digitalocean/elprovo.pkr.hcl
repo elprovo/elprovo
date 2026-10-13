@@ -37,10 +37,10 @@ variable "base_image" {
 
 variable "snapshot_name" {
   type    = string
-  default = "stagely-{{timestamp}}"
+  default = "elprovo-{{timestamp}}"
 }
 
-source "digitalocean" "stagely" {
+source "digitalocean" "elprovo" {
   api_url       = var.api_url
   api_token     = var.api_token
   region        = var.region
@@ -49,11 +49,11 @@ source "digitalocean" "stagely" {
   ssh_username  = "root"
   snapshot_name = var.snapshot_name
   droplet_agent = false
-  tags          = ["stagely-image-build"]
+  tags          = ["elprovo-image-build"]
 }
 
 build {
-  sources = ["source.digitalocean.stagely"]
+  sources = ["source.digitalocean.elprovo"]
 
   provisioner "shell" {
     environment_vars = ["DEBIAN_FRONTEND=noninteractive"]

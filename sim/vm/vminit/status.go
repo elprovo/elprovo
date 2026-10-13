@@ -17,7 +17,7 @@ import (
 const (
 	statusPath     = "/run/cloud-init/status.json"
 	resultPath     = "/run/cloud-init/result.json"
-	ciVersion      = "26.1-stagely-sim"
+	ciVersion      = "26.1-elprovo-sim"
 	datasourceName = "DataSourceNoCloud [seed=/var/lib/cloud/seed/nocloud]"
 )
 

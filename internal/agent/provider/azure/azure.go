@@ -1,4 +1,4 @@
-// Package azure runs stagelet machines as Azure virtual machines. The agent
+// Package azure runs preview machines as Azure virtual machines. The agent
 // creates each machine's network interface and virtual machine through
 // Azure Resource Manager and hands the machine a host key that the agent
 // generated, so it never has to trust an unknown host key. It then drives
@@ -21,12 +21,12 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
-	"github.com/stagely-dev/stagely/internal/sshrun"
+	"github.com/elprovo/elprovo/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/sshrun"
 )
 
 // tagKey is the tag whose value marks the machines of one environment.
-const tagKey = "stagely"
+const tagKey = "elprovo"
 
 // Config says where and how the provider creates virtual machines.
 type Config struct {
@@ -53,7 +53,7 @@ type Config struct {
 	// Registry is the resource id of the environment's container registry,
 	// which RegistryCredentials makes tokens for.
 	Registry string
-	// Tag is the value of the stagely tag on every machine the provider
+	// Tag is the value of the elprovo tag on every machine the provider
 	// creates. The provider lists and deletes only machines with it.
 	Tag string
 	// AdminUsername is the admin user that Azure requires. The provider

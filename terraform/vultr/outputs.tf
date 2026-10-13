@@ -9,28 +9,28 @@ output "gateway_address" {
 }
 
 output "gateway_ip" {
-  description = "Stable address that stagelet host names point at."
+  description = "Stable address that preview host names point at."
   value       = vultr_reserved_ip.gateway.subnet
 }
 
-output "stagelet_firewall_group_id" {
+output "preview_firewall_group_id" {
   description = "Firewall group the agent puts every machine it creates in."
-  value       = vultr_firewall_group.stagelets.id
+  value       = vultr_firewall_group.previews.id
 }
 
-output "stagelet_tag" {
+output "preview_tag" {
   description = "Tag the agent must put on every machine it creates."
-  value       = local.stagelet_tag
+  value       = local.preview_tag
 }
 
 output "registry" {
   description = "Image name prefix that build workers push to."
-  value       = vultr_container_registry.stagely.urn
+  value       = vultr_container_registry.elprovo.urn
 }
 
 output "registry_id" {
   description = "Registry that the agent gets short-lived Docker credentials for, for each machine."
-  value       = vultr_container_registry.stagely.id
+  value       = vultr_container_registry.elprovo.id
 }
 
 output "vpc_id" {
@@ -44,6 +44,6 @@ output "agent_private_ip" {
 }
 
 output "gateway_private_ip" {
-  description = "Address of the gateway host in the VPC, from which it forwards visitors to stagelets."
+  description = "Address of the gateway host in the VPC, from which it forwards visitors to previews."
   value       = vultr_instance.gateway.internal_ip
 }

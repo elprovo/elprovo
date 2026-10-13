@@ -25,10 +25,10 @@ variable "instance_type" {
 
 variable "ami_name" {
   type    = string
-  default = "stagely-{{timestamp}}"
+  default = "elprovo-{{timestamp}}"
 }
 
-source "amazon-ebs" "stagely" {
+source "amazon-ebs" "elprovo" {
   region        = var.region
   subnet_id     = var.subnet_id
   instance_type = var.instance_type
@@ -51,7 +51,7 @@ source "amazon-ebs" "stagely" {
   ssh_username = "root"
 
   run_tags = {
-    Name = "stagely-image-build"
+    Name = "elprovo-image-build"
   }
   tags = {
     Name = var.ami_name
@@ -59,7 +59,7 @@ source "amazon-ebs" "stagely" {
 }
 
 build {
-  sources = ["source.amazon-ebs.stagely"]
+  sources = ["source.amazon-ebs.elprovo"]
 
   provisioner "shell" {
     environment_vars = ["DEBIAN_FRONTEND=noninteractive"]

@@ -30,11 +30,11 @@ func TestCertificatesAreOnlyForRoutedAndExtraHosts(t *testing.T) {
 		allowed bool
 	}{
 		{host: host, allowed: true},
-		{host: "S1.Stagelets.Localhost", allowed: true},
+		{host: "S1.Previews.Localhost", allowed: true},
 		{host: host + ":80", allowed: true},
 		{host: "gateway.example.com", allowed: true},
-		{host: "s2.stagelets.localhost", allowed: false},
-		{host: "stagelets.localhost", allowed: false},
+		{host: "s2.previews.localhost", allowed: false},
+		{host: "previews.localhost", allowed: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {

@@ -31,15 +31,15 @@ func TestPullRequestPagesDriveTheWholeReviewCycle(t *testing.T) {
 	ts.hooks.wait(t, "pull_request", "opened")
 
 	postForm(t, client, pull+"/comments", url.Values{"body": {"Looks good"}})
-	postForm(t, client, pull+"/labels", url.Values{"name": {"stagelet"}})
+	postForm(t, client, pull+"/labels", url.Values{"name": {"preview"}})
 	page := string(do(t, client, http.MethodGet, pull, nil, nil).body)
-	if !strings.Contains(page, "Looks good") || !strings.Contains(page, `<span class="label">stagelet</span>`) {
+	if !strings.Contains(page, "Looks good") || !strings.Contains(page, `<span class="label">preview</span>`) {
 		t.Fatalf("pull request page does not show the comment and the label:\n%s", page)
 	}
 	ts.hooks.wait(t, "issue_comment", "created")
 	ts.hooks.wait(t, "pull_request", "labeled")
 
-	postForm(t, client, pull+"/labels/delete", url.Values{"name": {"stagelet"}})
+	postForm(t, client, pull+"/labels/delete", url.Values{"name": {"preview"}})
 	ts.hooks.wait(t, "pull_request", "unlabeled")
 	postForm(t, client, pull+"/state", url.Values{"state": {"closed"}})
 	ts.hooks.wait(t, "pull_request", "closed")

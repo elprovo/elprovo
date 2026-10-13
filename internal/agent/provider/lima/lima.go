@@ -1,4 +1,4 @@
-// Package lima runs stagelet machines as local Lima VMs through limactl.
+// Package lima runs preview machines as local Lima VMs through limactl.
 //
 // Each VM uses the vz backend, Lima's user-v2 network, where VMs reach each
 // other and reach the Mac as host.lima.internal, and plain mode, so it has no
@@ -71,8 +71,8 @@ iptables -A DOCKER-USER -j RETURN
 // and trust the insecure registries, then restarts it.
 func (p *Provider) configureDocker(ctx context.Context, name string) error {
 	files := []vmFile{
-		{"/usr/local/sbin/stagely-container-isolation", "0755", []byte(containerIsolation)},
-		{"/etc/systemd/system/docker.service.d/stagely-container-isolation.conf", "0644", []byte("[Service]\nExecStartPost=/usr/local/sbin/stagely-container-isolation\n")},
+		{"/usr/local/sbin/elprovo-container-isolation", "0755", []byte(containerIsolation)},
+		{"/etc/systemd/system/docker.service.d/elprovo-container-isolation.conf", "0644", []byte("[Service]\nExecStartPost=/usr/local/sbin/elprovo-container-isolation\n")},
 	}
 	if len(p.InsecureRegistries) > 0 {
 		config, err := json.Marshal(map[string][]string{"insecure-registries": p.InsecureRegistries})

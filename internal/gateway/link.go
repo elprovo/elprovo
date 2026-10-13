@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stagely-dev/stagely/internal/controlplane"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/controlplane"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 // ErrDisconnected means the gateway has no session to the control plane.
@@ -74,7 +74,7 @@ func (l *Link) handle(ctx context.Context, s *controlplane.Session, g *Gateway, 
 			return err
 		}
 		applied := g.SetRoutes(routes.Routes)
-		if err := s.Send(ctx, protocol.TypeRoutesApplied, protocol.RoutesApplied{StageletIDs: applied}); err != nil {
+		if err := s.Send(ctx, protocol.TypeRoutesApplied, protocol.RoutesApplied{PreviewIDs: applied}); err != nil {
 			return err
 		}
 		select {

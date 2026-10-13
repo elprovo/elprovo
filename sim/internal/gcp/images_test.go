@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // TestImageFromAKeptBootDiskBootsNewInstances follows what Packer does: it
@@ -19,29 +19,29 @@ func TestImageFromAKeptBootDiskBootsNewInstances(t *testing.T) {
 		"initializeParams": map[string]any{"diskName": "build-disk", "diskSizeGb": "20", "sourceImage": "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"},
 	}}})
 	e.remove(computePath + "/zones/" + testZone + "/instances/build")
-	diskRef := "stagely-sim-gcp-disk:" + e.account()[:8] + "-" + e.diskID("build-disk")
+	diskRef := "elprovo-sim-gcp-disk:" + e.account()[:8] + "-" + e.diskID("build-disk")
 	if !e.machines.hasImage(diskRef) {
 		t.Fatalf("the kept disk was not saved as %s", diskRef)
 	}
-	e.fail(http.StatusBadRequest, http.MethodPost, computePath+"/global/images/stagely-1/deprecate", map[string]any{"state": "WRONG"})
+	e.fail(http.StatusBadRequest, http.MethodPost, computePath+"/global/images/elprovo-1/deprecate", map[string]any{"state": "WRONG"})
 
 	e.insert(computePath+"/global/images", map[string]any{
-		"name": "stagely-1", "family": "stagely", "sourceType": "RAW",
+		"name": "elprovo-1", "family": "elprovo", "sourceType": "RAW",
 		"sourceDisk": "/compute/v1/projects/" + testProject + "/zones/" + testZone + "/disks/build-disk",
 	})
-	e.insert(computePath+"/global/images/stagely-1/deprecate", map[string]any{})
+	e.insert(computePath+"/global/images/elprovo-1/deprecate", map[string]any{})
 	e.remove(computePath + "/zones/" + testZone + "/disks/build-disk")
 
 	var img imageJSON
-	e.mustCall(http.StatusOK, http.MethodGet, computePath+"/global/images/family/stagely", nil, &img)
-	if img.Name != "stagely-1" || img.DiskSizeGb != "20" || img.Status != "READY" {
+	e.mustCall(http.StatusOK, http.MethodGet, computePath+"/global/images/family/elprovo", nil, &img)
+	if img.Name != "elprovo-1" || img.DiskSizeGb != "20" || img.Status != "READY" {
 		t.Fatalf("image = %+v", img)
 	}
 	if !e.machines.hasImage(diskRef) {
 		t.Fatal("deleting the disk removed the image's content")
 	}
 	booted := e.createInstance("from-image", map[string]any{"disks": []map[string]any{{
-		"boot": true, "autoDelete": true, "initializeParams": map[string]any{"sourceImage": "global/images/stagely-1"},
+		"boot": true, "autoDelete": true, "initializeParams": map[string]any{"sourceImage": "global/images/elprovo-1"},
 	}}})
 	if _, spec, _ := e.machines.machineOf(booted.ID); spec.Image != diskRef {
 		t.Fatalf("instance from the image boots %q, want %q", spec.Image, diskRef)
@@ -50,7 +50,7 @@ func TestImageFromAKeptBootDiskBootsNewInstances(t *testing.T) {
 		t.Fatal("the new instance reused the build instance's id")
 	}
 	e.remove(computePath + "/zones/" + testZone + "/instances/from-image")
-	e.remove(computePath + "/global/images/stagely-1")
+	e.remove(computePath + "/global/images/elprovo-1")
 	eventually(t, "the unused image content is removed", func() bool { return !e.machines.hasImage(diskRef) })
 }
 
@@ -59,7 +59,7 @@ func TestImageNeedsADetachedDisk(t *testing.T) {
 	e.createInstance("build", nil)
 
 	got := e.fail(http.StatusBadRequest, http.MethodPost, computePath+"/global/images", map[string]any{
-		"name": "stagely-1", "sourceDisk": "zones/" + testZone + "/disks/build",
+		"name": "elprovo-1", "sourceDisk": "zones/" + testZone + "/disks/build",
 	})
 
 	if got.Error.Errors[0].Reason != "resourceInUseByAnotherResource" {
@@ -107,7 +107,7 @@ func TestKeptDiskIsNotSavedWhenItsMachineStays(t *testing.T) {
 	e.createInstance("build", map[string]any{"disks": []map[string]any{{
 		"boot": true, "autoDelete": false, "initializeParams": map[string]any{"sourceImage": "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64"},
 	}}})
-	diskRef := "stagely-sim-gcp-disk:" + e.account()[:8] + "-" + e.diskID("build")
+	diskRef := "elprovo-sim-gcp-disk:" + e.account()[:8] + "-" + e.diskID("build")
 	e.machines.fail("Delete", errors.New("docker rm: device busy"))
 	var op operationJSON
 	e.mustCall(http.StatusOK, http.MethodDelete, computePath+"/zones/"+testZone+"/instances/build", nil, &op)

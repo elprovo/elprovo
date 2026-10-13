@@ -52,7 +52,7 @@ func (f *fakeAPI) Do(_ context.Context, method, path string, body, out any) erro
 	case method == http.MethodPost && path == "/accounts/acct1/environments":
 		b := body.(map[string]any)
 		f.created = append(f.created, b)
-		env := Environment{ID: "env1", Name: b["name"].(string), Provider: b["provider"].(string), StageletDomain: b["stagelet_domain"].(string), StageletPort: b["stagelet_port"].(int)}
+		env := Environment{ID: "env1", Name: b["name"].(string), Provider: b["provider"].(string), PreviewDomain: b["preview_domain"].(string), PreviewPort: b["preview_port"].(int)}
 		f.environments = append(f.environments, env)
 		return reply(env)
 	case method == http.MethodPost && path == "/accounts/acct1/environments/env1/enrollment-tokens":
@@ -69,24 +69,24 @@ func (f *fakeAPI) Do(_ context.Context, method, path string, body, out any) erro
 func TestEnsureEnvironmentCreatesItOnce(t *testing.T) {
 	api := &fakeAPI{}
 	ctx := context.Background()
-	want := Environment{Name: "Production", Provider: "digitalocean", StageletDomain: "stagelets.acme.dev", StageletPort: 443}
+	want := Environment{Name: "Production", Provider: "digitalocean", PreviewDomain: "previews.acme.dev", PreviewPort: 443}
 
 	first, err := ensureEnvironment(ctx, api, "acct1", want)
 	if err != nil {
 		t.Fatalf("first ensureEnvironment: %v", err)
 	}
-	second, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "production", Provider: "digitalocean", StageletDomain: "stagelets.acme.dev", StageletPort: 443})
+	second, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "production", Provider: "digitalocean", PreviewDomain: "previews.acme.dev", PreviewPort: 443})
 	if err != nil {
 		t.Fatalf("second ensureEnvironment: %v", err)
 	}
 	if first.ID != "env1" || second.ID != "env1" || len(api.created) != 1 {
 		t.Fatalf("environments = %v then %v, created %d times; want one environment", first, second, len(api.created))
 	}
-	if _, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "Production", Provider: "aws", StageletDomain: "stagelets.acme.dev", StageletPort: 443}); err == nil {
+	if _, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "Production", Provider: "aws", PreviewDomain: "previews.acme.dev", PreviewPort: 443}); err == nil {
 		t.Fatal("an environment with another provider was accepted")
 	}
-	if _, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "Production", Provider: "digitalocean", StageletDomain: "stagelets.acme.dev", StageletPort: 8443}); err == nil {
-		t.Fatal("an environment that serves stagelets on another port was accepted")
+	if _, err := ensureEnvironment(ctx, api, "acct1", Environment{Name: "Production", Provider: "digitalocean", PreviewDomain: "previews.acme.dev", PreviewPort: 8443}); err == nil {
+		t.Fatal("an environment that serves previews on another port was accepted")
 	}
 }
 
@@ -186,7 +186,7 @@ func TestHostsOnAPrivateNetworkRejectEveryNewConnectionFromIt(t *testing.T) {
 		t.Fatalf("keys: %v", err)
 	}
 	for host, data := range map[string]string{"agent": onNetwork.agentData, "gateway": onNetwork.gatewayData} {
-		if !strings.Contains(data, "INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE") || strings.Contains(data, "RETURN") {
+		if !strings.Contains(data, "INPUT -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE") || strings.Contains(data, "RETURN") {
 			t.Fatalf("%s user data does not reject every new connection from the network:\n%s", host, data)
 		}
 	}
@@ -197,15 +197,15 @@ func TestHostsOnAPrivateNetworkRejectEveryNewConnectionFromIt(t *testing.T) {
 }
 
 func TestUnitRunsAsItsOwnUserWithoutSecretsInIt(t *testing.T) {
-	s := service{name: "stagely-gateway", args: []string{"-listen", ":443", "-acme"}, env: map[string]string{"TOKEN": `se"cret`}, bindLowPorts: true}
+	s := service{name: "elprovo-gateway", args: []string{"-listen", ":443", "-acme"}, env: map[string]string{"TOKEN": `se"cret`}, bindLowPorts: true}
 
 	unit, err := s.unit()
 	if err != nil {
 		t.Fatalf("unit: %v", err)
 	}
 	for _, want := range []string{
-		"User=stagely-gateway\n", "ExecStart=/usr/local/bin/stagely-gateway run -listen :443 -acme\n", "StateDirectory=stagely-gateway\n",
-		"EnvironmentFile=/etc/stagely/stagely-gateway.env\n", "AmbientCapabilities=CAP_NET_BIND_SERVICE\n", "ProtectSystem=strict\n",
+		"User=elprovo-gateway\n", "ExecStart=/usr/local/bin/elprovo-gateway run -listen :443 -acme\n", "StateDirectory=elprovo-gateway\n",
+		"EnvironmentFile=/etc/elprovo/elprovo-gateway.env\n", "AmbientCapabilities=CAP_NET_BIND_SERVICE\n", "ProtectSystem=strict\n",
 	} {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("unit lacks %q:\n%s", want, unit)
@@ -238,11 +238,11 @@ func TestCloudSetupGivesTheCloudTokenToTheAgentHostAndNeverToTheGatewayHost(t *t
 	agentHost := serveSSHHost(t, agentListener, writeHostKey(t, filepath.Join(work, "agent_host_ed25519")), connect("agent"))
 	gatewayHost := serveSSHHost(t, gatewayListener, writeHostKey(t, filepath.Join(work, "gateway_host_ed25519")), connect("gateway"))
 	outputs := `{"agent_address":{"value":"127.0.0.1"},"gateway_address":{"value":"::1"},"gateway_ip":{"value":"203.0.113.7"},` +
-		`"vpc_id":{"value":"vpc-1"},"stagelet_tag":{"value":"stagely-stagelet"},"registry":{"value":"registry.digitalocean.com/acme"}}`
+		`"vpc_id":{"value":"vpc-1"},"preview_tag":{"value":"elprovo-preview"},"registry":{"value":"registry.digitalocean.com/acme"}}`
 	files := map[string]string{
 		filepath.Join(dir, "tofu"):                   "#!/bin/sh\nif [ \"$1\" = output ]; then printf '" + outputs + "'; fi\n",
-		filepath.Join(dir, "bin", "stagely-agent"):   "agent binary",
-		filepath.Join(dir, "bin", "stagely-gateway"): "gateway binary",
+		filepath.Join(dir, "bin", "elprovo-agent"):   "agent binary",
+		filepath.Join(dir, "bin", "elprovo-gateway"): "gateway binary",
 	}
 	for path, data := range files {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -253,12 +253,12 @@ func TestCloudSetupGivesTheCloudTokenToTheAgentHostAndNeverToTheGatewayHost(t *t
 		}
 	}
 	do := DigitalOcean{Token: token, APIEndpoint: "https://api.digitalocean.com", Region: "fra1", RegistryName: "acme"}
-	cloud, err := do.Cloud(fstest.MapFS{"main.tf": {Data: []byte("#\n")}}, "stagelets.acme.dev")
+	cloud, err := do.Cloud(fstest.MapFS{"main.tf": {Data: []byte("#\n")}}, "previews.acme.dev")
 	if err != nil {
 		t.Fatalf("Cloud: %v", err)
 	}
 	run := Run{
-		API: api, Server: "https://stagely.example.com", Environment: "Production", StageletDomain: "stagelets.acme.dev",
+		API: api, Server: "https://elprovo.example.com", Environment: "Production", PreviewDomain: "previews.acme.dev",
 		OperatorCIDRs: []string{"198.51.100.0/24"}, Binaries: filepath.Join(dir, "bin"), Tofu: filepath.Join(dir, "tofu"), WorkDir: work,
 		SSHPort: sshPort, ReadyTimeout: 10 * time.Second, Out: io.Discard, Cloud: cloud,
 	}
@@ -271,7 +271,7 @@ func TestCloudSetupGivesTheCloudTokenToTheAgentHostAndNeverToTheGatewayHost(t *t
 		t.Fatalf("the agent host did not get the token in its environment file:\n%s", toAgent)
 	}
 	toGateway := gatewayHost.received()
-	if !strings.Contains(toGateway, "ExecStart=/usr/local/bin/stagely-gateway run") {
+	if !strings.Contains(toGateway, "ExecStart=/usr/local/bin/elprovo-gateway run") {
 		t.Fatalf("the gateway host did not get its service:\n%s", toGateway)
 	}
 	if strings.Contains(toGateway, token) {
@@ -429,8 +429,8 @@ func TestLimaSetupRunsTheAgentUnderLaunchdAndTheGatewayInAVM(t *testing.T) {
 		tofu: "#!/bin/sh\nif [ \"$1\" = output ]; then printf '" + outputs + "'; fi\n",
 		cert: "CERT",
 		key:  "KEY",
-		filepath.Join(dir, "bin", "stagely-agent"):     "agent binary",
-		filepath.Join(dir, "linux", "stagely-gateway"): "gateway binary",
+		filepath.Join(dir, "bin", "elprovo-agent"):     "agent binary",
+		filepath.Join(dir, "linux", "elprovo-gateway"): "gateway binary",
 	}
 	for path, data := range files {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -449,8 +449,8 @@ func TestLimaSetupRunsTheAgentUnderLaunchdAndTheGatewayInAVM(t *testing.T) {
 	var started, limactl []string
 	written := map[string]string{}
 	l := Lima{
-		API: api, Server: "http://localhost:8080", Environment: "Local", StageletDomain: "stagelets.localhost", GatewayPort: 8443,
-		HostAddress: "host.lima.internal", RegistryPort: 5050, Binaries: filepath.Join(dir, "bin"), GatewayBinary: filepath.Join(dir, "linux", "stagely-gateway"),
+		API: api, Server: "http://localhost:8080", Environment: "Local", PreviewDomain: "previews.localhost", GatewayPort: 8443,
+		HostAddress: "host.lima.internal", RegistryPort: 5050, Binaries: filepath.Join(dir, "bin"), GatewayBinary: filepath.Join(dir, "linux", "elprovo-gateway"),
 		Tofu: tofu, WorkDir: filepath.Join(dir, "work"), Module: fstest.MapFS{"main.tf": {Data: []byte("#\n")}},
 		LaunchAgents: filepath.Join(dir, "LaunchAgents"), UID: 501, Path: "/usr/bin", ReadyTimeout: time.Second, Out: &strings.Builder{},
 		Launchctl: func(_ context.Context, args ...string) error {
@@ -486,27 +486,27 @@ func TestLimaSetupRunsTheAgentUnderLaunchdAndTheGatewayInAVM(t *testing.T) {
 	if err != nil || env.ID != "env1" || env.Provider != "lima" {
 		t.Fatalf("Run = %+v, %v; want the lima environment", env, err)
 	}
-	if !reflect.DeepEqual(started, []string{"dev.stagely.local.agent.plist"}) {
+	if !reflect.DeepEqual(started, []string{"dev.elprovo.local.agent.plist"}) {
 		t.Fatalf("launchd started %v, want only the agent", started)
 	}
-	plist, _ := os.ReadFile(filepath.Join(dir, "LaunchAgents", "dev.stagely.local.agent.plist"))
-	for _, want := range []string{"<string>-provider</string>", "<string>lima</string>", "<string>-lima-insecure-registry</string>", "<string>host.lima.internal:5050/local</string>", "<key>STAGELY_ENROLLMENT_TOKEN</key>"} {
+	plist, _ := os.ReadFile(filepath.Join(dir, "LaunchAgents", "dev.elprovo.local.agent.plist"))
+	for _, want := range []string{"<string>-provider</string>", "<string>lima</string>", "<string>-lima-insecure-registry</string>", "<string>host.lima.internal:5050/local</string>", "<key>ELPROVO_ENROLLMENT_TOKEN</key>"} {
 		if !strings.Contains(string(plist), want) {
 			t.Fatalf("agent plist lacks %s:\n%s", want, plist)
 		}
 	}
-	if info, _ := os.Stat(filepath.Join(dir, "LaunchAgents", "dev.stagely.local.agent.plist")); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(filepath.Join(dir, "LaunchAgents", "dev.elprovo.local.agent.plist")); info.Mode().Perm() != 0o600 {
 		t.Fatalf("plist mode = %v, want 0600: it holds the enrollment token", info.Mode().Perm())
 	}
-	if len(limactl) != 3 || !strings.HasPrefix(limactl[1], "create --tty=false --name=stagely-local-gateway --vm-type=vz --network=lima:user-v2") ||
-		limactl[2] != "start --tty=false stagely-local-gateway" {
+	if len(limactl) != 3 || !strings.HasPrefix(limactl[1], "create --tty=false --name=elprovo-local-gateway --vm-type=vz --network=lima:user-v2") ||
+		limactl[2] != "start --tty=false elprovo-local-gateway" {
 		t.Fatalf("limactl calls = %q, want the gateway VM created on the user-v2 network, then started", limactl)
 	}
-	unit := written["/etc/systemd/system/stagely-gateway.service"]
-	if !strings.Contains(unit, "-control-plane ws://host.lima.internal:8080/v1/connect") || !strings.Contains(unit, "-listen :8443 -tls-cert /etc/stagely/tls.crt -tls-key /etc/stagely/tls.key") {
+	unit := written["/etc/systemd/system/elprovo-gateway.service"]
+	if !strings.Contains(unit, "-control-plane ws://host.lima.internal:8080/v1/connect") || !strings.Contains(unit, "-listen :8443 -tls-cert /etc/elprovo/tls.crt -tls-key /etc/elprovo/tls.key") {
 		t.Fatalf("gateway unit does not reach the control plane from the VM or serve the certificate:\n%s", unit)
 	}
-	if written["/usr/local/bin/stagely-gateway.new"] != "gateway binary" || written["/etc/stagely/tls.key"] != "KEY" || !strings.Contains(written["/etc/stagely/stagely-gateway.env"], "STAGELY_ENROLLMENT_TOKEN") {
+	if written["/usr/local/bin/elprovo-gateway.new"] != "gateway binary" || written["/etc/elprovo/tls.key"] != "KEY" || !strings.Contains(written["/etc/elprovo/elprovo-gateway.env"], "ELPROVO_ENROLLMENT_TOKEN") {
 		t.Fatalf("gateway VM got %v, want the Linux binary, the key and an enrollment token", written)
 	}
 }
@@ -514,15 +514,15 @@ func TestLimaSetupRunsTheAgentUnderLaunchdAndTheGatewayInAVM(t *testing.T) {
 func TestDigitalOceanCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 	do := DigitalOcean{Token: "dop_v1_x", APIEndpoint: "http://sim:9300", Region: "fra1", RegistryName: "acme", CreateRegistry: true, DNSDomain: "acme.dev"}
 
-	cloud, err := do.Cloud(fstest.MapFS{}, "stagelets.acme.dev")
+	cloud, err := do.Cloud(fstest.MapFS{}, "previews.acme.dev")
 	if err != nil {
 		t.Fatalf("Cloud: %v", err)
 	}
-	if cloud.Vars["dns_domain"] != "acme.dev" || cloud.Vars["stagelet_subdomain"] != "stagelets" || cloud.TofuEnv[0] != "DIGITALOCEAN_TOKEN=dop_v1_x" {
+	if cloud.Vars["dns_domain"] != "acme.dev" || cloud.Vars["preview_subdomain"] != "previews" || cloud.TofuEnv[0] != "DIGITALOCEAN_TOKEN=dop_v1_x" {
 		t.Fatalf("cloud = %+v", cloud)
 	}
-	args, env, err := cloud.Agent(map[string]any{"vpc_id": "vpc-1", "stagelet_tag": "stagely-stagelet", "registry": "registry.digitalocean.com/acme"})
-	want := []string{"-do-api-url", "http://sim:9300", "-do-region", "fra1", "-do-vpc", "vpc-1", "-do-tag", "stagely-stagelet", "-registry", "registry.digitalocean.com/acme"}
+	args, env, err := cloud.Agent(map[string]any{"vpc_id": "vpc-1", "preview_tag": "elprovo-preview", "registry": "registry.digitalocean.com/acme"})
+	want := []string{"-do-api-url", "http://sim:9300", "-do-region", "fra1", "-do-vpc", "vpc-1", "-do-tag", "elprovo-preview", "-registry", "registry.digitalocean.com/acme"}
 	if err != nil || !reflect.DeepEqual(args, want) || !reflect.DeepEqual(env, map[string]string{"DIGITALOCEAN_TOKEN": "dop_v1_x"}) {
 		t.Fatalf("agent = %v %v %v; want the token only in DIGITALOCEAN_TOKEN, so machines get short-lived registry credentials instead", args, env, err)
 	}
@@ -533,11 +533,11 @@ func TestDigitalOceanCloudGivesTheAgentItsFlagsAndCredentials(t *testing.T) {
 		t.Fatal("missing outputs were accepted")
 	}
 	do.GoldenImage = "1234"
-	golden, err := do.Cloud(fstest.MapFS{}, "stagelets.acme.dev")
+	golden, err := do.Cloud(fstest.MapFS{}, "previews.acme.dev")
 	if err != nil {
 		t.Fatalf("Cloud with a golden image: %v", err)
 	}
-	args, _, err = golden.Agent(map[string]any{"vpc_id": "vpc-1", "stagelet_tag": "stagely-stagelet", "registry": "registry.digitalocean.com/acme"})
+	args, _, err = golden.Agent(map[string]any{"vpc_id": "vpc-1", "preview_tag": "elprovo-preview", "registry": "registry.digitalocean.com/acme"})
 	if err != nil || !slices.Equal(args[len(args)-2:], []string{"-do-golden-image", "1234"}) {
 		t.Fatalf("agent args with a golden image = %v, %v; want -do-golden-image 1234", args, err)
 	}
@@ -557,7 +557,7 @@ func TestLimaStopWaitsUntilLaunchdDropsTheJob(t *testing.T) {
 		return nil
 	}}
 
-	if err := l.stop(context.Background(), "gui/501/dev.stagely.local.agent"); err != nil {
+	if err := l.stop(context.Background(), "gui/501/dev.elprovo.local.agent"); err != nil {
 		t.Fatalf("stop: %v", err)
 	}
 	if !reflect.DeepEqual(calls, []string{"print", "bootout", "print", "print", "print"}) {

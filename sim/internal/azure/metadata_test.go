@@ -32,7 +32,7 @@ func TestInstanceMetadataDescribesTheVM(t *testing.T) {
 	}
 	c := instance.Compute
 	if c.Name != "web" || c.VMID != vm.Properties.VMID || c.ResourceGroupName != "rg" || c.SubscriptionID != defaultSubscription ||
-		c.Location != "westeurope" || c.VMSize != "Standard_B2s" || c.OSProfile.AdminUsername != "stagely" {
+		c.Location != "westeurope" || c.VMSize != "Standard_B2s" || c.OSProfile.AdminUsername != "elprovo" {
 		t.Fatalf("compute = %+v", c)
 	}
 	ips := instance.Network.Interface[0].IPv4.IPAddress[0]

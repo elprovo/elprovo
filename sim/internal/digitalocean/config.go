@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultToken   = "dop_v1_stagely_sim"
+	defaultToken   = "dop_v1_elprovo_sim"
 	defaultRegions = "nyc1,nyc3,sfo3,ams3,fra1,lon1,sgp1,tor1,blr1,syd1"
 	dropletLimit   = 25
 )
@@ -69,12 +69,12 @@ func registerFlags(fs *flag.FlagSet, cfg *config, tokens, publish *repeatedFlag,
 	fs.StringVar(&cfg.addr, "do-addr", "127.0.0.1:9300", "listen address of the simulated DigitalOcean API (api.digitalocean.com); droplet user data runs as root in privileged containers, so expose it with care")
 	fs.Var(tokens, "do-token", "API token that the simulated DigitalOcean API accepts; repeatable (default "+defaultToken+")")
 	fs.StringVar(regions, "do-regions", defaultRegions, "comma-separated region slugs; each gets a default VPC")
-	fs.StringVar(&cfg.network, "do-network", "stagely-sim", "Docker network for droplets' private addresses; public addresses use <network>-public")
+	fs.StringVar(&cfg.network, "do-network", "elprovo-sim", "Docker network for droplets' private addresses; public addresses use <network>-public")
 	fs.Var(publish, "do-publish", "publish ports of matching droplets on 127.0.0.1 of the Docker host, as tag=<tag>:<port>=<host port>,... or name=<name>:...; repeatable")
 	fs.StringVar(&cfg.registry.endpoint, "do-registry-endpoint", "localhost:5000", "host:port of the container registry that docker credentials name")
 	fs.StringVar(&cfg.registry.apiURL, "do-registry-api", "", "base URL the simulation uses to list repositories (default http://<registry endpoint>)")
-	fs.StringVar(&cfg.registry.username, "do-registry-username", "stagely", "basic-auth user of the container registry")
-	fs.StringVar(&cfg.registry.password, "do-registry-password", "stagely", "basic-auth password of the container registry")
+	fs.StringVar(&cfg.registry.username, "do-registry-username", "elprovo", "basic-auth user of the container registry")
+	fs.StringVar(&cfg.registry.password, "do-registry-password", "elprovo", "basic-auth password of the container registry")
 }
 
 func (c *config) finish(tokens, publish repeatedFlag, regions string) error {

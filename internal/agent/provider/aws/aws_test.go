@@ -28,11 +28,11 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
 const (
-	testAccessKey = "AKIDSTAGELYTEST"
+	testAccessKey = "AKIDELPROVOTEST"
 	testRegion    = "us-east-1"
 )
 
@@ -353,8 +353,8 @@ func newProvider(t *testing.T, subnet string) (*Provider, *fakeCloud) {
 	p, err := New(Config{
 		EC2URL: api.URL, ECRURL: api.URL, STSURL: api.URL, Region: testRegion, Credentials: Credentials{AccessKeyID: testAccessKey, SecretAccessKey: "secret"},
 		RepositoryPrefix: "acme",
-		InstanceType:     "t3.medium", Image: "ami-0123456789abcdef0", SubnetID: subnet, SecurityGroupID: "sg-0stagelets", VolumeSize: 30,
-		Group: "stagely-stagelet", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		InstanceType:     "t3.medium", Image: "ami-0123456789abcdef0", SubnetID: subnet, SecurityGroupID: "sg-0previews", VolumeSize: 30,
+		Group: "elprovo-preview", HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 	}, key)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -377,15 +377,15 @@ func TestCreateLaunchesAnInstanceTheAgentCanDrive(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	q := cloud.launched[0]
 	want := map[string]string{
 		"ImageId": "ami-0123456789abcdef0", "InstanceType": "t3.medium", "MinCount": "1", "MaxCount": "1",
-		"SecurityGroupId.1": "sg-0stagelets", "TagSpecification.1.ResourceType": "instance",
-		"TagSpecification.1.Tag.1.Key": "Name", "TagSpecification.1.Tag.1.Value": "stagely-a1",
-		"TagSpecification.1.Tag.2.Key": "stagely-group", "TagSpecification.1.Tag.2.Value": "stagely-stagelet",
+		"SecurityGroupId.1": "sg-0previews", "TagSpecification.1.ResourceType": "instance",
+		"TagSpecification.1.Tag.1.Key": "Name", "TagSpecification.1.Tag.1.Value": "elprovo-a1",
+		"TagSpecification.1.Tag.2.Key": "elprovo-group", "TagSpecification.1.Tag.2.Value": "elprovo-preview",
 		"MetadataOptions.HttpTokens": "required", "MetadataOptions.HttpPutResponseHopLimit": "1",
 		"BlockDeviceMapping.1.DeviceName": "/dev/sda1", "BlockDeviceMapping.1.Ebs.VolumeSize": "30", "BlockDeviceMapping.1.Ebs.VolumeType": "gp3",
 	}
@@ -394,7 +394,7 @@ func TestCreateLaunchesAnInstanceTheAgentCanDrive(t *testing.T) {
 			t.Errorf("RunInstances %s = %q, want %q", k, q.Get(k), v)
 		}
 	}
-	if q.Has("SubnetId") || !strings.HasPrefix(q.Get("KeyName"), "stagely-agent-") {
+	if q.Has("SubnetId") || !strings.HasPrefix(q.Get("KeyName"), "elprovo-agent-") {
 		t.Errorf("RunInstances SubnetId = %q, KeyName = %q; want no subnet and the agent's key pair", q.Get("SubnetId"), q.Get("KeyName"))
 	}
 	userData := launchedUserData(t, q)
@@ -402,13 +402,13 @@ func TestCreateLaunchesAnInstanceTheAgentCanDrive(t *testing.T) {
 		t.Fatalf("user data does not install Docker Compose and let root sign in:\n%s", userData)
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
 		t.Fatalf("command = %s, want each argument quoted", got)
 	}
-	if names, err := p.List(ctx); err != nil || !slices.Equal(names, []string{"stagely-a1"}) {
+	if names, err := p.List(ctx); err != nil || !slices.Equal(names, []string{"elprovo-a1"}) {
 		t.Fatalf("List = %v, %v; want the new instance", names, err)
 	}
 }
@@ -416,7 +416,7 @@ func TestCreateLaunchesAnInstanceTheAgentCanDrive(t *testing.T) {
 func TestRequestsAreSignedForEachService(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
-	if _, err := p.Exists(context.Background(), "stagely-a1"); err != nil {
+	if _, err := p.Exists(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Exists: %v", err)
 	}
 	if _, _, err := p.RegistryCredentials(context.Background(), testRegistry, true); err != nil {
@@ -430,16 +430,16 @@ func TestRequestsAreSignedForEachService(t *testing.T) {
 func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 	p, _ := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPublic, _ := ssh.NewPublicKey(other.Public())
-	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
-	if err := p.Run(ctx, "stagely-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
+	if err := p.Run(ctx, "elprovo-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
 		t.Fatalf("Run err = %v, want a failed handshake", err)
 	}
 }
@@ -447,7 +447,7 @@ func TestRunRefusesAnInstanceWithAnotherHostKey(t *testing.T) {
 func TestCopyInStreamsTheFile(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	local := filepath.Join(t.TempDir(), "source.tar.gz")
@@ -455,7 +455,7 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := p.CopyIn(ctx, "stagely-a1", local, "/tmp/source.tar.gz"); err != nil {
+	if err := p.CopyIn(ctx, "elprovo-a1", local, "/tmp/source.tar.gz"); err != nil {
 		t.Fatalf("CopyIn: %v", err)
 	}
 	last := len(cloud.commands) - 1
@@ -465,20 +465,20 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 }
 
 func TestAgentUsesThePrivateAddressInsideASubnet(t *testing.T) {
-	p, cloud := newProvider(t, "subnet-0stagelets")
+	p, cloud := newProvider(t, "subnet-0previews")
 	ctx := context.Background()
 	if _, err := p.ec2.runInstance(ctx, runInstance{
 		ImageID: "ami-0123456789abcdef0", UserData: mustMachineConfig(t), SubnetID: p.cfg.SubnetID,
-		Tags: []tag{{"Name", "stagely-a1"}, {groupTag, "stagely-stagelet"}},
+		Tags: []tag{{"Name", "elprovo-a1"}, {groupTag, "elprovo-preview"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	addr, err := p.Address(ctx, "stagely-a1")
+	addr, err := p.Address(ctx, "elprovo-a1")
 	if err != nil || addr != "127.0.0.2" {
 		t.Fatalf("Address = %q, %v; want the private address", addr, err)
 	}
-	if cloud.launched[0].Get("SubnetId") != "subnet-0stagelets" {
+	if cloud.launched[0].Get("SubnetId") != "subnet-0previews" {
 		t.Fatalf("RunInstances SubnetId = %q, want the subnet", cloud.launched[0].Get("SubnetId"))
 	}
 }
@@ -487,7 +487,7 @@ func TestKeyPairIsImportedOnce(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
 
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatalf("Create %s: %v", name, err)
 		}
@@ -501,21 +501,21 @@ func TestKeyPairIsImportedOnce(t *testing.T) {
 func TestDeleteWaitsUntilTheInstanceIsTerminated(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.terminatePolls = 3
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if state := cloud.instances[0].state; state != "terminated" {
 		t.Fatalf("instance state after Delete = %s, want terminated", state)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -523,13 +523,13 @@ func TestDeleteWaitsUntilTheInstanceIsTerminated(t *testing.T) {
 func TestDeleteFailsWhileTheInstanceIsStillShuttingDown(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.terminatePolls = 1 << 30
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
 }
@@ -537,7 +537,7 @@ func TestDeleteFailsWhileTheInstanceIsStillShuttingDown(t *testing.T) {
 func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 	p, _ := newProvider(t, "")
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -545,7 +545,7 @@ func TestDeletingAMissingInstanceSucceeds(t *testing.T) {
 func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -573,7 +573,7 @@ func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t, "")
 	p.cfg.GoldenImage = "ami-0golden000000000"
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	q := cloud.launched[0]
@@ -612,7 +612,7 @@ func TestRegistryCredentialsGoOnlyToTheAccountsRegistry(t *testing.T) {
 	}
 }
 
-func TestRegistryCredentialsForAStageletMachineCanOnlyPull(t *testing.T) {
+func TestRegistryCredentialsForAPreviewMachineCanOnlyPull(t *testing.T) {
 	p, cloud := newProvider(t, "")
 
 	if _, _, err := p.RegistryCredentials(context.Background(), testRegistry, false); err != nil {
@@ -620,8 +620,8 @@ func TestRegistryCredentialsForAStageletMachineCanOnlyPull(t *testing.T) {
 	}
 
 	federation := onlyFederation(t, cloud)
-	if federation.Get("Name") != "stagely-registry-pull" || federation.Get("DurationSeconds") != "43200" {
-		t.Fatalf("GetFederationToken = %v, want the federated user stagely-registry-pull for 12 hours", federation)
+	if federation.Get("Name") != "elprovo-registry-pull" || federation.Get("DurationSeconds") != "43200" {
+		t.Fatalf("GetFederationToken = %v, want the federated user elprovo-registry-pull for 12 hours", federation)
 	}
 	want := map[string][]string{
 		"*": {"ecr:GetAuthorizationToken"},
@@ -647,8 +647,8 @@ func TestRegistryCredentialsForABuildWorkerCanPushUnderThePrefix(t *testing.T) {
 			"ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart",
 		},
 	}
-	if got := allowedByPolicy(t, federation.Get("Policy")); federation.Get("Name") != "stagely-registry-push" || !maps.EqualFunc(got, want, slices.Equal) {
-		t.Fatalf("federated user %q with a session policy that allows %v, want stagely-registry-push with pushes and pulls under the prefix", federation.Get("Name"), got)
+	if got := allowedByPolicy(t, federation.Get("Policy")); federation.Get("Name") != "elprovo-registry-push" || !maps.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("federated user %q with a session policy that allows %v, want elprovo-registry-push with pushes and pulls under the prefix", federation.Get("Name"), got)
 	}
 }
 
@@ -702,7 +702,7 @@ func TestProviderNeedsASecurityGroup(t *testing.T) {
 
 	_, err := New(Config{
 		Region: testRegion, Credentials: Credentials{AccessKeyID: testAccessKey, SecretAccessKey: "secret"}, InstanceType: "t3.medium",
-		Image: "ami-0123456789abcdef0", Group: "stagely-stagelet", HostKeyDir: t.TempDir(),
+		Image: "ami-0123456789abcdef0", Group: "elprovo-preview", HostKeyDir: t.TempDir(),
 	}, key)
 
 	if err == nil || !strings.Contains(err.Error(), "security group") {

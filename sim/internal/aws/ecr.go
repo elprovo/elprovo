@@ -195,7 +195,7 @@ func (s *Simulation) getAuthorizationToken(c *ecrCall) (any, error) {
 	}
 	now := s.now()
 	password := rand.Text()
-	t := &registryToken{Region: c.region, Subject: "arn:aws:iam::" + c.account + ":user/stagely-sim", Expires: now.Add(ecrTokenLifetime).UTC()}
+	t := &registryToken{Region: c.region, Subject: "arn:aws:iam::" + c.account + ":user/elprovo-sim", Expires: now.Add(ecrTokenLifetime).UTC()}
 	if c.session != nil {
 		t.Subject, t.Policy = c.session.arn(c.account), &c.session.Policy
 	}

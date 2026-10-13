@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const maxUserData = 32 << 10
@@ -359,7 +359,7 @@ func (s *Simulation) machineSpec(p *project, srv *server, plan serverPlan, publi
 	}
 	host, _, _ := strings.Cut(srv.Name, ".")
 	return machines.Spec{
-		Name:     fmt.Sprintf("stagely-sim-hz-%s-%s", p.UUID[:8], id),
+		Name:     fmt.Sprintf("elprovo-sim-hz-%s-%s", p.UUID[:8], id),
 		Hostname: host,
 		Cloud:    cloudLabel, Account: p.UUID, Resource: id,
 		Image:    plan.image.ref,

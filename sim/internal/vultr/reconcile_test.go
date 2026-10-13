@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 func TestRestartKeepsInstancesAndMatchesThemToTheirMachines(t *testing.T) {
@@ -45,7 +45,7 @@ func TestRestartFinishesAnInterruptedDeletionAndDropsAPendingSnapshot(t *testing
 	inst := first.createInstance("web-1", nil)
 	err := first.sim.store.Update(func(a *account) error {
 		a.instance(inst.ID).Destroying = true
-		a.Snapshots = append(a.Snapshots, &snapshot{ID: "snap-1", Status: "pending", ImageRef: "stagely-sim-vultr-snapshot:test"})
+		a.Snapshots = append(a.Snapshots, &snapshot{ID: "snap-1", Status: "pending", ImageRef: "elprovo-sim-vultr-snapshot:test"})
 		return nil
 	})
 	if err != nil {

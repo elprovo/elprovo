@@ -9,23 +9,23 @@ output "gateway_address" {
 }
 
 output "gateway_ip" {
-  description = "Stable address that stagelet host names point at."
+  description = "Stable address that preview host names point at."
   value       = google_compute_address.gateway.address
 }
 
 output "subnetwork" {
-  description = "Subnetwork that the agent puts stagelet machines in."
+  description = "Subnetwork that the agent puts preview machines in."
   value       = google_compute_subnetwork.environment.id
 }
 
 output "machine_prefix" {
   description = "Prefix of the names of the machines the agent creates. Compute Engine instance names are unique in a zone, so each environment gets its own."
-  value       = "stagely-${var.name}-"
+  value       = "elprovo-${var.name}-"
 }
 
-output "stagelet_tag" {
+output "preview_tag" {
   description = "Network tag the agent must put on every machine it creates."
-  value       = local.stagelet_tag
+  value       = local.preview_tag
 }
 
 output "registry" {
@@ -39,6 +39,6 @@ output "registry_push_account" {
 }
 
 output "registry_pull_account" {
-  description = "Service account whose tokens stagelet machines pull with."
+  description = "Service account whose tokens preview machines pull with."
   value       = google_service_account.registry_pull.email
 }

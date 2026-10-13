@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // serverActionCommands maps each supported server action to the command

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/stagely-dev/stagely/internal/controlplane"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/internal/controlplane"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 func fakeSessionSendingRoutes(t *testing.T, routes protocol.Routes, received chan<- protocol.Envelope) string {
@@ -83,7 +83,7 @@ func nextEnvelope(t *testing.T, received <-chan protocol.Envelope) protocol.Enve
 func TestSessionReportsRouteHealthAfterApplyingRoutes(t *testing.T) {
 	up := addr(startUpstream(t))
 	received := make(chan protocol.Envelope, 10)
-	url := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{StageletID: "s1", Host: host, Upstream: up}}}, received)
+	url := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{PreviewID: "s1", Host: host, Upstream: up}}}, received)
 	startLink(t, url)
 
 	if env := nextEnvelope(t, received); env.Type != protocol.TypeRoutesApplied {
@@ -100,7 +100,7 @@ func TestSessionReportsRouteHealthAfterApplyingRoutes(t *testing.T) {
 	if len(health.Routes) != 1 {
 		t.Fatalf("route health = %+v, want one route", health.Routes)
 	}
-	if got := health.Routes[0]; got.StageletID != "s1" || got.Upstream != up || !got.Reachable || !got.CheckedAt.Equal(checkedAt) {
+	if got := health.Routes[0]; got.PreviewID != "s1" || got.Upstream != up || !got.Reachable || !got.CheckedAt.Equal(checkedAt) {
 		t.Fatalf("route state = %+v, want s1 reachable on %s at %s", got, up, checkedAt)
 	}
 }
@@ -109,8 +109,8 @@ func TestNewControlPlaneSessionReplacesTheRoutesOfTheLastOne(t *testing.T) {
 	link := &Link{}
 	gw := newLinkedGateway(link)
 	oldReceived, newReceived := make(chan protocol.Envelope, 10), make(chan protocol.Envelope, 10)
-	oldURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{StageletID: "s-old", Host: "old.stagelets.localhost", Upstream: "127.0.0.1:9"}}}, oldReceived)
-	newURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{StageletID: "s-new", Host: "new.stagelets.localhost", Upstream: "127.0.0.1:9"}}}, newReceived)
+	oldURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{PreviewID: "s-old", Host: "old.previews.localhost", Upstream: "127.0.0.1:9"}}}, oldReceived)
+	newURL := fakeSessionSendingRoutes(t, protocol.Routes{Routes: []protocol.Route{{PreviewID: "s-new", Host: "new.previews.localhost", Upstream: "127.0.0.1:9"}}}, newReceived)
 	stopOld := serveSession(t, link, gw, oldURL)
 	if env := nextEnvelope(t, oldReceived); env.Type != protocol.TypeRoutesApplied {
 		t.Fatalf("first message of the old session = %s, want %s", env.Type, protocol.TypeRoutesApplied)
@@ -122,17 +122,17 @@ func TestNewControlPlaneSessionReplacesTheRoutesOfTheLastOne(t *testing.T) {
 		t.Fatalf("first message of the new session = %s, want %s", env.Type, protocol.TypeRoutesApplied)
 	}
 
-	if code := statusFor(gw, "old.stagelets.localhost"); code != http.StatusNotFound {
+	if code := statusFor(gw, "old.previews.localhost"); code != http.StatusNotFound {
 		t.Fatalf("status on the dropped route's host = %d, want 404", code)
 	}
-	if code := statusFor(gw, "new.stagelets.localhost"); code != http.StatusUnauthorized {
-		t.Fatalf("status on the new route's host = %d, want 401 from a served stagelet", code)
+	if code := statusFor(gw, "new.previews.localhost"); code != http.StatusUnauthorized {
+		t.Fatalf("status on the new route's host = %d, want 401 from a served preview", code)
 	}
 }
 
-func statusFor(gw *Gateway, stageletHost string) int {
+func statusFor(gw *Gateway, previewHost string) int {
 	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+stageletHost+"/", nil))
+	gw.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://"+previewHost+"/", nil))
 	return rec.Code
 }
 

@@ -91,7 +91,7 @@ func (t *tx) validateCheckout(in checkoutFields) error {
 	case in.mode == "":
 		return missingParam("mode")
 	case in.mode != "subscription":
-		return invalidRequest("mode", "stagely-sim supports only mode=subscription.")
+		return invalidRequest("mode", "elprovo-sim supports only mode=subscription.")
 	case in.customer != "" && in.customerEmail != "":
 		return exclusiveParams("customer", "customer_email")
 	case in.customer != "" && find(t.acct.Customers, in.customer) == nil:
@@ -145,7 +145,7 @@ func (t *tx) validateLineItems(items []lineItem) error {
 			return missingParam(param + "[quantity]")
 		}
 		if pr.Recurring == nil {
-			return invalidRequest(param+"[price]", "stagely-sim supports only recurring prices in `subscription` mode.")
+			return invalidRequest(param+"[price]", "elprovo-sim supports only recurring prices in `subscription` mode.")
 		}
 		if first == nil {
 			first = pr

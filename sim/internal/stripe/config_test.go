@@ -76,7 +76,7 @@ func TestRestartKeepsObjectsAndFollowsWebhookFlags(t *testing.T) {
 
 func buildFromArgs(t *testing.T, dataDir string, args ...string) (*Simulation, error) {
 	t.Helper()
-	fs := flag.NewFlagSet("stagely-sim", flag.ContinueOnError)
+	fs := flag.NewFlagSet("elprovo-sim", flag.ContinueOnError)
 	build := Flags(fs)
 	if err := fs.Parse(args); err != nil {
 		t.Fatalf("parse flags: %v", err)

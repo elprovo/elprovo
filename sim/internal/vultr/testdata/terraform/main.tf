@@ -17,7 +17,7 @@ variable "ssh_public_key" {
 
 variable "name" {
   type    = string
-  default = "stagelysimcheck"
+  default = "elprovosimcheck"
 }
 
 data "vultr_os" "ubuntu" {
@@ -32,12 +32,12 @@ resource "vultr_ssh_key" "agent" {
   ssh_key = var.ssh_public_key
 }
 
-resource "vultr_firewall_group" "stagelets" {
+resource "vultr_firewall_group" "previews" {
   description = var.name
 }
 
 resource "vultr_firewall_rule" "ssh" {
-  firewall_group_id = vultr_firewall_group.stagelets.id
+  firewall_group_id = vultr_firewall_group.previews.id
   protocol          = "tcp"
   ip_type           = "v4"
   subnet            = "203.0.113.0"
@@ -47,7 +47,7 @@ resource "vultr_firewall_rule" "ssh" {
 }
 
 resource "vultr_firewall_rule" "icmp" {
-  firewall_group_id = vultr_firewall_group.stagelets.id
+  firewall_group_id = vultr_firewall_group.previews.id
   protocol          = "icmp"
   ip_type           = "v4"
   subnet            = "0.0.0.0"
@@ -55,7 +55,7 @@ resource "vultr_firewall_rule" "icmp" {
 }
 
 resource "vultr_firewall_rule" "https_v6" {
-  firewall_group_id = vultr_firewall_group.stagelets.id
+  firewall_group_id = vultr_firewall_group.previews.id
   protocol          = "tcp"
   ip_type           = "v6"
   subnet            = "::"
@@ -63,7 +63,7 @@ resource "vultr_firewall_rule" "https_v6" {
   port              = "443"
 }
 
-resource "vultr_instance" "stagelet" {
+resource "vultr_instance" "preview" {
   count             = 2
   label             = "${var.name}-${count.index}"
   hostname          = "${var.name}-${count.index}"
@@ -71,12 +71,12 @@ resource "vultr_instance" "stagelet" {
   plan              = "vc2-1c-1gb"
   os_id             = data.vultr_os.ubuntu.id
   ssh_key_ids       = [vultr_ssh_key.agent.id]
-  firewall_group_id = vultr_firewall_group.stagelets.id
+  firewall_group_id = vultr_firewall_group.previews.id
   tags              = [var.name]
   user_data         = <<-EOT
     #cloud-config
     write_files:
-      - path: /etc/stagely-check
+      - path: /etc/elprovo-check
         content: "instance ${count.index}\n"
   EOT
 }
@@ -85,7 +85,7 @@ resource "vultr_reserved_ip" "front" {
   region      = "ewr"
   ip_type     = "v4"
   label       = var.name
-  instance_id = vultr_instance.stagelet[0].id
+  instance_id = vultr_instance.preview[0].id
 }
 
 resource "vultr_container_registry" "images" {
@@ -96,7 +96,7 @@ resource "vultr_container_registry" "images" {
 }
 
 output "main_ips" {
-  value = vultr_instance.stagelet[*].main_ip
+  value = vultr_instance.preview[*].main_ip
 }
 
 output "reserved_ip" {

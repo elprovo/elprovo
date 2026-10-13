@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 // reconcile matches stored instances with the machines Docker has: an

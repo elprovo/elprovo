@@ -4,13 +4,13 @@ resource "docker_image" "registry" {
 }
 
 resource "docker_volume" "registry" {
-  name = "${var.name}-stagely-registry"
+  name = "${var.name}-elprovo-registry"
 }
 
-# Build workers push here and stagelet VMs pull from here, over plain HTTP
+# Build workers push here and preview VMs pull from here, over plain HTTP
 # at host.lima.internal. The agent tells Docker in each VM to trust it.
 resource "docker_container" "registry" {
-  name    = "${var.name}-stagely-registry"
+  name    = "${var.name}-elprovo-registry"
   image   = docker_image.registry.image_id
   restart = "unless-stopped"
 
@@ -25,17 +25,17 @@ resource "docker_container" "registry" {
   }
 }
 
-# The gateway on the Mac serves stagelet host names with a certificate from
+# The gateway on the Mac serves preview host names with a certificate from
 # mkcert's local certificate authority, which `mkcert -install` makes the
 # Mac's browsers trust.
 resource "terraform_data" "gateway_certificate" {
-  triggers_replace = [var.stagelet_domain, var.certificate_dir]
+  triggers_replace = [var.preview_domain, var.certificate_dir]
 
   provisioner "local-exec" {
     command = "mkdir -p \"$DIR\" && mkcert -cert-file \"$DIR/tls.crt\" -key-file \"$DIR/tls.key\" \"*.$DOMAIN\""
     environment = {
       DIR    = var.certificate_dir
-      DOMAIN = var.stagelet_domain
+      DOMAIN = var.preview_domain
     }
   }
 }

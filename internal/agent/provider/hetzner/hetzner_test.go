@@ -25,7 +25,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/stagely-dev/stagely/internal/cloudinit"
+	"github.com/elprovo/elprovo/internal/cloudinit"
 )
 
 const (
@@ -283,7 +283,7 @@ func newProvider(t *testing.T) (*Provider, *fakeCloud) {
 	t.Cleanup(api.Close)
 	p, err := New(Config{
 		APIURL: api.URL + "/v1", Token: testToken, Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04",
-		Label: "stagely=prod-stagelet", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
+		Label: "elprovo=prod-preview", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir(), ReadyTimeout: 2 * time.Second,
 	}, key)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -297,11 +297,11 @@ func TestCreateMakesAServerTheAgentCanDrive(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
 
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]
-	if req.Location != "fsn1" || req.ServerType != "cx23" || req.Image != "ubuntu-24.04" || req.Labels["stagely"] != "prod-stagelet" || len(req.SSHKeys) != 1 {
+	if req.Location != "fsn1" || req.ServerType != "cx23" || req.Image != "ubuntu-24.04" || req.Labels["elprovo"] != "prod-preview" || len(req.SSHKeys) != 1 {
 		t.Fatalf("create request = %+v", req)
 	}
 	if !req.PublicNet.EnableIPv4 || req.PublicNet.EnableIPv6 {
@@ -313,13 +313,13 @@ func TestCreateMakesAServerTheAgentCanDrive(t *testing.T) {
 	if !strings.Contains(req.UserData, "docker-compose-v2") || !strings.Contains(req.UserData, "DOCKER-USER -d 169.254.169.254") {
 		t.Fatal("user data does not install Docker Compose or keep containers off the metadata service")
 	}
-	for _, rule := range []string{"STAGELY-PRIVATE -s 10.42.0.2 -j RETURN", "STAGELY-PRIVATE -s 10.42.0.3 -j RETURN", "DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j STAGELY-PRIVATE"} {
+	for _, rule := range []string{"ELPROVO-PRIVATE -s 10.42.0.2 -j RETURN", "ELPROVO-PRIVATE -s 10.42.0.3 -j RETURN", "DOCKER-USER -s 10.42.0.0/20 -m conntrack --ctstate NEW -j ELPROVO-PRIVATE"} {
 		if !strings.Contains(req.UserData, rule) {
 			t.Fatalf("user data lacks %q, so the network's other servers could connect to it:\n%s", rule, req.UserData)
 		}
 	}
 	var out bytes.Buffer
-	if err := p.Run(ctx, "stagely-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
+	if err := p.Run(ctx, "elprovo-a1", nil, &out, nil, "echo", "it's here"); err != nil || out.String() != "ran\n" {
 		t.Fatalf("Run = %q, %v", out.String(), err)
 	}
 	if got := cloud.commands[len(cloud.commands)-1]; got != `'echo' 'it'\''s here'` {
@@ -329,15 +329,15 @@ func TestCreateMakesAServerTheAgentCanDrive(t *testing.T) {
 
 func TestAddressIsTheServersAddressOnTheEnvironmentsNetwork(t *testing.T) {
 	p, cloud := newProvider(t)
-	s := cloud.addServer("stagely-a1", map[string]string{"stagely": "prod-stagelet"})
+	s := cloud.addServer("elprovo-a1", map[string]string{"elprovo": "prod-preview"})
 	s.PrivateNet = []privateNet{{Network: 7, IP: "10.7.0.5"}, {Network: testNetwork, IP: "10.42.0.9"}}
-	cloud.addServer("stagely-a2", map[string]string{"stagely": "prod-stagelet"}).PrivateNet = nil
+	cloud.addServer("elprovo-a2", map[string]string{"elprovo": "prod-preview"}).PrivateNet = nil
 
-	addr, err := p.Address(context.Background(), "stagely-a1")
+	addr, err := p.Address(context.Background(), "elprovo-a1")
 	if err != nil || addr != "10.42.0.9" {
 		t.Fatalf("Address = %q, %v; want the address on network %d", addr, err, testNetwork)
 	}
-	if addr, err := p.Address(context.Background(), "stagely-a2"); err == nil {
+	if addr, err := p.Address(context.Background(), "elprovo-a2"); err == nil {
 		t.Fatalf("Address of a server off the network = %q; want an error, not its public address", addr)
 	}
 }
@@ -350,7 +350,7 @@ func TestNewRefusesToRunWithoutThePrivateNetwork(t *testing.T) {
 		"nobody may connect": func(c *Config) { c.Network.Sources = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
-			cfg := Config{Token: "t", Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04", Label: "stagely=x", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir()}
+			cfg := Config{Token: "t", Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04", Label: "elprovo=x", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir()}
 			change(&cfg)
 
 			if _, err := New(cfg, key); err == nil || !strings.Contains(err.Error(), "private network") {
@@ -363,16 +363,16 @@ func TestNewRefusesToRunWithoutThePrivateNetwork(t *testing.T) {
 func TestRunRefusesAServerWithAnotherHostKey(t *testing.T) {
 	p, _ := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
 	otherPublic, _ := ssh.NewPublicKey(other.Public())
-	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub"), ssh.MarshalAuthorizedKey(otherPublic), 0o600); err != nil {
 		t.Fatalf("pin: %v", err)
 	}
 
-	if err := p.Run(ctx, "stagely-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
+	if err := p.Run(ctx, "elprovo-a1", nil, nil, nil, "true"); err == nil || !strings.Contains(err.Error(), "handshake") {
 		t.Fatalf("Run err = %v, want a failed handshake", err)
 	}
 }
@@ -380,7 +380,7 @@ func TestRunRefusesAServerWithAnotherHostKey(t *testing.T) {
 func TestCopyInStreamsTheFile(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	local := filepath.Join(t.TempDir(), "source.tar.gz")
@@ -388,7 +388,7 @@ func TestCopyInStreamsTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := p.CopyIn(ctx, "stagely-a1", local, "/tmp/source.tar.gz"); err != nil {
+	if err := p.CopyIn(ctx, "elprovo-a1", local, "/tmp/source.tar.gz"); err != nil {
 		t.Fatalf("CopyIn: %v", err)
 	}
 	last := len(cloud.commands) - 1
@@ -401,7 +401,7 @@ func TestSSHKeyIsRegisteredOnce(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
 
-	for _, name := range []string{"stagely-a1", "stagely-a2"} {
+	for _, name := range []string{"elprovo-a1", "elprovo-a2"} {
 		if err := p.Create(ctx, name); err != nil {
 			t.Fatalf("Create %s: %v", name, err)
 		}
@@ -415,7 +415,7 @@ func TestKnownSSHKeyIsReused(t *testing.T) {
 	p, cloud := newProvider(t)
 	cloud.keyIDs[ssh.FingerprintLegacyMD5(p.machines.Signer.PublicKey())] = 4711
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	if cloud.keysAdded != 0 || cloud.created[0].SSHKeys[0] != 4711 {
@@ -425,18 +425,18 @@ func TestKnownSSHKeyIsReused(t *testing.T) {
 
 func TestProviderSeesOnlyServersWithItsLabel(t *testing.T) {
 	p, cloud := newProvider(t)
-	cloud.addServer("stagely-a1", map[string]string{"stagely": "prod-stagelet"})
-	cloud.addServer("stagely-a2", map[string]string{"stagely": "dev-stagelet"})
-	cloud.addServer("stagely-a3", nil)
+	cloud.addServer("elprovo-a1", map[string]string{"elprovo": "prod-preview"})
+	cloud.addServer("elprovo-a2", map[string]string{"elprovo": "dev-preview"})
+	cloud.addServer("elprovo-a3", nil)
 
 	names, err := p.List(context.Background())
-	if err != nil || len(names) != 1 || names[0] != "stagely-a1" {
+	if err != nil || len(names) != 1 || names[0] != "elprovo-a1" {
 		t.Fatalf("List = %v, %v; want only the server with the provider's label", names, err)
 	}
-	if exists, err := p.Exists(context.Background(), "stagely-a2"); err != nil || exists {
+	if exists, err := p.Exists(context.Background(), "elprovo-a2"); err != nil || exists {
 		t.Fatalf("Exists(another environment's server) = %v, %v; want false", exists, err)
 	}
-	if err := p.Delete(context.Background(), "stagely-a3"); err != nil || len(cloud.deleting) != 0 {
+	if err := p.Delete(context.Background(), "elprovo-a3"); err != nil || len(cloud.deleting) != 0 {
 		t.Fatalf("Delete(an unlabeled server) = %v, deleting %v; want nothing deleted", err, cloud.deleting)
 	}
 }
@@ -444,7 +444,7 @@ func TestProviderSeesOnlyServersWithItsLabel(t *testing.T) {
 func TestListFollowsEveryPage(t *testing.T) {
 	p, cloud := newProvider(t)
 	for i := range pageSize + 3 {
-		cloud.addServer(fmt.Sprintf("stagely-build-%d", i+1), map[string]string{"stagely": "prod-stagelet"})
+		cloud.addServer(fmt.Sprintf("elprovo-build-%d", i+1), map[string]string{"elprovo": "prod-preview"})
 	}
 
 	names, err := p.List(context.Background())
@@ -457,18 +457,18 @@ func TestListFollowsEveryPage(t *testing.T) {
 func TestDeleteWaitsUntilTheServerIsGone(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePoll = 3
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want gone", exists, err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("host key file err = %v, want it removed", err)
 	}
 }
@@ -476,16 +476,16 @@ func TestDeleteWaitsUntilTheServerIsGone(t *testing.T) {
 func TestDeleteFailsWhileTheServerStillExists(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.deletePoll = 1 << 30
 	p.cfg.ReadyTimeout = 100 * time.Millisecond
 
-	if err := p.Delete(ctx, "stagely-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
+	if err := p.Delete(ctx, "elprovo-a1"); err == nil || !strings.Contains(err.Error(), "still exists") {
 		t.Fatalf("Delete err = %v, want still exists", err)
 	}
-	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "stagely-a1"+".pub")); err != nil {
+	if _, err := os.Stat(filepath.Join(p.cfg.HostKeyDir, "elprovo-a1"+".pub")); err != nil {
 		t.Fatalf("host key of a server that still exists: %v; want it kept", err)
 	}
 }
@@ -493,15 +493,15 @@ func TestDeleteFailsWhileTheServerStillExists(t *testing.T) {
 func TestDeleteWaitsWhileAnActionLocksTheServer(t *testing.T) {
 	p, cloud := newProvider(t)
 	ctx := context.Background()
-	if err := p.Create(ctx, "stagely-a1"); err != nil {
+	if err := p.Create(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	cloud.lockedDeletes = 2
 
-	if err := p.Delete(ctx, "stagely-a1"); err != nil {
+	if err := p.Delete(ctx, "elprovo-a1"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if exists, err := p.Exists(ctx, "stagely-a1"); err != nil || exists {
+	if exists, err := p.Exists(ctx, "elprovo-a1"); err != nil || exists {
 		t.Fatalf("Exists = %v, %v; want the server deleted once its lock cleared", exists, err)
 	}
 }
@@ -509,7 +509,7 @@ func TestDeleteWaitsWhileAnActionLocksTheServer(t *testing.T) {
 func TestDeletingAMissingServerSucceeds(t *testing.T) {
 	p, _ := newProvider(t)
 
-	if err := p.Delete(context.Background(), "stagely-none"); err != nil {
+	if err := p.Delete(context.Background(), "elprovo-none"); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 }
@@ -517,7 +517,7 @@ func TestDeletingAMissingServerSucceeds(t *testing.T) {
 func TestNewMachineGetsOnlyItsHostKeyDockerAndFirewallRules(t *testing.T) {
 	p, cloud := newProvider(t)
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
@@ -544,7 +544,7 @@ func TestGoldenImageReplacesTheStockImageAndItsPackages(t *testing.T) {
 	p, cloud := newProvider(t)
 	p.cfg.GoldenImage = "176543210"
 
-	if err := p.Create(context.Background(), "stagely-a1"); err != nil {
+	if err := p.Create(context.Background(), "elprovo-a1"); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 	req := cloud.created[0]
@@ -566,7 +566,7 @@ func TestAPIErrorsCarryHetznersMessage(t *testing.T) {
 
 func TestNewRefusesALabelThatIsNotKeyValue(t *testing.T) {
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
-	for _, label := range []string{"stagely", "stagely!=x", "stagely=", "stagely=a b", "Bad_Prefix/stagely=x"} {
+	for _, label := range []string{"elprovo", "elprovo!=x", "elprovo=", "elprovo=a b", "Bad_Prefix/elprovo=x"} {
 		t.Run(label, func(t *testing.T) {
 			_, err := New(Config{Token: "t", Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04", Label: label, NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir()}, key)
 
@@ -580,9 +580,9 @@ func TestNewRefusesALabelThatIsNotKeyValue(t *testing.T) {
 func TestNewAcceptsAPrefixedLabel(t *testing.T) {
 	_, key, _ := ed25519.GenerateKey(rand.Reader)
 
-	p, err := New(Config{Token: "t", Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04", Label: "stagely.dev/env=prod-stagelet", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir()}, key)
+	p, err := New(Config{Token: "t", Location: "fsn1", ServerType: "cx23", Image: "ubuntu-24.04", Label: "elprovo.com/env=prod-preview", NetworkID: testNetwork, Network: testNetworkAccess, HostKeyDir: t.TempDir()}, key)
 
-	if err != nil || p.selector != "stagely.dev/env==prod-stagelet" || p.labels["stagely.dev/env"] != "prod-stagelet" {
+	if err != nil || p.selector != "elprovo.com/env==prod-preview" || p.labels["elprovo.com/env"] != "prod-preview" {
 		t.Fatalf("New with a prefixed label = %+v, %v", p, err)
 	}
 }

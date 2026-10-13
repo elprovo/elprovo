@@ -18,28 +18,28 @@ import (
 	"time"
 )
 
-// TestProviderAgainstSimulation runs a stagelet's machine lifecycle against
-// stagely-sim's Google Cloud simulation. As setup does, it makes a custom
+// TestProviderAgainstSimulation runs a preview's machine lifecycle against
+// elprovo-sim's Google Cloud simulation. As setup does, it makes a custom
 // mode network whose only firewall rule lets the agent, here the test, reach
-// machines with the stagelet tag, and registry service accounts that may
+// machines with the preview tag, and registry service accounts that may
 // only push or only pull and that the agent's account may impersonate. It
-// creates a stagelet and a neighbor with the tag, waits until cloud-init and
-// Docker Compose are ready, runs a Compose project on the stagelet and
+// creates a preview and a neighbor with the tag, waits until cloud-init and
+// Docker Compose are ready, runs a Compose project on the preview and
 // reaches it on the internal address, checks that the neighbor can't reach
 // it and that a container can't reach the metadata server, pushes and pulls
 // an image with the registry accounts' tokens, and deletes both instances.
 //
-// STAGELY_SIM_GCP_ENDPOINT names the simulation's base URL and
-// STAGELY_SIM_GCP_CREDENTIALS a service account key file whose token_uri
-// reaches it; STAGELY_SIM_GCP_REGISTRY names an image prefix,
+// ELPROVO_SIM_GCP_ENDPOINT names the simulation's base URL and
+// ELPROVO_SIM_GCP_CREDENTIALS a service account key file whose token_uri
+// reaches it; ELPROVO_SIM_GCP_REGISTRY names an image prefix,
 // <host>/<project>/<repository>, in a registry that uses the simulation as
 // its token service. The test must run where instance addresses are
-// reachable. With STAGELY_SIM_GCP_GOLDEN_IMAGE, the instances boot from
+// reachable. With ELPROVO_SIM_GCP_GOLDEN_IMAGE, the instances boot from
 // that image. "sim/scripts/check-gcp.sh agent" and "image" set this up.
 func TestProviderAgainstSimulation(t *testing.T) {
-	endpoint, credentialsFile, registry := os.Getenv("STAGELY_SIM_GCP_ENDPOINT"), os.Getenv("STAGELY_SIM_GCP_CREDENTIALS"), os.Getenv("STAGELY_SIM_GCP_REGISTRY")
+	endpoint, credentialsFile, registry := os.Getenv("ELPROVO_SIM_GCP_ENDPOINT"), os.Getenv("ELPROVO_SIM_GCP_CREDENTIALS"), os.Getenv("ELPROVO_SIM_GCP_REGISTRY")
 	if endpoint == "" || credentialsFile == "" || registry == "" {
-		t.Fatal("STAGELY_SIM_GCP_ENDPOINT, STAGELY_SIM_GCP_CREDENTIALS and STAGELY_SIM_GCP_REGISTRY must name a running simulation; run sim/scripts/check-gcp.sh agent")
+		t.Fatal("ELPROVO_SIM_GCP_ENDPOINT, ELPROVO_SIM_GCP_CREDENTIALS and ELPROVO_SIM_GCP_REGISTRY must name a running simulation; run sim/scripts/check-gcp.sh agent")
 	}
 	credentials, err := os.ReadFile(credentialsFile)
 	if err != nil {
@@ -56,8 +56,8 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	suffix := randomHex(t)
 	p, err := New(Config{
 		ComputeURL: endpoint + "compute/v1/", Credentials: credentials, Zone: "us-central1-a", MachineType: "e2-medium",
-		Image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64", GoldenImage: os.Getenv("STAGELY_SIM_GCP_GOLDEN_IMAGE"),
-		Subnetwork: "projects/" + sa.ProjectID + "/regions/us-central1/subnetworks/check-" + suffix, Tag: "stagely-sim-agent-check",
+		Image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64", GoldenImage: os.Getenv("ELPROVO_SIM_GCP_GOLDEN_IMAGE"),
+		Subnetwork: "projects/" + sa.ProjectID + "/regions/us-central1/subnetworks/check-" + suffix, Tag: "elprovo-sim-agent-check",
 		IAMCredentialsURL:   endpoint + "v1/",
 		RegistryPushAccount: "push-" + suffix + "@" + sa.ProjectID + ".iam.gserviceaccount.com",
 		RegistryPullAccount: "pull-" + suffix + "@" + sa.ProjectID + ".iam.gserviceaccount.com",
@@ -69,25 +69,25 @@ func TestProviderAgainstSimulation(t *testing.T) {
 	p.pollEvery = time.Second
 	env := checkEnvironment{t: t, p: p, endpoint: endpoint, suffix: suffix, project: sa.ProjectID, owner: sa.ClientEmail}
 	env.setUp(registry)
-	stagelet, neighbor := "stagely-check-"+suffix, "stagely-neighbor-"+suffix
+	preview, neighbor := "elprovo-check-"+suffix, "elprovo-neighbor-"+suffix
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		_ = p.Delete(ctx, stagelet)
+		_ = p.Delete(ctx, preview)
 		_ = p.Delete(ctx, neighbor)
 	})
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Create(t.Context(), name); err != nil {
 			t.Fatalf("create %s: %v", name, err)
 		}
 	}
-	addr, err := p.Address(t.Context(), stagelet)
+	addr, err := p.Address(t.Context(), preview)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
-	runComposeProject(t, p, stagelet)
-	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the stagelet") {
+	runComposeProject(t, p, preview)
+	if body := get(t, "http://"+net.JoinHostPort(addr, "8080")+"/"); !strings.Contains(body, "hello from the preview") {
 		t.Fatalf("service on the internal address answered %q", body)
 	}
 	registryHost, _, _ := strings.Cut(registry, "/")
@@ -99,16 +99,16 @@ func TestProviderAgainstSimulation(t *testing.T) {
 		t.Fatalf("the neighbor can't connect out, so its blocked connection would prove nothing: %v", err)
 	}
 	if err := connect(addr, "8080"); err == nil {
-		t.Fatal("the neighbor reached the stagelet's published port through the firewall")
+		t.Fatal("the neighbor reached the preview's published port through the firewall")
 	}
-	checkMetadataServer(t, p, stagelet)
-	pushAndPull(t, p, stagelet, registry)
+	checkMetadataServer(t, p, preview)
+	pushAndPull(t, p, preview, registry)
 	names, err := p.List(t.Context())
 	if err != nil || len(names) != 2 {
-		t.Fatalf("List = %v, %v; want the stagelet and the neighbor", names, err)
+		t.Fatalf("List = %v, %v; want the preview and the neighbor", names, err)
 	}
 
-	for _, name := range []string{stagelet, neighbor} {
+	for _, name := range []string{preview, neighbor} {
 		if err := p.Delete(t.Context(), name); err != nil {
 			t.Fatalf("delete %s: %v", name, err)
 		}
@@ -276,7 +276,7 @@ func runComposeProject(t *testing.T, p *Provider, name string) {
       interval: 1s
       retries: 30
 `,
-		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the stagelet' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
+		"Dockerfile": "FROM busybox:1.36\nRUN mkdir /www && echo 'hello from the preview' > /www/index.html\nCMD [\"httpd\", \"-f\", \"-p\", \"8080\", \"-h\", \"/www\"]\n",
 	}
 	if _, err := p.machines.Output(t.Context(), name, nil, "mkdir", "-p", "/root/app"); err != nil {
 		t.Fatalf("make the project directory: %v", err)

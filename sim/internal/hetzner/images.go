@@ -229,5 +229,5 @@ func (s *Simulation) deleteImage(r *http.Request) (int, any, error) {
 }
 
 func snapshotRef(projectUUID string, id int64) string {
-	return "stagely-sim-hz-snapshot:" + projectUUID[:8] + "-" + strconv.FormatInt(id, 10)
+	return "elprovo-sim-hz-snapshot:" + projectUUID[:8] + "-" + strconv.FormatInt(id, 10)
 }

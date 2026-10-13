@@ -46,7 +46,7 @@ func newTestBackend(t *testing.T) (*Backend, string) {
 func newTestBackendWith(t *testing.T, options Options) (*Backend, string) {
 	t.Helper()
 	suffix := randomSuffix(t)
-	network := "stagely-sim-test-" + suffix
+	network := "elprovo-sim-test-" + suffix
 	b := New(network, options, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -67,7 +67,7 @@ func randomSuffix(t *testing.T) string {
 
 func createMachine(t *testing.T, b *Backend, account, name string, spec Spec) Machine {
 	t.Helper()
-	spec.Name, spec.Hostname, spec.Cloud, spec.Account, spec.Resource = "stagely-sim-"+account+"-"+name, name, "test", account, name
+	spec.Name, spec.Hostname, spec.Cloud, spec.Account, spec.Resource = "elprovo-sim-"+account+"-"+name, name, "test", account, name
 	m, err := b.Create(t.Context(), spec)
 	if err != nil {
 		t.Fatalf("create %s: %v", name, err)
@@ -159,7 +159,7 @@ func TestSnapshotBootsAsANewInstance(t *testing.T) {
 	b, account := newTestBackend(t)
 	source := createMachine(t, b, account, "source", Spec{Seed: Seed{InstanceID: "10", UserData: testUserData}})
 	waitCloudInit(t, source)
-	ref := "stagely-sim-test-snapshot:" + account
+	ref := "elprovo-sim-test-snapshot:" + account
 	if size, err := b.Commit(t.Context(), source.ID, ref); err != nil || size <= 0 {
 		t.Fatalf("commit: size %d, %v", size, err)
 	}
@@ -223,7 +223,7 @@ func testCertificateChain(t *testing.T, host string) (caPEM, leafPEM []byte) {
 		t.Fatal(err)
 	}
 	caTemplate := &x509.Certificate{
-		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "stagely-sim test CA"},
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "elprovo-sim test CA"},
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
 	}
@@ -272,7 +272,7 @@ func TestExtraAddressReachesTheMachineAcrossRestarts(t *testing.T) {
 	waitCloudInit(t, restarted)
 	if !canConnect(t, visitor, reserved) {
 		logs, _ := exec.CommandContext(t.Context(), "docker", "logs", server.ID).CombinedOutput()
-		addrs, _ := dockerExec(t, server.ID, "sh", "-c", "ip -4 -o addr show; cat /var/lib/stagely-vm/addresses.json")
+		addrs, _ := dockerExec(t, server.ID, "sh", "-c", "ip -4 -o addr show; cat /var/lib/elprovo-vm/addresses.json")
 		t.Fatalf("the extra address %s is gone after a restart\n%s\n%s", reserved, addrs, logs)
 	}
 	if err := b.SetAddresses(t.Context(), server.ID, nil); err != nil {
@@ -296,7 +296,7 @@ func TestMachineTakesTheGivenPublicAddress(t *testing.T) {
 	if m.PublicIP != address {
 		t.Fatalf("public address = %s, want %s", m.PublicIP, address)
 	}
-	_, err = b.Create(t.Context(), Spec{Name: "stagely-sim-" + account + "-taken", Hostname: "taken", Cloud: "test", Account: account, Resource: "taken", PublicIP: address})
+	_, err = b.Create(t.Context(), Spec{Name: "elprovo-sim-" + account + "-taken", Hostname: "taken", Cloud: "test", Account: account, Resource: "taken", PublicIP: address})
 	if err == nil || !strings.Contains(err.Error(), "in use") {
 		t.Fatalf("a second machine with the same public address: %v; want the address refused as in use", err)
 	}

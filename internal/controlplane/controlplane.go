@@ -1,5 +1,5 @@
 // Package controlplane holds the session that agents and gateways open to the
-// Stagely control plane: key management, enrollment, the signed handshake,
+// Elprovo control plane: key management, enrollment, the signed handshake,
 // and reconnects.
 package controlplane
 
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/stagely-dev/stagely/protocol"
+	"github.com/elprovo/elprovo/protocol"
 )
 
 // Config says how to reach the control plane and who the client is.

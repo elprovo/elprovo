@@ -1,4 +1,4 @@
-// Package terraform holds the bootstrap modules that `stagely setup`
+// Package terraform holds the bootstrap modules that `elprovo setup`
 // applies, one folder per cloud, so the CLI carries them in its binary.
 package terraform
 

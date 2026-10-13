@@ -179,7 +179,7 @@ func (s *Simulation) putImage(r *http.Request, p params) (reply, error) {
 			SourceVM: s.idFor(typeVM, &v.meta), SizeGB: v.Properties.StorageProfile.OSDisk.DiskSizeGB, HyperVGeneration: v.HyperVGeneration,
 			ProvisioningState: "Creating", TimeCreated: s.now().UTC(),
 		}
-		img.ImageRef = "stagely-sim-az-image:" + sub.Account[:8] + "-" + img.GUID
+		img.ImageRef = "elprovo-sim-az-image:" + sub.Account[:8] + "-" + img.GUID
 		sub.Images = append(sub.Images, img)
 		op = s.startOperation(sub, "Microsoft.Compute", location)
 		machine, ref = v.Machine, img.ImageRef

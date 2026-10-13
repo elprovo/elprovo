@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stagely-dev/stagely/sim/internal/machines"
+	"github.com/elprovo/elprovo/sim/internal/machines"
 )
 
 const waitLimit = 5 * time.Second
@@ -229,7 +229,7 @@ type testEnv struct {
 }
 
 func testConfig() config {
-	return config{tokens: []string{testToken}, network: "stagely-sim-unit", rateLimit: 3600}
+	return config{tokens: []string{testToken}, network: "elprovo-sim-unit", rateLimit: 3600}
 }
 
 // newTestEnv starts a simulation on fake machines. Each prepare function
