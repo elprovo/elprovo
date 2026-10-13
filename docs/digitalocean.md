@@ -19,7 +19,7 @@ Before each build and each start, the agent asks the API for Docker credentials 
 | `-do-region` | none | Region of the droplets, such as `fra1` |
 | `-do-size` | `s-2vcpu-4gb` | Droplet size |
 | `-do-image` | `ubuntu-24-04-x64` | Stock droplet image. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new droplet. |
-| `-do-golden-image` | none | A Elprovo golden image (snapshot id) with Docker already installed. When set, droplets start from it instead of `-do-image` and install nothing. |
+| `-do-golden-image` | none | An Elprovo golden image (snapshot id) with Docker already installed. When set, droplets start from it instead of `-do-image` and install nothing. |
 | `-do-vpc` | none | VPC UUID. Droplets join it, and the agent reaches them on their private address. Without it, the agent uses their public address. |
 | `-do-tag` | `elprovo-preview` | Tag on every droplet the agent creates. The agent finds its droplets by this tag. Setup passes `<environment>-preview`, which the bootstrap module creates. |
 

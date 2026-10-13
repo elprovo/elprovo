@@ -1,4 +1,4 @@
-// Command elprovo is the operator CLI: it signs in to a Elprovo control
+// Command elprovo is the operator CLI: it signs in to an Elprovo control
 // plane and bootstraps a cloud account for an environment.
 package main
 
@@ -27,7 +27,7 @@ import (
 )
 
 const usage = `usage:
-  elprovo login [-server URL]          sign in to a Elprovo control plane in your browser
+  elprovo login [-server URL]          sign in to an Elprovo control plane in your browser
   elprovo whoami                       show who you are signed in as, and in which account
   elprovo setup digitalocean [flags]   bootstrap a DigitalOcean account for an environment
   elprovo setup aws [flags]            bootstrap an AWS account for an environment

@@ -20,7 +20,7 @@ go run ./cmd/elprovo-agent run -provider hetzner -hcloud-location fsn1 \
 | `-hcloud-location` | none | Location of the servers, such as `fsn1` |
 | `-hcloud-server-type` | `cx23` | Server type |
 | `-hcloud-image` | `ubuntu-24.04` | Stock image. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new server. |
-| `-hcloud-golden-image` | none | A Elprovo golden image (snapshot id) with Docker already installed. When set, servers start from it instead of `-hcloud-image` and install nothing. |
+| `-hcloud-golden-image` | none | An Elprovo golden image (snapshot id) with Docker already installed. When set, servers start from it instead of `-hcloud-image` and install nothing. |
 | `-hcloud-label` | `elprovo=preview` | Label, as `key=value`, on every server the agent creates. The agent sees, lists and deletes only servers with this label. Setup passes `elprovo=<environment>-preview`, the label the bootstrap module's preview firewall applies to. |
 | `-hcloud-network` | required | Id of the private network that every server joins. The agent drives each server, and the gateway reaches it, on its address there. |
 | `-hcloud-network-range` | required | Address range of `-hcloud-network`, such as `10.42.0.0/20` |

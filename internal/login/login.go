@@ -1,4 +1,4 @@
-// Package login signs an operator in to a Elprovo control plane through its
+// Package login signs an operator in to an Elprovo control plane through its
 // OAuth server, keeps the tokens on disk, and gives an HTTP client that
 // sends them. The CLI registers itself as a public client, uses PKCE and a
 // loopback redirect, and asks for a token for the control plane's JSON API.

@@ -28,7 +28,7 @@ ECR gives a token the permissions of the credentials that asked for it: here, th
 | `-aws-sts-url` | `https://sts.<region>.amazonaws.com` | STS API endpoint, for the temporary credentials of the registry sign-in |
 | `-aws-instance-type` | `t3.medium` | Instance type |
 | `-aws-image` | none | Stock Ubuntu 24.04 AMI id of the region. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new instance. |
-| `-aws-golden-image` | none | A Elprovo golden image (AMI id) with Docker already installed. When set, instances start from it instead of `-aws-image` and install nothing. One of the two is required. |
+| `-aws-golden-image` | none | An Elprovo golden image (AMI id) with Docker already installed. When set, instances start from it instead of `-aws-image` and install nothing. One of the two is required. |
 | `-aws-subnet` | none | Subnet id. Instances launch into it, and the agent reaches them on their private address. Without it, they launch into the default VPC and the agent uses their public address. |
 | `-aws-security-group` | none, required | Security group id of every instance. It must let in only the agent and the gateway, and must not let in its own members: a group that does, such as a VPC's default group, lets previews reach each other. |
 | `-aws-volume-size` | `30` | Root volume size of every instance in GiB, for images, build cache and preview data. Ubuntu AMIs come with 8 GiB. |

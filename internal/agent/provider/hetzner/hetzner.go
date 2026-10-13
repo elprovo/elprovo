@@ -31,7 +31,7 @@ type Config struct {
 	ServerType string
 	// Image is a stock image; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is the id of a Elprovo golden image snapshot
+	// GoldenImage, when set, is the id of an Elprovo golden image snapshot
 	// that already has Docker, Compose and BuildKit. It replaces Image.
 	GoldenImage string
 	// Label is key=value. Every server the provider creates has it, and the

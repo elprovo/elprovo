@@ -134,7 +134,7 @@ func run(args []string) error {
 	fs.StringVar(&az.SubnetID, "azure-subnet", "", "id of the subnet that preview virtual machines join; its network security group admits only the agent and the gateway")
 	fs.StringVar(&az.Size, "azure-size", "Standard_B2s", "Azure virtual machine size")
 	fs.StringVar(&az.Image, "azure-image", "Canonical:ubuntu-24_04-lts:server:latest", "platform image as publisher:offer:sku:version; cloud-init installs Docker on it")
-	fs.StringVar(&az.GoldenImage, "azure-golden-image", "", "id of a Elprovo managed image with Docker preinstalled; used instead of -azure-image")
+	fs.StringVar(&az.GoldenImage, "azure-golden-image", "", "id of an Elprovo managed image with Docker preinstalled; used instead of -azure-image")
 	fs.StringVar(&az.Registry, "azure-registry", "", "id of the container registry that machines get short-lived token credentials for")
 	fs.StringVar(&az.Tag, "azure-tag", "elprovo-preview", "value of the elprovo tag on every preview virtual machine")
 	fs.StringVar(&vu.RegistryID, "vultr-registry", "", "id of the Vultr container registry that machines get short-lived Docker credentials for; without it, machines sign in only with -registry-username")

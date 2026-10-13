@@ -71,7 +71,7 @@ type Config struct {
 	InstanceType string
 	// Image is a stock Ubuntu AMI; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is a Elprovo golden image AMI that already has
+	// GoldenImage, when set, is an Elprovo golden image AMI that already has
 	// Docker, Compose and BuildKit. It replaces Image.
 	GoldenImage string
 	SubnetID    string

@@ -26,7 +26,7 @@ Before each build and each start, the agent creates a repository-scoped token in
 | `-azure-subnet` | none | Id of the subnet that the machines join. Its network security group decides who reaches them. |
 | `-azure-size` | `Standard_B2s` | Virtual machine size |
 | `-azure-image` | `Canonical:ubuntu-24_04-lts:server:latest` | Platform image as `publisher:offer:sku:version`. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new machine. |
-| `-azure-golden-image` | none | Id of a Elprovo managed image with Docker already installed, from [images/azure](../images/README.md#azure). When set, machines start from it instead of `-azure-image` and install nothing. |
+| `-azure-golden-image` | none | Id of an Elprovo managed image with Docker already installed, from [images/azure](../images/README.md#azure). When set, machines start from it instead of `-azure-image` and install nothing. |
 | `-azure-registry` | none | Id of the container registry that machines get token credentials for. Without it, machines sign in to no registry unless `-registry-username` is set. |
 | `-azure-tag` | `elprovo-preview` | Value of the `elprovo` tag on every machine the agent creates. The agent lists and deletes only machines with it. Setup passes `<environment>-preview`. |
 

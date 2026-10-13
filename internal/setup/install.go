@@ -19,7 +19,7 @@ type host interface {
 	Output(ctx context.Context, stdin io.Reader, command string) ([]byte, error)
 }
 
-// service is a Elprovo daemon that setup installs on a host as a systemd
+// service is an Elprovo daemon that setup installs on a host as a systemd
 // service, running as its own system user with its state in
 // /var/lib/<name>.
 type service struct {

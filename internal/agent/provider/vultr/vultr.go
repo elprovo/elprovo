@@ -35,7 +35,7 @@ type Config struct {
 	Plan   string
 	// OSID is a stock operating system; cloud-init installs Docker on it.
 	OSID int
-	// GoldenImage, when set, is the snapshot id of a Elprovo golden image
+	// GoldenImage, when set, is the snapshot id of an Elprovo golden image
 	// that already has Docker, Compose and BuildKit. It replaces OSID.
 	GoldenImage     string
 	Tag             string

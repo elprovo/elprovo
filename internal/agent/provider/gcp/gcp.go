@@ -65,7 +65,7 @@ type Config struct {
 	MachineType string
 	// Image is a stock image; cloud-init installs Docker on it.
 	Image string
-	// GoldenImage, when set, is a Elprovo golden image that already has
+	// GoldenImage, when set, is an Elprovo golden image that already has
 	// Docker, Compose and BuildKit. It replaces Image. A bare name means an
 	// image of the project.
 	GoldenImage string

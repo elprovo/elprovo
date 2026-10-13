@@ -6,7 +6,7 @@ Today it supports DigitalOcean, [AWS](#aws), [Google Cloud](#google-cloud), [Het
 
 ## Before you start
 
-- A Elprovo account, and `elprovo login` done. It signs in to Elprovo's hosted control plane at `https://app.elprovo.com`; pass `-server` to sign in to another control plane. Setup acts in the account you chose when you signed in, with your role there; creating an environment needs the admin or owner role.
+- An Elprovo account, and `elprovo login` done. It signs in to Elprovo's hosted control plane at `https://app.elprovo.com`; pass `-server` to sign in to another control plane. Setup acts in the account you chose when you signed in, with your role there; creating an environment needs the admin or owner role.
 - OpenTofu or Terraform on `PATH` (`tofu` is preferred).
 - `elprovo-agent` and `elprovo-gateway` built for linux/amd64. From this repository: `make build-hosts`, which writes them to `bin/linux-amd64/` (and to `bin/linux-arm64/`), with a Linux build of `elprovo` itself.
 - A DigitalOcean API token with write access, in `DIGITALOCEAN_TOKEN`. It stays on your machine and on the agent host only. For AWS, see [AWS](#aws), and for Hetzner Cloud, [Hetzner Cloud](#hetzner-cloud).

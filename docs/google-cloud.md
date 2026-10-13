@@ -24,7 +24,7 @@ The key never reaches a machine. Before each build and each start, the agent imp
 | `-gcp-zone` | none | Zone of the instances, such as `us-central1-a` |
 | `-gcp-machine-type` | `e2-medium` | Machine type |
 | `-gcp-image` | `projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64` | Stock image. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new instance. |
-| `-gcp-golden-image` | none | A Elprovo golden image with Docker already installed: an image name in the project, or its path. When set, instances start from it instead of `-gcp-image` and install nothing. |
+| `-gcp-golden-image` | none | An Elprovo golden image with Docker already installed: an image name in the project, or its path. When set, instances start from it instead of `-gcp-image` and install nothing. |
 | `-gcp-subnetwork` | the `default` network | Subnetwork the instances join. The agent reaches them on their internal address, so it must run in the same network. |
 | `-gcp-tag` | `elprovo-preview` | Network tag on every instance the agent creates, and the value of its `elprovo` label. The agent finds its instances by the label. Setup passes `<environment>-preview`, which the bootstrap module's firewall rule targets. |
 | `-gcp-iam-credentials-url` | `https://iamcredentials.googleapis.com/v1/` | IAM Service Account Credentials API base URL |

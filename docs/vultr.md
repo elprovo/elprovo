@@ -22,7 +22,7 @@ Before each build and each start, the agent asks the API for Docker credentials 
 | `-vultr-region` | none | Region of the instances, such as `fra` |
 | `-vultr-plan` | `vc2-2c-4gb` | Instance plan |
 | `-vultr-os` | `2284` | Stock operating system id; 2284 is Ubuntu 24.04 LTS x64. It must run cloud-init, which installs the `docker.io`, `docker-compose-v2` and `docker-buildx` packages on each new instance. |
-| `-vultr-golden-image` | none | A Elprovo golden image (snapshot id) with Docker already installed. When set, instances start from it instead of `-vultr-os` and install nothing. |
+| `-vultr-golden-image` | none | An Elprovo golden image (snapshot id) with Docker already installed. When set, instances start from it instead of `-vultr-os` and install nothing. |
 | `-vultr-firewall-group` | none | Firewall group id that every instance joins. Setup passes the preview group, which has no rules, so instances accept nothing on their public interface; see [Network access](#network-access). Without it, instances accept traffic from anywhere there. |
 | `-vultr-vpc` | required | Id of the VPC that every instance joins. The agent drives each instance, and the gateway reaches it, on its address there. |
 | `-vultr-vpc-range` | required | Address range of `-vultr-vpc`, such as `10.42.0.0/20` |
