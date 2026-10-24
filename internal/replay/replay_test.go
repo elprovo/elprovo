@@ -163,3 +163,19 @@ func TestARunTestsOnlyThePackagesItsCommitHas(t *testing.T) {
 		t.Errorf("the base run and the head run got the packages %q (%v); want %q", args, err, want)
 	}
 }
+
+func TestMessagesNameFilesRelativeToTheCopy(t *testing.T) {
+	// $PWD is the copy's path with symbolic links resolved, as the go
+	// command prints it.
+	script := `printf '{"Action":"output","Package":"example.com/m","Test":"TestA","Output":"%s/a_test.go:3: boom\\n"}\n' "$PWD"
+` + "printf '%s\\n' '{\"Action\":\"fail\",\"Package\":\"example.com/m\",\"Test\":\"TestA\"}'\n"
+
+	report, _ := replayOnce(t, script, replay.Limits{})
+
+	if len(report.Regressions) != 1 {
+		t.Fatalf("the report has %d other tests; want TestA", len(report.Regressions))
+	}
+	if got := report.Regressions[0].Head[0].Message; got != "a_test.go:3: boom" {
+		t.Errorf("the message is %q; want the file relative to the copy", got)
+	}
+}

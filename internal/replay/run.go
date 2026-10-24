@@ -169,6 +169,7 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, go
 				}
 			default:
 				run.Outcome = Ran
+				trimCopyPath(results, work)
 				if result.timedOut {
 					for _, pkg := range packages {
 						setReason(&results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(cfg.Tests.Timeout)))
@@ -241,6 +242,23 @@ func parseLog(path string) (gotest.Results, error) {
 	}
 	defer f.Close()
 	return gotest.Parse(f)
+}
+
+// trimCopyPath makes the paths in the messages relative to the copy, whose
+// path changes in every run. The go command prints it with symbolic links
+// resolved.
+func trimCopyPath(results gotest.Results, work string) {
+	if resolved, err := filepath.EvalSymlinks(work); err == nil {
+		work = resolved
+	}
+	prefix := work + string(filepath.Separator)
+	for t, result := range results.Tests {
+		result.Message = strings.ReplaceAll(result.Message, prefix, "")
+		results.Tests[t] = result
+	}
+	for pkg, reason := range results.Reasons {
+		results.Reasons[pkg] = strings.ReplaceAll(reason, prefix, "")
+	}
 }
 
 // setReason gives pkg a reason, unless go test gave it one.

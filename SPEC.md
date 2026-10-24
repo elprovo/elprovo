@@ -137,7 +137,7 @@ An outcome other than `passed` comes with a message:
 - for `failed` and `skipped`, the first line that the test printed, such as `cart_test.go:7: Total(100, 10) = 80; want 90`, or `panic: …`;
 - for `absent`, the first line that says why the package failed, such as a compile error, or why Elprovo has no result.
 
-Elprovo keeps the first 200 characters of the message, and then writes control characters as escape sequences, such as `\x1b`.
+Elprovo removes the path of the copy from the message, so that a file in the copy has its path from the repository root. It keeps the first 200 characters of the message, and then writes control characters as escape sequences, such as `\x1b`.
 
 `absent` is never `failed`. So a new test that cannot build without the change, because it uses code that only the head commit has, is `new` and not `fixed`.
 
