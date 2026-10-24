@@ -136,6 +136,8 @@ Elprovo gives each proof one result from its runs. It applies the first rule tha
 
 `verified` is the only result that shows what the change did. `held` shows that a claim holds on the head commit. It does not show that the proof can fail, so a reviewer reads such a proof with more care.
 
+A run fails when the proof exits with a status other than 0, for any reason. So a proof that uses a file or a tool that only the head commit has, such as a test that the change adds outside `proofs/`, fails on the base commit because that file or tool is missing, and its result is `verified` all the same. The report keeps the last line that each failed run printed, `last_line` in section 5.3, so that a reviewer can check that each base run failed for the claim's reason.
+
 ### 3.4 Exit status
 
 Elprovo applies the first rule that matches:
@@ -196,7 +198,7 @@ A log file exists only for a command that ran.
 
 ### 5.2 Text
 
-Elprovo prints one block for each proof, then a summary line. The [README](README.md) shows the form. For a `failed` or `flaky` proof, the block also shows the path of `proof.log` from the first head run that failed, or, when no head run failed, from the first base run that failed. For a `not-run` proof, it shows the reason and the log of the first run, in the order the runs ran, that did not run. The text form is for people. Programs read `report.json`.
+Elprovo prints one block for each proof, then a summary line. The [README](README.md) shows the form. For a `verified` proof, the block also shows the `last_line` of the first base run, as `base run <n> ended with: <line>`, or `base run <n> printed nothing` when it is empty. For a `failed` or `flaky` proof, the block also shows the `last_line` and the path of `proof.log` from the first head run that failed, or, when no head run failed, from the first base run that failed. For a `not-run` proof, it shows the reason, the `last_line` and the log of the first run, in the order the runs ran, that did not run. The text form is for people. Programs read `report.json`.
 
 ### 5.3 `report.json`
 
@@ -215,10 +217,10 @@ Elprovo prints one block for each proof, then a summary line. The [README](READM
       "claimed": true,
       "result": "verified",
       "base": [
-        { "run": 1, "outcome": "fail", "exit_code": 1, "timed_out": false, "seconds": 41.2, "reason": "", "artifacts_dropped": false, "dir": "coupon-once/base-1" }
+        { "run": 1, "outcome": "fail", "exit_code": 1, "timed_out": false, "seconds": 41.2, "reason": "", "last_line": "proofs/coupon-once.spec.ts:3:1 › a coupon applies once, even from two tabs ─────────────────────", "artifacts_dropped": false, "dir": "coupon-once/base-1" }
       ],
       "head": [
-        { "run": 1, "outcome": "pass", "exit_code": 0, "timed_out": false, "seconds": 39.8, "reason": "", "artifacts_dropped": false, "dir": "coupon-once/head-1" }
+        { "run": 1, "outcome": "pass", "exit_code": 0, "timed_out": false, "seconds": 39.8, "reason": "", "last_line": "", "artifacts_dropped": false, "dir": "coupon-once/head-1" }
       ]
     }
   ]
@@ -241,6 +243,7 @@ The example shows one run of each commit to keep it short.
 | `timed_out` | Whether `run` took longer than its timeout. |
 | `seconds` | How long the run took, from the start of step 1 to the end of step 8. |
 | `reason` | Why the outcome is `not-run`, such as `start exited with status 1` or `ready did not exit 0 within 5m`. It is empty otherwise. |
+| `last_line` | The last non-empty line of the log of the command that decided the outcome: `proof.log` for `fail`, and `start.log` or `ready.log` for `not-run`. Elprovo reads at most the last 64 KiB of the log, before it cuts a long log. It keeps at most 200 characters, and it writes control characters as escape sequences, such as `\x1b`. It is empty for `pass`, and when the log has no such line. |
 | `artifacts_dropped` | Whether Elprovo deleted the run's artifacts, because they were more than 1 GiB or it could not read them all. |
 | `dir` | The run's output directory, relative to the replay's output directory. |
 

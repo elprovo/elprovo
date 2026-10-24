@@ -104,3 +104,33 @@ func TestUnreadableArtifactsAreDroppedWithAWarning(t *testing.T) {
 		t.Errorf("artifacts_dropped %v, warnings %q; want true and one warning about measuring the artifacts", run.ArtifactsDropped, warnings)
 	}
 }
+
+func TestTheLastLineIsReadBeforeTheLogIsCut(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":     "version = 1\nstart = \"true\"\nready = \"true\"\n",
+		"proofs/long.toml": "claim = \"The proof prints a long log and fails.\"\nbefore = \"skip\"\nrun = \"yes a | head -c 1000; echo the end; exit 1\"\n",
+	})
+
+	report, _ := replayOnce(t, repo, base, replay.Limits{LogBytes: 100})
+
+	if got := report.Proofs[0].Head[0].LastLine; got != "the end" {
+		t.Errorf("last_line is %q; want %q", got, "the end")
+	}
+}
+
+func TestTheLastLineKeepsAtMost200Characters(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":     "version = 1\nstart = \"true\"\nready = \"true\"\n",
+		"proofs/wide.toml": "claim = \"The proof prints a wide line and fails.\"\nbefore = \"skip\"\nrun = \"printf 'x%.0s' $(seq 300); echo; exit 1\"\n",
+	})
+
+	report, _ := replayOnce(t, repo, base, replay.Limits{})
+
+	if got := report.Proofs[0].Head[0].LastLine; got != strings.Repeat("x", 200) {
+		t.Errorf("last_line has %d characters; want 200 x characters", len(got))
+	}
+}

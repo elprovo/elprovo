@@ -65,10 +65,13 @@ base 3f2a1c0  head 9b7e4d2  1 proof, 2 runs each
 ✓ verified  proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: passed 2 of 2
+            base run 1 ended with: proofs/coupon-once.spec.ts:3:1 › a coupon applies once, even from two tabs ─────────────────────
 
 1 verified.
 Report: .elprovo/runs/k3v9q2m7/report.json
 ```
+
+The last line is what the first base run printed last: here, Playwright's summary, which names the failed test. Read it for each verified proof. A run that fails because a file or a tool is missing also counts as a failure, and then this line shows that, for example `sh: tests/coupon.sh: No such file or directory`.
 
 Elprovo also prints a line for each run to standard error, so you can follow a long replay.
 
@@ -78,6 +81,7 @@ When the fix is incomplete, the same proof fails on the head commit, and the out
 ✗ failed    proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: failed 2 of 2
+            head run 1 ended with: proofs/coupon-once.spec.ts:3:1 › a coupon applies once, even from two tabs ─────────────────────
             log: .elprovo/runs/k3v9q2m7/coupon-once/head-1/proof.log
 ```
 

@@ -174,21 +174,38 @@ func (o output) proof(p replay.ProofReport) {
 	fmt.Fprintf(o.w, "%s%s\n", indent, sides)
 
 	switch p.Result {
+	case replay.Verified:
+		if run, ok := first(p.Base, replay.Fail); ok {
+			o.endedWith("base", run)
+		}
 	case replay.Failed, replay.Flaky:
 		// A flaky proof can fail on the base commit only.
 		if run, ok := first(p.Head, replay.Fail); ok {
+			o.endedWith("head", run)
 			fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, "proof.log")))
 		} else if run, ok := first(p.Base, replay.Fail); ok {
+			o.endedWith("base", run)
 			fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, "proof.log")))
 		}
 	case replay.ResultNotRun:
-		if run, ok := first(inRunOrder(p), replay.NotRun); ok {
+		if side, run, ok := firstInRunOrder(p, replay.NotRun); ok {
 			// The reason starts with the command that failed: start or ready.
 			log := strings.Fields(run.Reason + " start")[0]
-			fmt.Fprintf(o.w, "%sreason: %s\n%slog: %s\n", indent, run.Reason, indent, o.rel(filepath.Join(run.LogDir, log+".log")))
+			fmt.Fprintf(o.w, "%sreason: %s\n", indent, run.Reason)
+			o.endedWith(side, run)
+			fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, log+".log")))
 		}
 	}
 	fmt.Fprintln(o.w)
+}
+
+// endedWith says what a run that did not pass printed last.
+func (o output) endedWith(side string, run replay.RunReport) {
+	if run.LastLine == "" {
+		fmt.Fprintf(o.w, "%s%s run %d printed nothing\n", indent, side, run.Run)
+		return
+	}
+	fmt.Fprintf(o.w, "%s%s run %d ended with: %s\n", indent, side, run.Run, run.LastLine)
 }
 
 func first(runs []replay.RunReport, outcome replay.Outcome) (replay.RunReport, bool) {
@@ -200,19 +217,18 @@ func first(runs []replay.RunReport, outcome replay.Outcome) (replay.RunReport, b
 	return replay.RunReport{}, false
 }
 
-// inRunOrder lists a proof's runs in the order they ran: base 1, head 1,
-// base 2, head 2, and so on.
-func inRunOrder(p replay.ProofReport) []replay.RunReport {
-	var runs []replay.RunReport
+// firstInRunOrder finds the first run with outcome, in the order the runs
+// ran: base 1, head 1, base 2, head 2, and so on. It returns the run's side.
+func firstInRunOrder(p replay.ProofReport, outcome replay.Outcome) (string, replay.RunReport, bool) {
 	for i := 0; i < max(len(p.Base), len(p.Head)); i++ {
-		if i < len(p.Base) {
-			runs = append(runs, p.Base[i])
+		if i < len(p.Base) && p.Base[i].Outcome == outcome {
+			return "base", p.Base[i], true
 		}
-		if i < len(p.Head) {
-			runs = append(runs, p.Head[i])
+		if i < len(p.Head) && p.Head[i].Outcome == outcome {
+			return "head", p.Head[i], true
 		}
 	}
-	return runs
+	return "", replay.RunReport{}, false
 }
 
 func (o output) summary(report replay.Report) {

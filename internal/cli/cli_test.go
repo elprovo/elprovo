@@ -23,6 +23,9 @@ const app = "version = 1\nstart = \"echo started > started.txt\"\nready = \"test
 // featureProof claims that feature.txt says "on".
 const featureProof = "claim = \"The feature file says on.\"\nrun = \"grep -qx on feature.txt\"\n"
 
+// printingProof makes the claim of featureProof and prints what it reads.
+const printingProof = "claim = \"The feature file says on.\"\nrun = 'echo \"feature is $(cat feature.txt)\"; grep -qx on feature.txt'\n"
+
 type result struct {
 	status         int
 	stdout, stderr string
@@ -770,4 +773,101 @@ func TestAGitLFSFileIsCopiedWithItsContent(t *testing.T) {
 	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
 
 	wantResult(t, r, "proofs/lfs.toml", replay.Held, "", "pass", 0)
+}
+
+func TestVerifiedShowsWhatTheBaseRunPrinted(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"feature.txt": "off\n"})
+	repo.Commit(map[string]string{"elprovo.toml": app, "feature.txt": "on\n", "proofs/feature.toml": printingProof})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.Verified, "fail", "pass", 0)
+	if !strings.Contains(r.stdout, indent+"base run 1 ended with: feature is off\n") {
+		t.Errorf("stdout does not show what the base run printed:\n%s", r.stdout)
+	}
+	p := r.proof(t, "proofs/feature.toml")
+	if p.Base[0].LastLine != "feature is off" || p.Head[0].LastLine != "" {
+		t.Errorf("last_line is %q on the base and %q on the head; want %q and empty", p.Base[0].LastLine, p.Head[0].LastLine, "feature is off")
+	}
+}
+
+func TestFailedShowsWhatTheHeadRunPrinted(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"feature.txt": "off\n"})
+	repo.Commit(map[string]string{"elprovo.toml": app, "proofs/feature.toml": printingProof})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.Failed, "fail", "fail", 1)
+	if !strings.Contains(r.stdout, indent+"head run 1 ended with: feature is off\n") {
+		t.Errorf("stdout does not show what the head run printed:\n%s", r.stdout)
+	}
+}
+
+func TestNotRunShowsWhatStartPrinted(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":        "version = 1\nstart = \"echo cannot build; exit 4\"\nready = \"true\"\n",
+		"proofs/feature.toml": featureProof + "before = \"skip\"\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.ResultNotRun, "", "not-run", 2)
+	if got := r.proof(t, "proofs/feature.toml").Head[0].LastLine; got != "cannot build" {
+		t.Errorf("last_line is %q; want %q", got, "cannot build")
+	}
+	if !strings.Contains(r.stdout, indent+"head run 1 ended with: cannot build\n") {
+		t.Errorf("stdout does not show what start printed:\n%s", r.stdout)
+	}
+}
+
+func TestASilentFailureSaysThatTheRunPrintedNothing(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{"elprovo.toml": app, "proofs/feature.toml": "claim = \"Nothing.\"\nbefore = \"skip\"\nrun = \"false\"\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.Failed, "", "fail", 1)
+	if !strings.Contains(r.stdout, indent+"head run 1 printed nothing\n") {
+		t.Errorf("stdout does not say that the run printed nothing:\n%s", r.stdout)
+	}
+	if got := r.proof(t, "proofs/feature.toml").Head[0].LastLine; got != "" {
+		t.Errorf("last_line is %q; want empty", got)
+	}
+}
+
+func TestControlCharactersInALogLineAreEscaped(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{"elprovo.toml": app, "proofs/feature.toml": "claim = \"Escaped.\"\nbefore = \"skip\"\nrun = '''printf 'gone\\033[2K\\n'; exit 1'''\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.Failed, "", "fail", 1)
+	if got := r.proof(t, "proofs/feature.toml").Head[0].LastLine; got != `gone\x1b[2K` {
+		t.Errorf("last_line is %q; want %q", got, `gone\x1b[2K`)
+	}
+	if strings.Contains(r.stdout, "\x1b") {
+		t.Errorf("a control character reached stdout: %q", r.stdout)
+	}
+}
+
+func TestNotRunShowsWhatReadyPrinted(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":        "version = 1\nstart = \"true\"\nready = \"echo connection refused; false\"\ntimeouts.ready = \"1s\"\n",
+		"proofs/feature.toml": featureProof + "before = \"skip\"\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.toml", replay.ResultNotRun, "", "not-run", 2)
+	if got := r.proof(t, "proofs/feature.toml").Head[0].LastLine; got != "connection refused" {
+		t.Errorf("last_line is %q; want %q", got, "connection refused")
+	}
 }

@@ -196,7 +196,7 @@ func decode(data []byte, v any) error {
 	if err != nil {
 		// The message can quote the file, which comes from the change, so
 		// it must not reach a terminal with control characters in it.
-		return errors.New(escapeControl(err.Error()))
+		return errors.New(EscapeControl(err.Error()))
 	}
 	if len(meta.Keys()) == 0 {
 		return errors.New("the file is empty")
@@ -221,9 +221,10 @@ func isControl(r rune) bool {
 	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp)
 }
 
-// escapeControl writes every control character in s, except line breaks
-// and tabs, as a Go escape sequence.
-func escapeControl(s string) string {
+// EscapeControl writes every control character in s, except line breaks
+// and tabs, as a Go escape sequence, so that text from a change cannot act on
+// a terminal.
+func EscapeControl(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		if isControl(r) && r != '\n' && r != '\t' {
