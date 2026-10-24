@@ -1,0 +1,4 @@
+{"Time":"2026-10-24T17:36:33.223804+03:00","Action":"start","Package":"gj/mainfail"}
+{"Time":"2026-10-24T17:36:33.385574+03:00","Action":"output","Package":"gj/mainfail","Output":"exit status 3\n"}
+{"Time":"2026-10-24T17:36:33.385631+03:00","Action":"output","Package":"gj/mainfail","Output":"FAIL\tgj/mainfail\t0.161s\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:33.385647+03:00","Action":"fail","Package":"gj/mainfail","Elapsed":0.162}

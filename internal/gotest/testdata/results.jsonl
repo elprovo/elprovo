@@ -1,0 +1,31 @@
+{"Time":"2026-10-24T17:36:32.337451+03:00","Action":"start","Package":"gj/more"}
+{"Time":"2026-10-24T17:36:32.574797+03:00","Action":"run","Package":"gj/more","Test":"TestPass"}
+{"Time":"2026-10-24T17:36:32.574898+03:00","Action":"output","Package":"gj/more","Test":"TestPass","Output":"=== RUN   TestPass\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.574948+03:00","Action":"output","Package":"gj/more","Test":"TestPass","Output":"--- PASS: TestPass (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.574963+03:00","Action":"pass","Package":"gj/more","Test":"TestPass","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.574974+03:00","Action":"run","Package":"gj/more","Test":"TestFail"}
+{"Time":"2026-10-24T17:36:32.574981+03:00","Action":"output","Package":"gj/more","Test":"TestFail","Output":"=== RUN   TestFail\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.574987+03:00","Action":"output","Package":"gj/more","Test":"TestFail","Output":"    x_test.go:6: total 81.00, want 90.00\n","OutputType":"error"}
+{"Time":"2026-10-24T17:36:32.574999+03:00","Action":"output","Package":"gj/more","Test":"TestFail","Output":"--- FAIL: TestFail (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575005+03:00","Action":"fail","Package":"gj/more","Test":"TestFail","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.575019+03:00","Action":"run","Package":"gj/more","Test":"TestSkip"}
+{"Time":"2026-10-24T17:36:32.575025+03:00","Action":"output","Package":"gj/more","Test":"TestSkip","Output":"=== RUN   TestSkip\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575031+03:00","Action":"output","Package":"gj/more","Test":"TestSkip","Output":"    x_test.go:7: needs a network\n"}
+{"Time":"2026-10-24T17:36:32.575037+03:00","Action":"output","Package":"gj/more","Test":"TestSkip","Output":"--- SKIP: TestSkip (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575044+03:00","Action":"skip","Package":"gj/more","Test":"TestSkip","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.575049+03:00","Action":"run","Package":"gj/more","Test":"TestSub"}
+{"Time":"2026-10-24T17:36:32.575055+03:00","Action":"output","Package":"gj/more","Test":"TestSub","Output":"=== RUN   TestSub\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.57506+03:00","Action":"run","Package":"gj/more","Test":"TestSub/a"}
+{"Time":"2026-10-24T17:36:32.575065+03:00","Action":"output","Package":"gj/more","Test":"TestSub/a","Output":"=== RUN   TestSub/a\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575071+03:00","Action":"output","Package":"gj/more","Test":"TestSub/a","Output":"--- PASS: TestSub/a (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575076+03:00","Action":"pass","Package":"gj/more","Test":"TestSub/a","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.575083+03:00","Action":"run","Package":"gj/more","Test":"TestSub/b"}
+{"Time":"2026-10-24T17:36:32.575089+03:00","Action":"output","Package":"gj/more","Test":"TestSub/b","Output":"=== RUN   TestSub/b\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575094+03:00","Action":"output","Package":"gj/more","Test":"TestSub/b","Output":"    x_test.go:10: sub b failed\n","OutputType":"error"}
+{"Time":"2026-10-24T17:36:32.575099+03:00","Action":"output","Package":"gj/more","Test":"TestSub/b","Output":"--- FAIL: TestSub/b (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575106+03:00","Action":"fail","Package":"gj/more","Test":"TestSub/b","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.575111+03:00","Action":"output","Package":"gj/more","Test":"TestSub","Output":"--- FAIL: TestSub (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575116+03:00","Action":"fail","Package":"gj/more","Test":"TestSub","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.57512+03:00","Action":"output","Package":"gj/more","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575573+03:00","Action":"output","Package":"gj/more","Output":"FAIL\tgj/more\t0.238s\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.575618+03:00","Action":"fail","Package":"gj/more","Elapsed":0.238}

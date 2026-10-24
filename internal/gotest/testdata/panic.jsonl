@@ -1,0 +1,31 @@
+{"Time":"2026-10-24T17:36:32.757904+03:00","Action":"start","Package":"gj/ok"}
+{"Time":"2026-10-24T17:36:32.931346+03:00","Action":"run","Package":"gj/ok","Test":"TestPass"}
+{"Time":"2026-10-24T17:36:32.93144+03:00","Action":"output","Package":"gj/ok","Test":"TestPass","Output":"=== RUN   TestPass\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.93149+03:00","Action":"output","Package":"gj/ok","Test":"TestPass","Output":"--- PASS: TestPass (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.931499+03:00","Action":"pass","Package":"gj/ok","Test":"TestPass","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.931509+03:00","Action":"run","Package":"gj/ok","Test":"TestFail"}
+{"Time":"2026-10-24T17:36:32.931515+03:00","Action":"output","Package":"gj/ok","Test":"TestFail","Output":"=== RUN   TestFail\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.93152+03:00","Action":"output","Package":"gj/ok","Test":"TestFail","Output":"    x_test.go:6: total 81.00, want 90.00\n","OutputType":"error"}
+{"Time":"2026-10-24T17:36:32.931528+03:00","Action":"output","Package":"gj/ok","Test":"TestFail","Output":"--- FAIL: TestFail (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.931533+03:00","Action":"fail","Package":"gj/ok","Test":"TestFail","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.931538+03:00","Action":"run","Package":"gj/ok","Test":"TestPanic"}
+{"Time":"2026-10-24T17:36:32.931543+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"=== RUN   TestPanic\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.931548+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"--- FAIL: TestPanic (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.933978+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"panic: assignment to entry in nil map [recovered, repanicked]\n"}
+{"Time":"2026-10-24T17:36:32.93401+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\n"}
+{"Time":"2026-10-24T17:36:32.934018+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"goroutine 36 [running]:\n"}
+{"Time":"2026-10-24T17:36:32.934025+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"testing.tRunner.func1.2({0x100cc25a8, 0x100cf8fe0})\n"}
+{"Time":"2026-10-24T17:36:32.93403+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/usr/local/go/src/testing/testing.go:2123 +0x1a0\n"}
+{"Time":"2026-10-24T17:36:32.934043+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"testing.tRunner.func1()\n"}
+{"Time":"2026-10-24T17:36:32.93405+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/usr/local/go/src/testing/testing.go:2126 +0x2c8\n"}
+{"Time":"2026-10-24T17:36:32.93406+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"panic({0x100cc25a8?, 0x100cf8fe0?})\n"}
+{"Time":"2026-10-24T17:36:32.934066+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/usr/local/go/src/runtime/panic.go:859 +0x120\n"}
+{"Time":"2026-10-24T17:36:32.934072+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"gj/ok.TestPanic(0x48ad4a4cc6c8?)\n"}
+{"Time":"2026-10-24T17:36:32.93408+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/src/gj/ok/x_test.go:7 +0x34\n"}
+{"Time":"2026-10-24T17:36:32.934087+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"testing.tRunner(0x48ad4a4cc6c8, 0x100cdf450)\n"}
+{"Time":"2026-10-24T17:36:32.934092+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/usr/local/go/src/testing/testing.go:2193 +0xc4\n"}
+{"Time":"2026-10-24T17:36:32.934107+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"created by testing.(*T).Run in goroutine 1\n"}
+{"Time":"2026-10-24T17:36:32.934113+03:00","Action":"output","Package":"gj/ok","Test":"TestPanic","Output":"\t/usr/local/go/src/testing/testing.go:2258 +0x3b8\n"}
+{"Time":"2026-10-24T17:36:32.934652+03:00","Action":"fail","Package":"gj/ok","Test":"TestPanic","Elapsed":0}
+{"Time":"2026-10-24T17:36:32.934661+03:00","Action":"output","Package":"gj/ok","Output":"FAIL\tgj/ok\t0.176s\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:32.934669+03:00","Action":"fail","Package":"gj/ok","Elapsed":0.177}
