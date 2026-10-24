@@ -2,7 +2,7 @@
 
 Elprovo checks the claims in a pull request by running them. Each claim comes with a proof: a command that exits 0 when the claim holds. Elprovo runs every proof on a fresh copy of the code, without the change and with it, and reports which claims it verified.
 
-**Status:** 0.1.0, the first release. It is built for macOS and Linux, and its tests have run on macOS only so far. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.1.0, the first release. It runs on macOS and Linux, and its tests pass on both. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 

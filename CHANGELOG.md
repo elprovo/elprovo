@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The tests now pass on Linux too: Ubuntu 24.04 on arm64, in CI on the elprovo organization's self-hosted runners, where `/bin/sh` is dash.
+- A test replays a repository that uses Git LFS.
+
 ## 0.1.0 (2026-10-24)
 
 The first release.
