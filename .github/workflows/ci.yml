@@ -1,9 +1,15 @@
 name: ci
 
+# CI runs only by hand while the repository is private: make check on the
+# developer's machine is the gate. When the repository goes public, add
+# push to main and pull_request to the triggers below.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: The commit to replay against, such as origin/main
+        required: true
+        default: origin/main
 
 permissions:
   contents: read
@@ -24,8 +30,7 @@ jobs:
       - run: make check
 
   replay:
-    # Elprovo replays the proofs of its own pull requests.
-    if: github.event_name == 'pull_request'
+    # Elprovo replays its own proofs.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,13 +41,13 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make build
-      - name: Replay the proofs of this pull request
+      - name: Replay the proofs
         shell: bash
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE: ${{ inputs.base }}
         run: |
           set +e
-          ./bin/elprovo replay --base "origin/$BASE_REF" > replay.txt
+          ./bin/elprovo replay --base "$(git merge-base HEAD "$BASE")" > replay.txt
           status=$?
           cat replay.txt
           { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -13,13 +13,13 @@ Elprovo is a command line tool, `elprovo`, that replays the proofs of a change. 
 | `internal/gitrepo` | Git commands and the copy of a commit |
 | `internal/testrepo` | Throwaway Git repositories for tests only |
 | `skills/elprovo-proofs` | The skill that tells coding agents how to write proofs |
-| `elprovo.yml`, `proofs/` | Elprovo's own proofs, which CI replays on pull requests |
+| `elprovo.yml`, `proofs/` | Elprovo's own proofs, which `make replay` replays |
 
 Imports go one way: `main` → `cli` → `replay` → `config` and `gitrepo`. Only tests import `testrepo`.
 
 ## Rules
 
-- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build.
+- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build. It is the gate: the CI workflow runs only by hand while the repository is private.
 - A change to behavior that SPEC.md describes changes SPEC.md in the same commit. Keep the README examples equal to the real output.
 - `report.json` and the files Elprovo reads are contracts. Add fields to `report.json`; do not rename or remove them. A new field in `elprovo.yml` or a proof file needs a new format version.
 - Test through `cli.Run` or the `replay` package, with real Git repositories from `testrepo`, real `/bin/sh` and real processes. Do not mock Git or the shell. Watch a new test fail before you trust it.
