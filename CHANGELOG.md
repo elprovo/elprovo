@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Breaking:** Elprovo reads TOML files: `elprovo.toml` and `proofs/<name>.toml`, with the same fields as before. It no longer reads `elprovo.yml` or YAML proof files, because YAML changed some commands without notice. For example, it read `run: ! grep -q x f` as `grep -q x f`, and `claim: Issue #58 is fixed.` as `Issue`. TOML keeps every string as written.
+- A value in `env` must be a TOML string, such as `PORT = "8080"`.
+- A `.yml` or `.yaml` file directly in `proofs/` is an error, so that a proof file in the old format is never skipped without notice.
 - The tests now pass on Linux too: Ubuntu 24.04 on arm64, in CI on the elprovo organization's self-hosted runners, where `/bin/sh` is dash.
 - A test replays a repository that uses Git LFS.
 

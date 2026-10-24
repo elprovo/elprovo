@@ -1,12 +1,10 @@
-// Package config reads and checks elprovo.yml and proof files, as section 1
+// Package config reads and checks elprovo.toml and proof files, as section 1
 // of SPEC.md defines them.
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"regexp"
 	"strconv"
@@ -15,21 +13,21 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"go.yaml.in/yaml/v3"
+	"github.com/BurntSushi/toml"
 )
 
-// MaxFileSize is the largest elprovo.yml or proof file that Elprovo reads.
+// MaxFileSize is the largest elprovo.toml or proof file that Elprovo reads.
 const MaxFileSize = 64 << 10
 
 // RepoFile is the path of the repository file, relative to the repository root.
-const RepoFile = "elprovo.yml"
+const RepoFile = "elprovo.toml"
 
 // ProofDir is the directory that holds proof files and their helper files.
 const ProofDir = "proofs"
 
 const maxClaimLength = 200
 
-// Repo is a checked elprovo.yml.
+// Repo is a checked elprovo.toml.
 type Repo struct {
 	Start        string
 	Ready        string
@@ -67,34 +65,41 @@ var (
 
 // ProofName reports whether file, a slash-separated path from the repository
 // root, is a proof file, and returns its name. A file directly in proofs/
-// that ends in .yml but has an invalid name is an error, not a helper file.
+// that ends in .toml but has an invalid name is an error, not a helper file,
+// and so is a YAML file directly in proofs/.
 func ProofName(file string) (string, bool, error) {
 	dir, base := path.Split(file)
-	if dir != ProofDir+"/" || !strings.HasSuffix(base, ".yml") {
+	if dir != ProofDir+"/" {
 		return "", false, nil
 	}
-	name := strings.TrimSuffix(base, ".yml")
+	if strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".yaml") {
+		return "", false, fmt.Errorf("%s: Elprovo reads proof files that end in .toml. Rename a proof file to .toml, or move a YAML helper file into a subdirectory of %s/", file, ProofDir)
+	}
+	if !strings.HasSuffix(base, ".toml") {
+		return "", false, nil
+	}
+	name := strings.TrimSuffix(base, ".toml")
 	if !proofNamePattern.MatchString(name) {
-		return "", false, fmt.Errorf("%s: the name before .yml must match [a-z0-9][a-z0-9-]*", file)
+		return "", false, fmt.Errorf("%s: the name before .toml must match [a-z0-9][a-z0-9-]*", file)
 	}
 	return name, true, nil
 }
 
 type rawRepo struct {
-	Version  *int              `yaml:"version"`
-	Start    string            `yaml:"start"`
-	Ready    string            `yaml:"ready"`
-	Stop     string            `yaml:"stop"`
-	Env      map[string]string `yaml:"env"`
-	PassEnv  []string          `yaml:"pass_env"`
+	Version  *int              `toml:"version"`
+	Start    string            `toml:"start"`
+	Ready    string            `toml:"ready"`
+	Stop     string            `toml:"stop"`
+	Env      map[string]string `toml:"env"`
+	PassEnv  []string          `toml:"pass_env"`
 	Timeouts struct {
-		Start string `yaml:"start"`
-		Ready string `yaml:"ready"`
-		Stop  string `yaml:"stop"`
-	} `yaml:"timeouts"`
+		Start string `toml:"start"`
+		Ready string `toml:"ready"`
+		Stop  string `toml:"stop"`
+	} `toml:"timeouts"`
 }
 
-// ParseRepo checks the content of an elprovo.yml. name is the file's name in
+// ParseRepo checks the content of an elprovo.toml. name is the file's name in
 // error messages.
 func ParseRepo(name string, data []byte) (Repo, error) {
 	var raw rawRepo
@@ -134,10 +139,10 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 }
 
 type rawProof struct {
-	Claim   string `yaml:"claim"`
-	Run     string `yaml:"run"`
-	Before  string `yaml:"before"`
-	Timeout string `yaml:"timeout"`
+	Claim   string `toml:"claim"`
+	Run     string `toml:"run"`
+	Before  string `toml:"before"`
+	Timeout string `toml:"timeout"`
 }
 
 // ParseProof checks the content of the proof file at file, a slash-separated
@@ -148,7 +153,7 @@ func ParseProof(file string, data []byte) (Proof, error) {
 		return Proof{}, err
 	}
 	if !ok {
-		return Proof{}, fmt.Errorf("%s: a proof file must be directly in %s/ and end in .yml", file, ProofDir)
+		return Proof{}, fmt.Errorf("%s: a proof file must be directly in %s/ and end in .toml", file, ProofDir)
 	}
 	var raw rawProof
 	if err := decode(data, &raw); err != nil {
@@ -182,24 +187,30 @@ func ParseProof(file string, data []byte) (Proof, error) {
 	return proof, nil
 }
 
-// decode reads exactly one YAML document into v and rejects unknown fields.
+// decode reads a TOML document into v and rejects keys that v has no field for.
 func decode(data []byte, v any) error {
 	if len(data) > MaxFileSize {
 		return fmt.Errorf("the file has %d bytes; the limit is %d", len(data), MaxFileSize)
 	}
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(v); err != nil {
-		if errors.Is(err, io.EOF) {
-			return errors.New("the file is empty")
-		}
+	meta, err := toml.Decode(string(data), v)
+	if err != nil {
 		// The message can quote the file, which comes from the change, so
 		// it must not reach a terminal with control characters in it.
 		return errors.New(escapeControl(err.Error()))
 	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return errors.New("the file must hold one YAML document")
+	if len(meta.Keys()) == 0 {
+		return errors.New("the file is empty")
+	}
+	if unknown := meta.Undecoded(); len(unknown) > 0 {
+		names := make([]string, len(unknown))
+		for i, key := range unknown {
+			names[i] = strconv.Quote(key.String())
+		}
+		noun := "field"
+		if len(names) > 1 {
+			noun = "fields"
+		}
+		return fmt.Errorf("unknown %s %s", noun, strings.Join(names, ", "))
 	}
 	return nil
 }

@@ -38,16 +38,16 @@ func TestARunKeepsWithinItsLimitsAndLeavesNothingBehind(t *testing.T) {
 	t.Setenv("SPY", spy)
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
-		"elprovo.yml": "version: 1\nstart: \"true\"\nready: \"true\"\npass_env: [SPY]\n",
+		"elprovo.toml": "version = 1\nstart = \"true\"\nready = \"true\"\npass_env = [\"SPY\"]\n",
 		// The proof prints 1000 bytes, writes 2000 bytes of artifacts, and
 		// leaves a read-only directory in its home, as the Go module cache does.
-		"proofs/big.yml": "claim: The proof writes a lot.\nbefore: skip\nrun: |-\n" +
-			"  head -c 1000 /dev/zero | tr '\\0' a\n" +
-			"  head -c 2000 /dev/zero > \"$ELPROVO_ARTIFACTS/blob\"\n" +
-			"  mkdir -p \"$HOME/cache/module\" && touch \"$HOME/cache/module/file\" && chmod 555 \"$HOME/cache/module\" \"$HOME/cache\"\n" +
-			"  pwd > \"$SPY/workdir\"\n",
+		"proofs/big.toml": "claim = \"The proof writes a lot.\"\nbefore = \"skip\"\nrun = '''\n" +
+			"head -c 1000 /dev/zero | tr '\\0' a\n" +
+			"head -c 2000 /dev/zero > \"$ELPROVO_ARTIFACTS/blob\"\n" +
+			"mkdir -p \"$HOME/cache/module\" && touch \"$HOME/cache/module/file\" && chmod 555 \"$HOME/cache/module\" \"$HOME/cache\"\n" +
+			"pwd > \"$SPY/workdir\"\n'''\n",
 		// The small proof's artifacts are under the limit, so they are kept.
-		"proofs/small.yml": "claim: The proof writes a little.\nbefore: skip\nrun: echo kept > \"$ELPROVO_ARTIFACTS/note.txt\"\n",
+		"proofs/small.toml": "claim = \"The proof writes a little.\"\nbefore = \"skip\"\nrun = 'echo kept > \"$ELPROVO_ARTIFACTS/note.txt\"'\n",
 	})
 
 	report, warnings := replayOnce(t, repo, base, replay.Limits{LogBytes: 100, ArtifactsBytes: 1000})
@@ -89,12 +89,12 @@ func TestUnreadableArtifactsAreDroppedWithAWarning(t *testing.T) {
 	repo := testrepo.New(t)
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
-		"elprovo.yml": "version: 1\nstart: \"true\"\nready: \"true\"\n",
+		"elprovo.toml": "version = 1\nstart = \"true\"\nready = \"true\"\n",
 		// The artifacts are under the size limit; only the locked directory
 		// stops Elprovo from measuring them.
-		"proofs/locked.yml": "claim: The proof locks a directory.\nbefore: skip\nrun: |-\n" +
-			"  echo small > \"$ELPROVO_ARTIFACTS/note.txt\"\n" +
-			"  mkdir \"$ELPROVO_ARTIFACTS/locked\" && chmod 000 \"$ELPROVO_ARTIFACTS/locked\"\n",
+		"proofs/locked.toml": "claim = \"The proof locks a directory.\"\nbefore = \"skip\"\nrun = '''\n" +
+			"echo small > \"$ELPROVO_ARTIFACTS/note.txt\"\n" +
+			"mkdir \"$ELPROVO_ARTIFACTS/locked\" && chmod 000 \"$ELPROVO_ARTIFACTS/locked\"\n'''\n",
 	})
 
 	report, warnings := replayOnce(t, repo, base, replay.Limits{ArtifactsBytes: 1000})

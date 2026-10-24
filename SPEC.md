@@ -10,12 +10,12 @@ Elprovo runs on macOS and Linux. It needs `git` and `/bin/sh`. It does not suppo
 
 A repository that uses Elprovo has two kinds of file:
 
-- `elprovo.yml` at the repository root says how to start, check and stop the app. It is written once and changes rarely.
+- `elprovo.toml` at the repository root says how to start, check and stop the app. It is written once and changes rarely.
 - Proof files in `proofs/` state one claim each, with the command that shows it.
 
-Each file must be one YAML document that holds a mapping, and must be at most 64 KiB.
+Each file must be a [TOML 1.1](https://toml.io/en/v1.1.0) document of at most 64 KiB.
 
-### 1.1 `elprovo.yml`
+### 1.1 `elprovo.toml`
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
@@ -23,19 +23,21 @@ Each file must be one YAML document that holds a mapping, and must be at most 64
 | `start` | Yes | Command | | Starts the app, or builds it when there is nothing to keep running. It must exit 0. |
 | `ready` | Yes | Command | | Exits 0 when the app can take requests. Elprovo runs it once a second until it exits 0. |
 | `stop` | No | Command | None | Stops the app and frees what it uses, such as containers, volumes and processes. Elprovo runs it after every run, also after a failure. Leave it out when `start` leaves nothing running. |
-| `env` | No | Map of name to string | Empty | Plain values that every command gets. The file is in the repository, so these must not be secrets. |
-| `pass_env` | No | List of names | Empty | Variables that Elprovo copies from its own environment into every command, such as test credentials or `DOCKER_HOST`. A listed variable that is not set is an error. |
+| `env` | No | Table of name to string | Empty | Plain values that every command gets. The file is in the repository, so these must not be secrets. |
+| `pass_env` | No | Array of names | Empty | Variables that Elprovo copies from its own environment into every command, such as test credentials or `DOCKER_HOST`. A listed variable that is not set is an error. |
 | `timeouts.start` | No | Duration | `10m` | The longest time `start` may take. |
 | `timeouts.ready` | No | Duration | `5m` | The longest time Elprovo waits for `ready` to exit 0. |
 | `timeouts.stop` | No | Duration | `2m` | The longest time `stop` may take. |
 
-A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not start with `ELPROVO_`. A value in `env` is text: Elprovo takes a YAML scalar as written, so `8080` and `"8080"` give the same value. A missing value, `~` or `null` gives an empty value.
+A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not start with `ELPROVO_`. A value in `env` must be a string, such as `PORT = "8080"`.
 
 `pass_env` may name `HOME` or `TMPDIR`. The command then gets the real directory instead of the run's own empty one, as section 4 says. Do this only when a tool cannot work without it, because commands can then change files there.
 
 ### 1.2 Proof files
 
-A proof file is a file named `proofs/<name>.yml`, directly in `proofs/`. `<name>` must match `[a-z0-9][a-z0-9-]*`. Every other file in `proofs/` and in its subdirectories is a helper file that proofs may use. Elprovo does not read helper files, and a helper file is never a proof.
+A proof file is a file named `proofs/<name>.toml`, directly in `proofs/`. `<name>` must match `[a-z0-9][a-z0-9-]*`. Every other file in `proofs/` and in its subdirectories is a helper file that proofs may use. Elprovo does not read helper files, and a helper file is never a proof.
+
+A file directly in `proofs/` whose name ends in `.yml` or `.yaml` is an error, so that a proof file in another format never becomes a helper file without notice. Put a YAML helper file in a subdirectory of `proofs/`.
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
@@ -46,12 +48,12 @@ A proof file is a file named `proofs/<name>.yml`, directly in `proofs/`. `<name>
 
 ### 1.3 Values
 
-- A **command** is a string that Elprovo runs with `/bin/sh -c`. Section 4 defines its directory and environment.
+- A **command** is a string that Elprovo runs with `/bin/sh -c`. Section 4 defines its directory and environment. TOML keeps a multi-line literal string, `'''…'''`, exactly as written, so it suits a command with several lines or with quotes.
 - A **duration** is a whole number followed by `s`, `m` or `h`, such as `90s` or `10m`. It must be at least `1s` and at most `1h`.
 
 ### 1.4 Versions
 
-- The `version` in the head commit's `elprovo.yml` sets the format of the proof files too.
+- The `version` in the head commit's `elprovo.toml` sets the format of the proof files too.
 - A version 1 reader rejects a field that this document does not define, so that a misspelled field fails instead of being ignored.
 - A new field or a change in meaning comes with a new version. A release of Elprovo reads every version it knows, and it rejects a version it does not know.
 
@@ -95,7 +97,7 @@ A `PROOF` argument that is not a proof file in the head commit is an error. Elpr
 
 A change to a helper file alone does not claim the proofs that use it. Use `--all` to replay them.
 
-Before it runs any command, Elprovo checks every selected proof file, the head commit's `elprovo.yml`, and the base commit's `elprovo.yml` when one exists and a selected proof runs on the base commit.
+Before it runs any command, Elprovo checks every selected proof file, the head commit's `elprovo.toml`, and the base commit's `elprovo.toml` when one exists and a selected proof runs on the base commit.
 
 ### 3.2 Runs
 
@@ -107,7 +109,7 @@ One run of proof `P` on commit `C` has these steps:
 
 1. Make a new directory for the run in the system's temporary directory. In it, make an empty directory named `elprovo-<run ID>`, the copy, where the run ID is 8 random characters from `[a-z0-9]`. Write the files of `C` into the copy, except `proofs/`, as a checkout of `C` writes them, with the repository's checkout filters such as Git LFS. The copy has no `.git` directory, no untracked or ignored files, and no submodule contents.
 2. Write `proofs/` from the head commit into the copy, so that both commits run the same proof.
-3. Take `elprovo.yml` from `C`. If `C` has none, take it from the head commit.
+3. Take `elprovo.toml` from `C`. If `C` has none, take it from the head commit.
 4. Make the run's empty home directory, temporary directory and artifacts directory in the run's directory, and the run's output directory, `<proof name>/<base|head>-<run number>/` in the replay's output directory. The logs go to the run's output directory.
 5. Run `start`. If it exits with a status other than 0 or takes longer than `timeouts.start`, the run's outcome is **not run**. Go to step 8.
 6. Run `ready` once a second until it exits 0. If it does not exit 0 within `timeouts.ready`, the outcome is **not run**. Go to step 8.
@@ -207,7 +209,7 @@ Elprovo prints one block for each proof, then a summary line. The [README](READM
   "stopped_early": "",
   "proofs": [
     {
-      "file": "proofs/coupon-once.yml",
+      "file": "proofs/coupon-once.toml",
       "claim": "A coupon applies once per order, even from two browser tabs.",
       "before": "fail",
       "claimed": true,

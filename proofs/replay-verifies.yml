@@ -1,4 +1,0 @@
-claim: elprovo replay calls a proof verified when it fails without a change and passes with it.
-run: sh proofs/replay-verifies.sh
-# The commit before the first release has no elprovo to build.
-before: skip

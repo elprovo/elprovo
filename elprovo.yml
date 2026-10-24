@@ -1,3 +1,0 @@
-version: 1
-start: go build -o bin/elprovo ./cmd/elprovo
-ready: ./bin/elprovo version

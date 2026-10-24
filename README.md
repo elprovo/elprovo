@@ -23,20 +23,20 @@ $ ./bin/elprovo version
 
 ## Example
 
-A repository says once how to start its app, in `elprovo.yml`:
+A repository says once how to start its app, in `elprovo.toml`:
 
-```yaml
-version: 1
-start: docker compose up --detach --build
-ready: curl -fsS http://localhost:8080/healthz
-stop: docker compose down --volumes
+```toml
+version = 1
+start = "docker compose up --detach --build"
+ready = "curl -fsS http://localhost:8080/healthz"
+stop = "docker compose down --volumes"
 ```
 
-A pull request that fixes a coupon bug in a shop app adds one proof for its claim, `proofs/coupon-once.yml`:
+A pull request that fixes a coupon bug in a shop app adds one proof for its claim, `proofs/coupon-once.toml`:
 
-```yaml
-claim: A coupon applies once per order, even from two browser tabs.
-run: npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"
+```toml
+claim = "A coupon applies once per order, even from two browser tabs."
+run = 'npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"'
 ```
 
 The proof's test is an ordinary Playwright test, `proofs/coupon-once.spec.ts`. The two tabs share one browser context, so they share one cart:
@@ -62,7 +62,7 @@ Then, after the change is committed:
 $ elprovo replay
 base 3f2a1c0  head 9b7e4d2  1 proof, 2 runs each
 
-✓ verified  proofs/coupon-once.yml
+✓ verified  proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: passed 2 of 2
 
@@ -75,18 +75,18 @@ Elprovo also prints a line for each run to standard error, so you can follow a l
 When the fix is incomplete, the same proof fails on the head commit, and the output points to the log of the failed run. The Playwright trace is in that run's `artifacts` directory:
 
 ```console
-✗ failed    proofs/coupon-once.yml
+✗ failed    proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: failed 2 of 2
             log: .elprovo/runs/k3v9q2m7/coupon-once/head-1/proof.log
 ```
 
-A command line tool has nothing to keep running, so `start` only builds it, and `elprovo.yml` needs no `stop`:
+A command line tool has nothing to keep running, so `start` only builds it, and `elprovo.toml` needs no `stop`:
 
-```yaml
-version: 1
-start: go build -o bin/lnk .
-ready: ./bin/lnk --help
+```toml
+version = 1
+start = "go build -o bin/lnk ."
+ready = "./bin/lnk --help"
 ```
 
 ## How a replay works
@@ -165,15 +165,15 @@ replay:
         exit "$status"
 ```
 
-The job needs `elprovo` on `PATH`, and the tools that `elprovo.yml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
+The job needs `elprovo` on `PATH`, and the tools that `elprovo.toml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
 
 ## Writing proofs
 
 - Write one claim per proof file, as one plain sentence that a reviewer can check against the proof.
 - Test the behavior from the outside where you can: through the app's user interface, its API or its command line.
-- Keep everything a proof needs in `proofs/`. Only `.yml` files directly in `proofs/` are proofs. Every other file there is a helper file.
+- Keep everything a proof needs in `proofs/`. Only `.toml` files directly in `proofs/` are proofs. Every other file there is a helper file. Put a YAML helper file in a subdirectory, because a `.yml` or `.yaml` file directly in `proofs/` is an error.
 - Don't make a proof depend on another proof, on the order of proofs, or on the commit it runs against.
-- A claim that a change keeps something working, such as a refactor, can't fail on the base commit. Set `before: skip` in its proof file. Its result is then `held`, which doesn't show that the proof can fail, so read such a proof with care.
+- A claim that a change keeps something working, such as a refactor, can't fail on the base commit. Set `before = "skip"` in its proof file. Its result is then `held`, which doesn't show that the proof can fail, so read such a proof with care.
 
 ## For coding agents
 
