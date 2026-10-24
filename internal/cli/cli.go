@@ -101,6 +101,8 @@ func runPlan(ctx context.Context, plan replay.Plan, opts replay.Options, env Env
 	}
 	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", message) }
 	report, err := replay.Run(ctx, plan, opts)
+	// The blank line parts the progress from the results in a terminal.
+	fmt.Fprintln(env.Stderr)
 	if err != nil {
 		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
 		return report, false

@@ -1,16 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-10-24)
 
-- **Breaking:** the tests are the proofs. Elprovo runs the tests of a change on fresh copies of the base and head commits, and gives each test a verdict. Proof files, `proofs/`, `claim`, `before`, `--all` and `PROOF` arguments are gone.
-- **Breaking:** `elprovo.toml` is version 2. `[tests]` says which files hold the tests and how to run them, and the optional `[app]` table holds `start`, `ready` and `stop`. Elprovo rejects version 1 with a message that asks for version 2. This release reads `go test -json` output only.
+A bug fix now proves itself with its own test: the test fails without the fix and passes with it, and the other tests keep their results.
+
+- **Breaking:** the tests are the proofs. Elprovo runs the Go tests of the packages that a change touches, on fresh copies of the base and head commits, and gives each test a verdict. Proof files, `proofs/`, `claim`, `before`, `--all` and `PROOF` arguments are gone.
+- **Breaking:** `elprovo.toml` is version 2. `[tests]` says which files hold the tests and how to run them, and the optional `[app]` table holds `start`, `ready` and `stop`. Elprovo rejects version 1 in the head commit with a message that asks for version 2. In the base commit, a version 1 file gives way to the head commit's.
+- **Breaking:** `report.json` is format 2, with `command`, and the lists `changed`, `regressions`, `base_runs` and `head_runs`.
+- To move from 0.2: write `elprovo.toml` version 2, turn each proof into a Go test, and delete `proofs/`.
+- `elprovo reproduce TEST_FILE...` checks a reproduction before the fix. It runs the changed tests in the files on the base commit only, and calls each `reproduced`, `not-reproduced`, `could-not-run`, `flaky` or `skipped`.
 - Both copies run the head commit's tests, so only the code differs between them.
-- A changed test is `fixed`, `not-reproduced`, `new`, `not-fixed`, `flaky` or `skipped`. The other tests in the packages that the change touches are `kept`, `broke`, `already-failing`, `not-run`, `flaky`, `skipped` or `fixed`.
+- A changed test is `fixed`, `not-reproduced`, `new`, `not-fixed`, `flaky` or `skipped`. The other tests in the packages are `kept`, `broke`, `already-failing`, `not-run`, `flaky`, `skipped` or `fixed`.
 - A test without a result is `absent`, never `failed`. So a test that does not build without the change is `new`, not `fixed`.
 - `--require` makes a replay in which no test is `fixed` fail.
-- `elprovo reproduce TEST_FILE...` checks a reproduction before the fix: it runs the changed tests in the files on the base commit only, and calls each `reproduced`, `not-reproduced`, `could-not-run`, `flaky` or `skipped`.
-- **Breaking:** `report.json` is format 2, with the lists `changed`, `regressions`, `base_runs` and `head_runs`.
-- A run whose app does not start, or whose tests print no events, stops the replay with exit status 2.
+- A run whose app does not start, or whose tests print no events, stops the replay with exit status 2. The test command's own exit status decides nothing.
+- Each verdict comes with the message of the run that explains it, such as the line that a test failed with on the base commit. Paths in the copy are relative to the repository root.
+- This release reads `go test -json` output only, from one Go module at the repository root.
+- The demo repository, the README and `assets/demo.gif` show the three steps: reproduce the bug, fix it, replay.
+- `skills/elprovo-proofs` is now `skills/elprovo-reproduce`. It tells agents to commit the test first, run `elprovo reproduce`, fix, and run `elprovo replay --require`.
+- The `elprovo` workflow replays each pull request with `elprovo` built from the base commit, and posts the verdicts on the pull request, with a headline such as "Reproduced on main and fixed here. Nothing else broke."
 - `make replay` replays Elprovo's own Go tests.
 
 ## 0.2.0 (2026-10-24)
