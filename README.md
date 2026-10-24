@@ -105,6 +105,8 @@ Add this to the repository's `AGENTS.md`:
 
 > When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay` and put its summary in your report. Don't claim a behavior that no proof shows.
 
+For agents that load skills, such as Claude Code, [skills/elprovo-proofs/SKILL.md](skills/elprovo-proofs/SKILL.md) gives the same rule with the steps. It also shows how to replay by hand until `elprovo` is installed.
+
 ## What Elprovo does not do
 
 - It doesn't read or score the code.
