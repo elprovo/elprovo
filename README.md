@@ -132,6 +132,13 @@ So a run cannot read your dotfiles, and a tool that writes to the home directory
 
 `pass_env` can also name `HOME`. Do that only when a tool cannot work without your real home, because commands can then change files there.
 
+## Security
+
+Elprovo runs the commands in the change it replays: `start`, `ready`, `stop` and every proof. Replay only changes whose code you would run yourself.
+
+- In CI, replay pull requests from forks only in a job that has no secrets and a read-only token, such as a GitHub Actions job on `pull_request`.
+- Variables in `pass_env` reach every command of every run, and the logs keep what the commands print. Pass test credentials only.
+
 ## In CI
 
 This GitHub Actions job replays the proofs of a pull request and puts the output in the job summary:
