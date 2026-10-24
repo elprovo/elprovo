@@ -46,7 +46,6 @@ type Tests struct {
 	// Files are the patterns of section 1.2 of SPEC.md.
 	Files   []string
 	Run     string
-	Report  string
 	Timeout time.Duration
 }
 
@@ -113,7 +112,7 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 	repo := Repo{
 		Env:     raw.Env,
 		PassEnv: raw.PassEnv,
-		Tests:   Tests{Files: tests.Files, Run: tests.Run, Report: tests.Report},
+		Tests:   Tests{Files: tests.Files, Run: tests.Run},
 	}
 	if len(tests.Files) == 0 {
 		problems = append(problems, "tests.files is missing")

@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// The testdata files hold real `go test -json -count=1` output from Go 1.27,
-// with local paths replaced.
+// The testdata files hold real `go test -json` output from Go 1.27, with
+// local paths replaced.
 
 func parseFile(t *testing.T, name string) Results {
 	t.Helper()

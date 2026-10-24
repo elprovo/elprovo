@@ -255,7 +255,7 @@ replay:
         if-no-files-found: ignore
 ```
 
-The job needs `elprovo` on `PATH`. Make it a required status check of the branch, so that a pull request merges only when no test is `not fixed` or `broke`. On a private repository, GitHub offers required checks only on a paid plan.
+The job needs `elprovo` on `PATH`. Make it a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan.
 
 Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `go.mod` and `elprovo.toml`, so review changes to them. The check also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
 

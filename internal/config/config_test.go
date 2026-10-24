@@ -15,7 +15,7 @@ func TestParseRepoReadsTheTestsAndAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.Tests.Files) != 1 || repo.Tests.Files[0] != "**/*_test.go" || repo.Tests.Run != "go test -json -count=1 {packages}" || repo.Tests.Report != "go-test-json" {
+	if len(repo.Tests.Files) != 1 || repo.Tests.Files[0] != "**/*_test.go" || repo.Tests.Run != "go test -json -count=1 {packages}" {
 		t.Errorf("tests are %+v; want the values of the file", repo.Tests)
 	}
 	if repo.Tests.Timeout != 10*time.Minute || repo.App != nil {

@@ -290,7 +290,6 @@ func TestAChangedTestThatDisagreesWithItselfIsFlaky(t *testing.T) {
 	}
 	t.Setenv("COUNTER", counter)
 	repo, _ := shop(t, fixedCart)
-	// Base runs use the base commit's elprovo.toml, so it passes COUNTER too.
 	base := repo.Commit(map[string]string{"elprovo.toml": strings.Replace(goConfig, `"GOMODCACHE"]`, `"GOMODCACHE", "COUNTER"]`, 1)})
 	repo.Commit(map[string]string{
 		// The runs go base 1, head 1, base 2, head 2. The test fails in the
@@ -828,7 +827,7 @@ func readLines(t *testing.T, path string) []string {
 	return strings.Split(text, "\n")
 }
 
-func TestBaseRunsUseTheBaseConfigAndTheCommitsAlternate(t *testing.T) {
+func TestBaseRunsStartTheBaseAppAndTheCommitsAlternate(t *testing.T) {
 	spy := t.TempDir()
 	t.Setenv("SPY", spy)
 	repo := testrepo.New(t)
@@ -1065,23 +1064,15 @@ func TestReproduceJudgesOnlyTheNamedFilesOnce(t *testing.T) {
 	}
 }
 
-func TestTheBaseConfigIsCheckedToo(t *testing.T) {
-	for _, tt := range []struct {
-		name, baseConfig, wantInError string
-	}{
-		{"an unknown field in version 2", scriptConfig("", "stopp = \"x\"\n", ""), "elprovo.toml in the base commit"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := testrepo.New(t)
-			base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": tt.baseConfig, "run.sh": event("pass", "TestA"), "a.go": "package m\n"}))
-			repo.Commit(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a.go": "package m\n\nconst A = 1\n"})
+func TestAnInvalidBaseConfigOfVersion2IsAnError(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "stopp = \"x\"\n", ""), "run.sh": event("pass", "TestA"), "a.go": "package m\n"}))
+	repo.Commit(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a.go": "package m\n\nconst A = 1\n"})
 
-			r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
 
-			if r.status != 2 || !strings.Contains(r.stderr, tt.wantInError) {
-				t.Errorf("exit %d, stderr %q; want 2 and an error that contains %q", r.status, r.stderr, tt.wantInError)
-			}
-		})
+	if r.status != 2 || !strings.Contains(r.stderr, "elprovo.toml in the base commit") {
+		t.Errorf("exit %d, stderr %q; want 2 and an error about the base commit's elprovo.toml", r.status, r.stderr)
 	}
 }
 
@@ -1109,8 +1100,7 @@ func TestAMovedGoFileTouchesBothPackages(t *testing.T) {
 func TestAPackageThatTheChangeDeletesIsNotRunWithAReason(t *testing.T) {
 	repo := testrepo.New(t)
 	script := `printf '%s\n' '{"Action":"pass","Package":"example.com/m/old","Test":"TestOld"}'` + "\n"
-	cfg := strings.Replace(scriptConfig("", "", ""), `files = ["**/*_test.go"]`, `files = ["e2e/**"]`, 1)
-	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": cfg, "run.sh": script, "old/o.go": "package old\n"}))
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": script, "old/o.go": "package old\n"}))
 	repo.Commit(nil, "old")
 
 	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")

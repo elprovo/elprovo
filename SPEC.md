@@ -88,7 +88,7 @@ Both must run inside a Git repository. They read commits, not the working tree, 
 | `--out DIR` | `.elprovo` | Where Elprovo writes logs, artifacts and the report. A relative path is relative to the working directory. |
 | `--dry-run` | Off | `replay` only. Check the files and print the changed tests, without running any command. It exits 0 when the files are valid, 1 when the change touches no package and `--require` is on, and 2 when a file is invalid. |
 
-A `TEST_FILE` is a path relative to the working directory. It must end in `_test.go`, match `tests.files`, be in the head commit, and have at least one changed test, from section 3.1.
+A `TEST_FILE` is a path relative to the working directory. It must end in `_test.go`, be in the head commit, and have at least one changed test, from section 3.1.
 
 Elprovo resolves `--base` and `--head` to commit IDs once, before it runs anything.
 
