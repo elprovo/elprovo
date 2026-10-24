@@ -2,7 +2,7 @@
 
 Elprovo checks the claims in a pull request by running them. Each claim comes with a proof: a command that exits 0 when the claim holds. Elprovo runs every proof on a fresh copy of the code, without the change and with it, and reports which claims it verified.
 
-**Status:** 0.1.0, the first release. It runs on macOS and Linux, and its tests pass on both. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.2.0. It runs on macOS and Linux, and its tests pass on both. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 
@@ -71,7 +71,7 @@ base 3f2a1c0  head 9b7e4d2  1 proof, 2 runs each
 Report: .elprovo/runs/k3v9q2m7/report.json
 ```
 
-The last line is what the first base run printed last: here, Playwright's summary, which names the failed test. Read it for each verified proof. A run that fails because a file or a tool is missing also counts as a failure, and then this line shows that, for example `sh: tests/coupon.sh: No such file or directory`.
+The last line of the block shows what the first base run printed last. Here it is Playwright's summary, which names the failed test. Read this line for each verified proof: a run that fails because a file or a tool is missing also counts as a failure, and then the line shows that, for example `sh: tests/coupon.sh: No such file or directory`.
 
 Elprovo also prints a line for each run to standard error, so you can follow a long replay.
 
@@ -167,9 +167,20 @@ replay:
         cat replay.txt
         { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
         exit "$status"
+    - name: Keep the report and the logs
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: elprovo-replay
+        path: |
+          .elprovo/runs/*/report.json
+          .elprovo/runs/**/*.log
+        if-no-files-found: ignore
 ```
 
 The job needs `elprovo` on `PATH`, and the tools that `elprovo.toml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
+
+Make this job a required status check in the branch's protection rules. A pull request then merges only when its proofs hold, and the reviewer reads a summary that their own CI wrote, not one that the author pasted.
 
 ## Writing proofs
 
@@ -183,7 +194,7 @@ The job needs `elprovo` on `PATH`, and the tools that `elprovo.toml` uses. Elpro
 
 Add this to the repository's `AGENTS.md`:
 
-> When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay` and put its summary in your report. Don't claim a behavior that no proof shows.
+> When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay`, and check that each base run ended with the claim failing, not with a missing file or command. In your report, name the proof files and point to the CI check that replays them. If there is no such check, paste the local summary and say that it ran locally. Don't claim a behavior that no proof shows.
 
 For agents that load skills, such as Claude Code, [skills/elprovo-proofs/SKILL.md](skills/elprovo-proofs/SKILL.md) gives the same rule with the steps.
 

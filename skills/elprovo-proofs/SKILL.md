@@ -45,11 +45,23 @@ claim = "A coupon applies once per order, even from two browser tabs."
 run = 'npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"'
 ```
 
-The proof runs in the root of the copy. Keep the test and every other file the proof needs in `proofs/`. Only `.toml` files directly in `proofs/` are proofs. A good proof:
+A short check can go in the proof file itself, as a multi-line literal string, which TOML keeps exactly as written:
+
+```toml
+claim = "The API refuses a second use of the same coupon with status 409."
+run = '''
+set -eu
+curl -fsS -X POST -d code=SAVE10 http://localhost:8080/cart/coupon > /dev/null
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d code=SAVE10 http://localhost:8080/cart/coupon)
+[ "$status" = 409 ] || { echo "FAIL: the second use returned $status, not 409"; exit 1; }
+'''
+```
+
+The proof runs in the root of the copy. Keep the test and every other file the proof needs in `proofs/`. The base run gets your `proofs/` too, but not the other files that your change adds. If a proof uses such a file, its base run fails because the file is missing, not because of the claim, and that shows nothing about your change. Only `.toml` files directly in `proofs/` are proofs. A good proof:
 
 - tests from the outside: the user interface with Playwright, the HTTP API with requests, or the command line. Use a unit test only when the claim is about a library function;
 - checks the exact result the claim states, such as the value, the text or the status. It does not stop at "the page loads";
-- exits with a status other than 0 when the claim is false;
+- exits with a status other than 0 when the claim is false, and prints why as its last line;
 - creates its own data, including any files under `HOME`, and does not depend on another proof or on the order of proofs;
 - never reads the source code, Git or the commit to decide its result;
 - writes traces and screenshots to `$ELPROVO_ARTIFACTS`.
@@ -66,11 +78,13 @@ Replay reads commits, so the change must be committed. Commit only if you are al
 
 Run `elprovo replay --base <base>`, where the base is usually the merge base with the default branch. `elprovo replay --dry-run` checks the files first without running anything.
 
+Under each `verified` proof, read the line `base run 1 ended with: …`. It must show the claim failing, such as a wrong value or status. If it shows a missing file or command, the base run failed for another reason, and the proof does not show your change. Fix the proof.
+
 If `elprovo` is not installed and you may not install it, do not replay the proofs by hand and do not call any claim verified. Tell the user the proofs are ready and that they need `elprovo replay`.
 
 ## 5. Report
 
-Paste the summary of `elprovo replay`: each claim with its result and its runs, such as "verified: base failed 2 of 2, head passed 2 of 2". Name the proof files, so the reviewer reads them first.
+If the repository replays proofs in CI, the reviewer trusts that check, not your report. Name the proof files, so the reviewer reads them first, and point to the check. If the repository has no such check, paste the summary of your local `elprovo replay`, and say that it ran on your machine. For each claim, give its result, its runs and the line that its base run ended with, such as "verified: base failed 2 of 2, head passed 2 of 2; base run 1 ended with: FAIL: the second use returned 200, not 409".
 
 - `verified` is the only result that shows what the change did.
 - `held` shows the claim holds now. Say how you checked that the proof can fail.
