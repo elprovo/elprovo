@@ -2,7 +2,7 @@
 
 Elprovo checks the claims in a pull request by running them. Each claim comes with a proof: a command that exits 0 when the claim holds. Elprovo runs every proof on a fresh copy of the code, without the change and with it, and reports which claims it verified.
 
-**Status:** 0.1.0, the first release. It runs on macOS and Linux, and its tests pass on both. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.2.0. It runs on macOS and Linux, and its tests pass on both. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) defines the files, the replay and the results, and [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 
@@ -23,20 +23,20 @@ $ ./bin/elprovo version
 
 ## Example
 
-A repository says once how to start its app, in `elprovo.yml`:
+A repository says once how to start its app, in `elprovo.toml`:
 
-```yaml
-version: 1
-start: docker compose up --detach --build
-ready: curl -fsS http://localhost:8080/healthz
-stop: docker compose down --volumes
+```toml
+version = 1
+start = "docker compose up --detach --build"
+ready = "curl -fsS http://localhost:8080/healthz"
+stop = "docker compose down --volumes"
 ```
 
-A pull request that fixes a coupon bug in a shop app adds one proof for its claim, `proofs/coupon-once.yml`:
+A pull request that fixes a coupon bug in a shop app adds one proof for its claim, `proofs/coupon-once.toml`:
 
-```yaml
-claim: A coupon applies once per order, even from two browser tabs.
-run: npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"
+```toml
+claim = "A coupon applies once per order, even from two browser tabs."
+run = 'npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"'
 ```
 
 The proof's test is an ordinary Playwright test, `proofs/coupon-once.spec.ts`. The two tabs share one browser context, so they share one cart:
@@ -62,31 +62,35 @@ Then, after the change is committed:
 $ elprovo replay
 base 3f2a1c0  head 9b7e4d2  1 proof, 2 runs each
 
-✓ verified  proofs/coupon-once.yml
+✓ verified  proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: passed 2 of 2
+            base run 1 ended with: proofs/coupon-once.spec.ts:3:1 › a coupon applies once, even from two tabs ─────────────────────
 
 1 verified.
 Report: .elprovo/runs/k3v9q2m7/report.json
 ```
+
+The last line of the block shows what the first base run printed last. Here it is Playwright's summary, which names the failed test. Read this line for each verified proof: a run that fails because a file or a tool is missing also counts as a failure, and then the line shows that, for example `sh: tests/coupon.sh: No such file or directory`.
 
 Elprovo also prints a line for each run to standard error, so you can follow a long replay.
 
 When the fix is incomplete, the same proof fails on the head commit, and the output points to the log of the failed run. The Playwright trace is in that run's `artifacts` directory:
 
 ```console
-✗ failed    proofs/coupon-once.yml
+✗ failed    proofs/coupon-once.toml
             A coupon applies once per order, even from two browser tabs.
             base: failed 2 of 2   head: failed 2 of 2
+            head run 1 ended with: proofs/coupon-once.spec.ts:3:1 › a coupon applies once, even from two tabs ─────────────────────
             log: .elprovo/runs/k3v9q2m7/coupon-once/head-1/proof.log
 ```
 
-A command line tool has nothing to keep running, so `start` only builds it, and `elprovo.yml` needs no `stop`:
+A command line tool has nothing to keep running, so `start` only builds it, and `elprovo.toml` needs no `stop`:
 
-```yaml
-version: 1
-start: go build -o bin/lnk .
-ready: ./bin/lnk --help
+```toml
+version = 1
+start = "go build -o bin/lnk ."
+ready = "./bin/lnk --help"
 ```
 
 ## How a replay works
@@ -163,23 +167,34 @@ replay:
         cat replay.txt
         { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
         exit "$status"
+    - name: Keep the report and the logs
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: elprovo-replay
+        path: |
+          .elprovo/runs/*/report.json
+          .elprovo/runs/**/*.log
+        if-no-files-found: ignore
 ```
 
-The job needs `elprovo` on `PATH`, and the tools that `elprovo.yml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
+The job needs `elprovo` on `PATH`, and the tools that `elprovo.toml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
+
+Make this job a required status check in the branch's protection rules. A pull request then merges only when its proofs hold, and the reviewer reads a summary that their own CI wrote, not one that the author pasted.
 
 ## Writing proofs
 
 - Write one claim per proof file, as one plain sentence that a reviewer can check against the proof.
 - Test the behavior from the outside where you can: through the app's user interface, its API or its command line.
-- Keep everything a proof needs in `proofs/`. Only `.yml` files directly in `proofs/` are proofs. Every other file there is a helper file.
+- Keep everything a proof needs in `proofs/`. Only `.toml` files directly in `proofs/` are proofs. Every other file there is a helper file. Put a YAML helper file in a subdirectory, because a `.yml` or `.yaml` file directly in `proofs/` is an error.
 - Don't make a proof depend on another proof, on the order of proofs, or on the commit it runs against.
-- A claim that a change keeps something working, such as a refactor, can't fail on the base commit. Set `before: skip` in its proof file. Its result is then `held`, which doesn't show that the proof can fail, so read such a proof with care.
+- A claim that a change keeps something working, such as a refactor, can't fail on the base commit. Set `before = "skip"` in its proof file. Its result is then `held`, which doesn't show that the proof can fail, so read such a proof with care.
 
 ## For coding agents
 
 Add this to the repository's `AGENTS.md`:
 
-> When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay` and put its summary in your report. Don't claim a behavior that no proof shows.
+> When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay`, and check that each base run ended with the claim failing, not with a missing file or command. In your report, name the proof files and point to the CI check that replays them. If there is no such check, paste the local summary and say that it ran locally. Don't claim a behavior that no proof shows.
 
 For agents that load skills, such as Claude Code, [skills/elprovo-proofs/SKILL.md](skills/elprovo-proofs/SKILL.md) gives the same rule with the steps.
 

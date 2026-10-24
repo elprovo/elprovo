@@ -73,7 +73,7 @@ type Plan struct {
 	Proofs     []Planned
 	repo       gitrepo.Repo
 	headConfig config.Repo
-	// baseConfig is nil when the base commit has no elprovo.yml.
+	// baseConfig is nil when the base commit has no elprovo.toml.
 	baseConfig *config.Repo
 }
 

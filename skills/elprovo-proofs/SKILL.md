@@ -1,6 +1,6 @@
 ---
 name: elprovo-proofs
-description: Prove each behavior a code change claims with an Elprovo proof, a command that fails without the change and passes with it, and replay the proofs with elprovo replay before reporting the work as done. Use when you add or fix behavior and are about to say it works, when a repository has elprovo.yml or a proofs/ directory, or when the user asks to prove a change, add proofs, or run elprovo replay. Not for changes with no behavior claim, such as documentation or formatting.
+description: Prove each behavior a code change claims with an Elprovo proof, a command that fails without the change and passes with it, and replay the proofs with elprovo replay before reporting the work as done. Use when you add or fix behavior and are about to say it works, when a repository has elprovo.toml or a proofs/ directory, or when the user asks to prove a change, add proofs, or run elprovo replay. Not for changes with no behavior claim, such as documentation or formatting.
 ---
 
 # Prove the change
@@ -13,50 +13,62 @@ Write each behavior you will claim as one plain sentence, at most 200 characters
 
 ## 2. Make sure the app can start
 
-The repository root needs `elprovo.yml`. If it has none, write one. For an app that keeps running:
+The repository root needs `elprovo.toml`. If it has none, write one. For an app that keeps running:
 
-```yaml
-version: 1
-start: docker compose up --detach --build      # must exit 0, with the app running
-ready: curl -fsS http://localhost:8080/healthz  # exits 0 when the app takes requests
-stop: docker compose down --volumes            # removes everything start made
+```toml
+version = 1
+start = "docker compose up --detach --build"      # must exit 0, with the app running
+ready = "curl -fsS http://localhost:8080/healthz"  # exits 0 when the app takes requests
+stop = "docker compose down --volumes"            # removes everything start made
 ```
 
 For a command line tool, `start` only builds it, and `stop` is not needed:
 
-```yaml
-version: 1
-start: go build -o bin/tool .
-ready: ./bin/tool --help
+```toml
+version = 1
+start = "go build -o bin/tool ."
+ready = "./bin/tool --help"
 ```
 
 - `start` must work from the tracked files alone, with no `.env` file, local data or cache that only your machine has.
 - Each run gets an empty `HOME` and `TMPDIR`, and only `PATH`, `USER` and `LANG` from the environment. A tool that needs more, such as `DOCKER_HOST` or a test credential, must be named in `pass_env`.
 - `ready` must check that the app answers, not only that a process exists.
 - `stop` must remove what `start` left running.
-- Every replay runs this file, so tell the user that a new or changed `elprovo.yml` needs their review.
+- Every replay runs this file, so tell the user that a new or changed `elprovo.toml` needs their review.
 
 ## 3. Write one proof per claim
 
-Put each proof in `proofs/<name>.yml`, where `<name>` uses lowercase letters, digits and dashes:
+Put each proof in `proofs/<name>.toml`, where `<name>` uses lowercase letters, digits and dashes:
 
-```yaml
-claim: A coupon applies once per order, even from two browser tabs.
-run: npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"
+```toml
+claim = "A coupon applies once per order, even from two browser tabs."
+run = 'npx playwright test proofs/coupon-once.spec.ts --trace on --output "$ELPROVO_ARTIFACTS"'
 ```
 
-The proof runs in the root of the copy. Keep the test and every other file the proof needs in `proofs/`. Only `.yml` files directly in `proofs/` are proofs. A good proof:
+A short check can go in the proof file itself, as a multi-line literal string, which TOML keeps exactly as written:
+
+```toml
+claim = "The API refuses a second use of the same coupon with status 409."
+run = '''
+set -eu
+curl -fsS -X POST -d code=SAVE10 http://localhost:8080/cart/coupon > /dev/null
+status=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d code=SAVE10 http://localhost:8080/cart/coupon)
+[ "$status" = 409 ] || { echo "FAIL: the second use returned $status, not 409"; exit 1; }
+'''
+```
+
+The proof runs in the root of the copy. Keep the test and every other file the proof needs in `proofs/`. The base run gets your `proofs/` too, but not the other files that your change adds. If a proof uses such a file, its base run fails because the file is missing, not because of the claim, and that shows nothing about your change. Only `.toml` files directly in `proofs/` are proofs. A good proof:
 
 - tests from the outside: the user interface with Playwright, the HTTP API with requests, or the command line. Use a unit test only when the claim is about a library function;
 - checks the exact result the claim states, such as the value, the text or the status. It does not stop at "the page loads";
-- exits with a status other than 0 when the claim is false;
+- exits with a status other than 0 when the claim is false, and prints why as its last line;
 - creates its own data, including any files under `HOME`, and does not depend on another proof or on the order of proofs;
 - never reads the source code, Git or the commit to decide its result;
 - writes traces and screenshots to `$ELPROVO_ARTIFACTS`.
 
 Write the proof before the fix when you can, and watch it fail on the current code.
 
-If the claim also held before your change, as in a refactor, add `before: skip`. The result is then `held`, which never shows that the proof can fail. So for such a proof, break the code on purpose once, check that the proof fails, undo the break, and say in your report that you did.
+If the claim also held before your change, as in a refactor, add `before = "skip"`. The result is then `held`, which never shows that the proof can fail. So for such a proof, break the code on purpose once, check that the proof fails, undo the break, and say in your report that you did.
 
 Never weaken a proof to make it pass. When a proof fails, fix the code, or remove the claim from your report.
 
@@ -66,11 +78,13 @@ Replay reads commits, so the change must be committed. Commit only if you are al
 
 Run `elprovo replay --base <base>`, where the base is usually the merge base with the default branch. `elprovo replay --dry-run` checks the files first without running anything.
 
+Under each `verified` proof, read the line `base run 1 ended with: …`. It must show the claim failing, such as a wrong value or status. If it shows a missing file or command, the base run failed for another reason, and the proof does not show your change. Fix the proof. If it says `printed nothing`, nobody can see why the base run failed: make the proof print why it fails.
+
 If `elprovo` is not installed and you may not install it, do not replay the proofs by hand and do not call any claim verified. Tell the user the proofs are ready and that they need `elprovo replay`.
 
 ## 5. Report
 
-Paste the summary of `elprovo replay`: each claim with its result and its runs, such as "verified: base failed 2 of 2, head passed 2 of 2". Name the proof files, so the reviewer reads them first.
+If the repository replays proofs in CI, the reviewer trusts that check, not your report. Name the proof files, so the reviewer reads them first, and point to the check. If the repository has no such check, paste the summary of your local `elprovo replay`, and say that it ran on your machine. For each claim, give its result, its runs and the line that its base run ended with, such as "verified: base failed 2 of 2, head passed 2 of 2; base run 1 ended with: FAIL: the second use returned 200, not 409".
 
 - `verified` is the only result that shows what the change did.
 - `held` shows the claim holds now. Say how you checked that the proof can fail.

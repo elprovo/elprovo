@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/elprovo/elprovo-next/internal/replay"
 	"github.com/elprovo/elprovo-next/internal/testrepo"
@@ -38,16 +39,16 @@ func TestARunKeepsWithinItsLimitsAndLeavesNothingBehind(t *testing.T) {
 	t.Setenv("SPY", spy)
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
-		"elprovo.yml": "version: 1\nstart: \"true\"\nready: \"true\"\npass_env: [SPY]\n",
+		"elprovo.toml": "version = 1\nstart = \"true\"\nready = \"true\"\npass_env = [\"SPY\"]\n",
 		// The proof prints 1000 bytes, writes 2000 bytes of artifacts, and
 		// leaves a read-only directory in its home, as the Go module cache does.
-		"proofs/big.yml": "claim: The proof writes a lot.\nbefore: skip\nrun: |-\n" +
-			"  head -c 1000 /dev/zero | tr '\\0' a\n" +
-			"  head -c 2000 /dev/zero > \"$ELPROVO_ARTIFACTS/blob\"\n" +
-			"  mkdir -p \"$HOME/cache/module\" && touch \"$HOME/cache/module/file\" && chmod 555 \"$HOME/cache/module\" \"$HOME/cache\"\n" +
-			"  pwd > \"$SPY/workdir\"\n",
+		"proofs/big.toml": "claim = \"The proof writes a lot.\"\nbefore = \"skip\"\nrun = '''\n" +
+			"head -c 1000 /dev/zero | tr '\\0' a\n" +
+			"head -c 2000 /dev/zero > \"$ELPROVO_ARTIFACTS/blob\"\n" +
+			"mkdir -p \"$HOME/cache/module\" && touch \"$HOME/cache/module/file\" && chmod 555 \"$HOME/cache/module\" \"$HOME/cache\"\n" +
+			"pwd > \"$SPY/workdir\"\n'''\n",
 		// The small proof's artifacts are under the limit, so they are kept.
-		"proofs/small.yml": "claim: The proof writes a little.\nbefore: skip\nrun: echo kept > \"$ELPROVO_ARTIFACTS/note.txt\"\n",
+		"proofs/small.toml": "claim = \"The proof writes a little.\"\nbefore = \"skip\"\nrun = 'echo kept > \"$ELPROVO_ARTIFACTS/note.txt\"'\n",
 	})
 
 	report, warnings := replayOnce(t, repo, base, replay.Limits{LogBytes: 100, ArtifactsBytes: 1000})
@@ -89,12 +90,12 @@ func TestUnreadableArtifactsAreDroppedWithAWarning(t *testing.T) {
 	repo := testrepo.New(t)
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
-		"elprovo.yml": "version: 1\nstart: \"true\"\nready: \"true\"\n",
+		"elprovo.toml": "version = 1\nstart = \"true\"\nready = \"true\"\n",
 		// The artifacts are under the size limit; only the locked directory
 		// stops Elprovo from measuring them.
-		"proofs/locked.yml": "claim: The proof locks a directory.\nbefore: skip\nrun: |-\n" +
-			"  echo small > \"$ELPROVO_ARTIFACTS/note.txt\"\n" +
-			"  mkdir \"$ELPROVO_ARTIFACTS/locked\" && chmod 000 \"$ELPROVO_ARTIFACTS/locked\"\n",
+		"proofs/locked.toml": "claim = \"The proof locks a directory.\"\nbefore = \"skip\"\nrun = '''\n" +
+			"echo small > \"$ELPROVO_ARTIFACTS/note.txt\"\n" +
+			"mkdir \"$ELPROVO_ARTIFACTS/locked\" && chmod 000 \"$ELPROVO_ARTIFACTS/locked\"\n'''\n",
 	})
 
 	report, warnings := replayOnce(t, repo, base, replay.Limits{ArtifactsBytes: 1000})
@@ -102,5 +103,35 @@ func TestUnreadableArtifactsAreDroppedWithAWarning(t *testing.T) {
 	run := report.Proofs[0].Head[0]
 	if !run.ArtifactsDropped || len(warnings) != 1 || !strings.Contains(warnings[0], "could not measure the artifacts") {
 		t.Errorf("artifacts_dropped %v, warnings %q; want true and one warning about measuring the artifacts", run.ArtifactsDropped, warnings)
+	}
+}
+
+func TestTheLastLineIsReadBeforeTheLogIsCut(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":     "version = 1\nstart = \"true\"\nready = \"true\"\n",
+		"proofs/long.toml": "claim = \"The proof prints a long log and fails.\"\nbefore = \"skip\"\nrun = \"yes a | head -c 1000; echo the end; exit 1\"\n",
+	})
+
+	report, _ := replayOnce(t, repo, base, replay.Limits{LogBytes: 100})
+
+	if got := report.Proofs[0].Head[0].LastLine; got != "the end" {
+		t.Errorf("last_line is %q; want %q", got, "the end")
+	}
+}
+
+func TestTheLastLineKeepsAtMost200Characters(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":     "version = 1\nstart = \"true\"\nready = \"true\"\n",
+		"proofs/wide.toml": "claim = \"The proof prints a wide line and fails.\"\nbefore = \"skip\"\nrun = \"printf 'é%.0s' $(seq 300); echo; exit 1\"\n",
+	})
+
+	report, _ := replayOnce(t, repo, base, replay.Limits{})
+
+	if got := report.Proofs[0].Head[0].LastLine; got != strings.Repeat("é", 200) {
+		t.Errorf("last_line has %d characters in %d bytes; want 200 é characters", utf8.RuneCountInString(got), len(got))
 	}
 }

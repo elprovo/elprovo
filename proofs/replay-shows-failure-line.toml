@@ -1,0 +1,5 @@
+claim = "elprovo replay shows the last line that a failed base run printed, in its output and in report.json."
+run = "sh proofs/replay-shows-failure-line.sh"
+# Elprovo before 0.2.0 cannot read the TOML files that the proof writes, so
+# its base runs would fail for that reason and not for this claim.
+before = "skip"

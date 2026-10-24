@@ -34,6 +34,7 @@ type RunReport struct {
 	TimedOut         bool    `json:"timed_out"`
 	Seconds          float64 `json:"seconds"`
 	Reason           string  `json:"reason"`
+	LastLine         string  `json:"last_line"`
 	ArtifactsDropped bool    `json:"artifacts_dropped"`
 	Dir              string  `json:"dir"`
 	// LogDir is the absolute path of the run's directory. It is not in the

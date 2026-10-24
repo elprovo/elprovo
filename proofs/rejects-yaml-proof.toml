@@ -1,0 +1,2 @@
+claim = "elprovo replay exits 2 and asks for a rename when a change adds a YAML file directly in proofs/."
+run = "sh proofs/rejects-yaml-proof.sh"

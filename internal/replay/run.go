@@ -2,6 +2,7 @@ package replay
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,6 +18,14 @@ import (
 
 // readyInterval is the pause between two runs of ready.
 const readyInterval = time.Second
+
+const (
+	// lastLineBytes is how much of the end of a log Elprovo reads to find
+	// its last line.
+	lastLineBytes = 64 << 10
+	// maxLastLine is the most characters of a log line that a report keeps.
+	maxLastLine = 200
+)
 
 type runner struct {
 	plan   Plan
@@ -114,6 +123,9 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 	run := &RunReport{Run: n, Outcome: NotRun, Dir: filepath.Join(p.Name, fmt.Sprintf("%s-%d", side, n)), LogDir: runDir}
 	stop := ""
 	interrupted := false
+	// decidedBy names the command whose log explains a fail or not-run
+	// outcome.
+	decidedBy := ""
 
 	result, err := command(ctx, "start", cfg.Start, cfg.StartTimeout)
 	switch {
@@ -123,11 +135,15 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 		interrupted = true
 	case !result.ok():
 		run.Reason = result.describe("start", cfg.StartTimeout)
+		decidedBy = "start"
 	default:
 		var ready bool
 		ready, interrupted, run.Reason, err = r.waitReady(ctx, command, cfg.Ready, cfg.ReadyTimeout)
 		if err != nil {
 			stop = fmt.Sprintf("could not run ready: %v", err)
+		}
+		if run.Reason != "" {
+			decidedBy = "ready"
 		}
 		if ready {
 			result, err := command(ctx, "proof", p.Run, p.Timeout)
@@ -140,6 +156,8 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 				run.Outcome = Fail
 				if result.ok() {
 					run.Outcome = Pass
+				} else {
+					decidedBy = "proof"
 				}
 				run.TimedOut = result.timedOut
 				if result.exitCode >= 0 {
@@ -162,6 +180,13 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 	}
 	run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
 
+	// The cut drops the end of a long log, so the last line comes first.
+	if decidedBy != "" {
+		log := filepath.Join(runDir, decidedBy+".log")
+		if run.LastLine, err = lastLine(log); err != nil {
+			r.warn(fmt.Sprintf("could not read the last line of %s: %v", log, err))
+		}
+	}
 	r.cutLogs(runDir)
 	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
 
@@ -260,6 +285,39 @@ func (r runner) cutLogs(dir string) {
 		fmt.Fprintf(f, "\n[elprovo: this log was cut to its first %d bytes]\n", r.limits.LogBytes)
 		f.Close()
 	}
+}
+
+// lastLine returns the last non-empty line of the log at path, cut to
+// maxLastLine characters, with control characters escaped. It returns ""
+// when the log has no such line.
+func lastLine(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	start := max(0, info.Size()-lastLineBytes)
+	tail := make([]byte, info.Size()-start)
+	n, err := f.ReadAt(tail, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	lines := strings.Split(strings.ToValidUTF8(string(tail[:n]), "\uFFFD"), "\n")
+	for _, line := range slices.Backward(lines) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if runes := []rune(line); len(runes) > maxLastLine {
+			line = string(runes[:maxLastLine])
+		}
+		return config.EscapeControl(line), nil
+	}
+	return "", nil
 }
 
 // keepArtifacts moves the run's artifacts from to the output directory to.

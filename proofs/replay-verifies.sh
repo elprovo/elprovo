@@ -14,8 +14,8 @@ git add -A && git commit -q -m base
 base=$(git rev-parse HEAD)
 
 mkdir proofs
-printf 'version: 1\nstart: "true"\nready: "true"\n' > elprovo.yml
-printf 'claim: The feature is on.\nrun: grep -qx on feature.txt\n' > proofs/feature.yml
+printf 'version = 1\nstart = "true"\nready = "true"\n' > elprovo.toml
+printf 'claim = "The feature is on."\nrun = "grep -qx on feature.txt"\n' > proofs/feature.toml
 echo on > feature.txt
 git add -A && git commit -q -m head
 
@@ -24,5 +24,5 @@ status=0
 cat "$TMPDIR/out.txt" "$TMPDIR/err.txt"
 echo "elprovo replay exited with status $status"
 [ "$status" -eq 0 ]
-grep -qx '✓ verified  proofs/feature.yml' "$TMPDIR/out.txt"
+grep -qx '✓ verified  proofs/feature.toml' "$TMPDIR/out.txt"
 grep -qx '1 verified.' "$TMPDIR/out.txt"
