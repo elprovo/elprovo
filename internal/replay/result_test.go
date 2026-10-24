@@ -16,6 +16,9 @@ func TestResultRulesApplyInOrder(t *testing.T) {
 		{"rule 6: base runs disagree", []Outcome{Pass, Pass}, []Outcome{Pass, Fail}, Flaky},
 		{"rule 7: base runs pass too", []Outcome{Pass, Pass}, []Outcome{Pass, Pass}, NoEffect},
 		{"rule 8: fails on base, passes on head", []Outcome{Pass, Pass}, []Outcome{Fail, Fail}, Verified},
+		{"rule 1 comes before rule 3", []Outcome{Fail, NotRun}, []Outcome{Fail, Fail}, ResultNotRun},
+		{"rule 5 comes before rule 7", []Outcome{Pass, Pass}, []Outcome{Pass, NotRun}, ResultNotRun},
+		{"rule 5 comes before rule 8", []Outcome{Pass, Pass}, []Outcome{NotRun, Fail}, ResultNotRun},
 	}
 	for _, tt := range tests {
 		if got := resultOf(tt.head, tt.base); got != tt.want {

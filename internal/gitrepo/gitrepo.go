@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Repo is a Git repository on disk.
@@ -150,6 +151,8 @@ func git(ctx context.Context, dir string, env []string, stdin *bytes.Buffer, arg
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
+	inOwnGroup(cmd)
+	cmd.WaitDelay = time.Second
 	if stdin != nil {
 		cmd.Stdin = stdin
 	}

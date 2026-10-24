@@ -179,9 +179,12 @@ func selectProofs(ctx context.Context, repo gitrepo.Repo, head string, changed [
 			return nil, err
 		}
 		for _, arg := range opts.Proofs {
-			file := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(arg)), "./")
+			file, err := repoPath(repo.Root(), opts.Dir, arg)
+			if err != nil {
+				return nil, err
+			}
 			if _, ok, err := config.ProofName(file); err != nil || !ok || !slices.Contains(inHead, file) {
-				return nil, fmt.Errorf("%s is not a proof file in the head commit %s", arg, short(head))
+				return nil, fmt.Errorf("%q is not a proof file in the head commit %s", arg, short(head))
 			}
 			candidates = append(candidates, file)
 		}
@@ -211,6 +214,26 @@ func selectProofs(ctx context.Context, repo gitrepo.Repo, head string, changed [
 		return nil, fmt.Errorf("%d proofs are selected; the limit is %d", len(files), maxProofs)
 	}
 	return files, nil
+}
+
+// repoPath turns arg, a path relative to the working directory dir, into a
+// slash-separated path from the repository root. The file need not exist in
+// the working tree, because Elprovo reads it from the head commit.
+func repoPath(root, dir, arg string) (string, error) {
+	path := arg
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	// Git reports the root with symbolic links resolved, so resolve the
+	// directory that holds the file too.
+	if parent, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		path = filepath.Join(parent, filepath.Base(path))
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%q is outside the repository %s", arg, root)
+	}
+	return filepath.ToSlash(rel), nil
 }
 
 // Run replays a prepared plan and writes report.json. It returns an error

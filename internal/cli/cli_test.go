@@ -161,6 +161,13 @@ func TestBeforeSkipRunsOnTheHeadCommitOnly(t *testing.T) {
 	if !strings.Contains(r.stdout, "not compared with the base: before is skip\n") {
 		t.Errorf("stdout does not say why the proof was not compared:\n%s", r.stdout)
 	}
+	raw, err := os.ReadFile(filepath.Join(repo.Dir, ".elprovo", "runs", r.replayID(t), "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"base": []`) {
+		t.Errorf("report.json does not give the base runs as an empty list:\n%s", raw)
+	}
 }
 
 func TestAllReplaysUnchangedProofsOnTheHeadCommitOnly(t *testing.T) {
@@ -230,11 +237,13 @@ func TestAnAppThatIsNeverReadyIsNotRun(t *testing.T) {
 	}
 }
 
-func TestAFailingStartIsNotRun(t *testing.T) {
+func TestAFailingStartIsNotRunAndStopStillRuns(t *testing.T) {
 	repo := testrepo.New(t)
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
-		"elprovo.yml":        "version: 1\nstart: exit 4\nready: \"true\"\n",
+		"elprovo.yml":        "version: 1\nstart: exit 4\nready: \"true\"\nstop: touch \"$SPY/stopped\"\npass_env: [SPY]\n",
 		"proofs/feature.yml": featureProof + "before: skip\n",
 	})
 
@@ -243,6 +252,9 @@ func TestAFailingStartIsNotRun(t *testing.T) {
 	wantResult(t, r, "proofs/feature.yml", replay.ResultNotRun, "", "not-run", 2)
 	if reason := r.proof(t, "proofs/feature.yml").Head[0].Reason; reason != "start exited with status 4" {
 		t.Errorf("reason is %q; want %q", reason, "start exited with status 4")
+	}
+	if _, err := os.Stat(filepath.Join(spy, "stopped")); err != nil {
+		t.Error("stop did not run after start failed")
 	}
 }
 
@@ -342,6 +354,9 @@ func TestAnInterruptRunsStopAndEndsTheReplay(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(spy, "stopped")); err != nil {
 		t.Error("stop did not run after the interrupt")
 	}
+	if p := r.proof(t, "proofs/slow.yml"); len(p.Head) != 0 || p.Result != replay.Unfinished {
+		t.Errorf("the report has %d head runs and result %q; the interrupted run must not count", len(p.Head), p.Result)
+	}
 	wantGone(t, filepath.Join(spy, "pid"))
 }
 
@@ -350,6 +365,7 @@ func TestCommandsGetOnlyTheRunsEnvironmentAndAFreshCopy(t *testing.T) {
 	spy := t.TempDir()
 	t.Setenv("SPY", spy)
 	t.Setenv("PARENT_SECRET", "must not leak")
+	t.Setenv("LANG", "en_US.UTF-8")
 	base := repo.Commit(map[string]string{
 		"src/proofs/keep.txt": "nested\n",
 		"proofs/stale.txt":    "only in the base commit\n",
@@ -359,7 +375,8 @@ func TestCommandsGetOnlyTheRunsEnvironmentAndAFreshCopy(t *testing.T) {
 		"proofs/spy.yml": "claim: The spy records what a run sees.\nrun: |-\n" +
 			"  d=\"$SPY/$ELPROVO_RUN_ID\"; mkdir \"$d\"\n" +
 			"  env | sort > \"$d/env\"; pwd > \"$d/pwd\"; ls -A \"$HOME\" > \"$d/home\"\n" +
-			"  ls -A . proofs src/proofs > \"$d/files\"\n",
+			"  ls -A . proofs src/proofs > \"$d/files\"\n" +
+			"  echo \"$ELPROVO_RUN_ID\" > \"$ELPROVO_ARTIFACTS/seen.txt\"\n",
 	}, "proofs/stale.txt")
 
 	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
@@ -393,6 +410,13 @@ func TestCommandsGetOnlyTheRunsEnvironmentAndAFreshCopy(t *testing.T) {
 		if _, ok := vars["PARENT_SECRET"]; ok {
 			t.Error("a variable from the environment of elprovo replay leaked into the run")
 		}
+		if vars["LANG"] != "en_US.UTF-8" || vars["USER"] != os.Getenv("USER") {
+			t.Errorf("LANG is %q and USER is %q; want them from the environment of elprovo replay", vars["LANG"], vars["USER"])
+		}
+		artifacts := vars["ELPROVO_ARTIFACTS"]
+		if strings.Contains(artifacts, "/base-") || strings.Contains(artifacts, "/head-") || strings.Contains(artifacts, ".elprovo") {
+			t.Errorf("ELPROVO_ARTIFACTS is %q; it must not show the commit or lead to the output directory", artifacts)
+		}
 		for name := range vars {
 			if strings.HasPrefix(name, "ELPROVO_") && name != "ELPROVO_RUN_ID" && name != "ELPROVO_ARTIFACTS" {
 				t.Errorf("the run got %s; only ELPROVO_RUN_ID and ELPROVO_ARTIFACTS are allowed", name)
@@ -407,6 +431,12 @@ func TestCommandsGetOnlyTheRunsEnvironmentAndAFreshCopy(t *testing.T) {
 		files := strings.Join(readLines(t, filepath.Join(d, "files")), " ")
 		if strings.Contains(files, ".git") || strings.Contains(files, "stale.txt") || !strings.Contains(files, "keep.txt") {
 			t.Errorf("the copy holds %q; want no .git, no stale.txt from the base proofs, and src/proofs/keep.txt", files)
+		}
+	}
+	for _, side := range []string{"base-1", "head-1"} {
+		seen := filepath.Join(repo.Dir, ".elprovo", "runs", r.replayID(t), "spy", side, "artifacts", "seen.txt")
+		if _, err := os.Stat(seen); err != nil {
+			t.Errorf("the %s artifact is not in the output directory: %v", side, err)
 		}
 	}
 }
@@ -436,7 +466,7 @@ func TestInvalidInputExitsTwoWithoutRunning(t *testing.T) {
 		{"reserved pass_env name", map[string]string{"elprovo.yml": app + "pass_env: [ELPROVO_TEST_UNSET]\n", "proofs/feature.yml": featureProof}, nil, "must not start with ELPROVO_"},
 		{"unset pass_env variable", map[string]string{"elprovo.yml": app + "pass_env: [UNSET_FOR_ELPROVO_TEST]\n", "proofs/feature.yml": featureProof}, nil, "pass_env names UNSET_FOR_ELPROVO_TEST, which is not set"},
 		{"no elprovo.yml", map[string]string{"proofs/feature.yml": featureProof}, nil, "has no elprovo.yml"},
-		{"unknown proof argument", map[string]string{"elprovo.yml": app, "proofs/feature.yml": featureProof}, []string{"proofs/missing.yml"}, "proofs/missing.yml is not a proof file"},
+		{"unknown proof argument", map[string]string{"elprovo.yml": app, "proofs/feature.yml": featureProof}, []string{"proofs/missing.yml"}, `"proofs/missing.yml" is not a proof file`},
 		{"too many runs", map[string]string{"elprovo.yml": app, "proofs/feature.yml": featureProof}, []string{"--runs", "11"}, "--runs is 11"},
 	}
 	for _, tt := range tests {
@@ -485,5 +515,219 @@ func TestVersionPrintsTheVersion(t *testing.T) {
 	r := run(t, context.Background(), t.TempDir(), "version")
 	if r.status != 0 || r.stdout != "elprovo test\n" {
 		t.Errorf("exit %d, stdout %q; want 0 and %q", r.status, r.stdout, "elprovo test\n")
+	}
+}
+
+func TestAProcessThatIgnoresSIGTERMIsKilled(t *testing.T) {
+	repo := testrepo.New(t)
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		"elprovo.yml": app + "pass_env: [SPY]\n",
+		// The child ignores SIGTERM, and the shell that started it does not.
+		"proofs/stubborn.yml": "claim: The proof leaves a stubborn child.\nbefore: skip\ntimeout: 1s\n" +
+			"run: (trap '' TERM; exec sleep 300) & echo $! > \"$SPY/pid\"; wait\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/stubborn.yml", replay.Failed, "", "fail", 1)
+	wantGone(t, filepath.Join(spy, "pid"))
+}
+
+func TestControlCharactersNeverReachTheTerminal(t *testing.T) {
+	tests := []struct {
+		name, file, content string
+	}{
+		{"in a claim", "proofs/feature.yml", "claim: \"Looks fine\\e[2K\\a\"\nrun: \"true\"\n"},
+		{"as a line separator in a claim", "proofs/feature.yml", "claim: \"one\\Ltwo\"\nrun: \"true\"\n"},
+		{"in an unknown field", "proofs/feature.yml", "claim: c\nrun: \"true\"\n\"\\e]52;c;owned\\a\": x\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testrepo.New(t)
+			base := repo.Commit(map[string]string{"README": "base\n"})
+			repo.Commit(map[string]string{"elprovo.yml": app, tt.file: tt.content})
+
+			r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+			if r.status != 2 {
+				t.Errorf("exit %d; want 2 for an invalid proof file", r.status)
+			}
+			for _, out := range []string{r.stdout, r.stderr} {
+				if strings.ContainsAny(out, "\x1b\a\u2028") {
+					t.Errorf("a control character reached the output: %q", out)
+				}
+			}
+		})
+	}
+}
+
+func TestAnInterruptDuringTheCopyIsReportedAsAnInterrupt(t *testing.T) {
+	repo := testrepo.New(t)
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	// A smudge filter that waits makes the copy slow enough to interrupt.
+	repo.Git("config", "filter.slow.smudge", `touch "$SPY/copying"; sleep 30; cat`)
+	base := repo.Commit(map[string]string{".gitattributes": "slow.txt filter=slow\n", "slow.txt": "data\n"})
+	repo.Commit(map[string]string{"elprovo.yml": app, "proofs/feature.yml": featureProof + "before: skip\n"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			if _, err := os.Stat(filepath.Join(spy, "copying")); err == nil {
+				cancel()
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+	}()
+	r := run(t, ctx, repo.Dir, "replay", "--base", base)
+
+	if r.status != 2 || r.report.StoppedEarly != "interrupted" {
+		t.Errorf("exit %d, stopped_early %q; want 2 and interrupted\n%s%s", r.status, r.report.StoppedEarly, r.stdout, r.stderr)
+	}
+}
+
+func TestAProofThatIsFlakyOnTheBasePointsToTheFailingBaseLog(t *testing.T) {
+	repo := testrepo.New(t)
+	counter := filepath.Join(t.TempDir(), "counter")
+	if err := os.WriteFile(counter, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COUNTER", counter)
+	base := repo.Commit(map[string]string{"feature.txt": "off\n"})
+	repo.Commit(map[string]string{
+		"elprovo.yml": app + "pass_env: [COUNTER]\n",
+		"feature.txt": "on\n",
+		// With the change, the proof passes. Without it, it passes on the
+		// first base run and fails on the second.
+		"proofs/feature.yml": "claim: The feature is on, or the count is even.\nrun: |-\n" +
+			"  grep -qx on feature.txt && exit 0\n" +
+			"  n=$(cat \"$COUNTER\"); echo $((n + 1)) > \"$COUNTER\"; [ $((n % 2)) -eq 0 ]\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base)
+
+	wantResult(t, r, "proofs/feature.yml", replay.Flaky, "pass fail", "pass pass", 1)
+	logPath := filepath.Join(".elprovo", "runs", r.replayID(t), "feature", "base-2", "proof.log")
+	if !strings.Contains(r.stdout, indent+"log: "+logPath+"\n") {
+		t.Errorf("stdout does not point to %s:\n%s", logPath, r.stdout)
+	}
+}
+
+func TestNotRunGivesTheReasonOfTheFirstRunThatDidNotRun(t *testing.T) {
+	repo := testrepo.New(t)
+	counter := filepath.Join(t.TempDir(), "counter")
+	if err := os.WriteFile(counter, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COUNTER", counter)
+	// The base commit's app never starts. The head commit's app is ready
+	// only the first time.
+	base := repo.Commit(map[string]string{"elprovo.yml": "version: 1\nstart: exit 5\nready: \"true\"\n"})
+	repo.Commit(map[string]string{
+		"elprovo.yml": "version: 1\nstart: \"true\"\npass_env: [COUNTER]\ntimeouts:\n  ready: 1s\n" +
+			"ready: n=$(cat \"$COUNTER\"); echo $((n + 1)) > \"$COUNTER\"; [ \"$n\" -eq 0 ]\n",
+		"proofs/feature.yml": "claim: The proof passes.\nrun: \"true\"\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base)
+
+	wantResult(t, r, "proofs/feature.yml", replay.ResultNotRun, "not-run not-run", "pass not-run", 2)
+	if !strings.Contains(r.stdout, indent+"reason: start exited with status 5\n") {
+		t.Errorf("stdout does not give the reason of base run 1, the first run that did not run:\n%s", r.stdout)
+	}
+}
+
+func TestBaseRunsUseTheBaseConfigAndTheCommitsAlternate(t *testing.T) {
+	repo := testrepo.New(t)
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	base := repo.Commit(map[string]string{
+		"elprovo.yml": "version: 1\nstart: echo base >> \"$SPY/order\"\nready: \"true\"\npass_env: [SPY]\n",
+		"feature.txt": "off\n",
+	})
+	repo.Commit(map[string]string{
+		"elprovo.yml":        "version: 1\nstart: echo head >> \"$SPY/order\"\nready: \"true\"\npass_env: [SPY]\n",
+		"feature.txt":        "on\n",
+		"proofs/feature.yml": featureProof,
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base)
+
+	wantResult(t, r, "proofs/feature.yml", replay.Verified, "fail fail", "pass pass", 0)
+	if order := strings.Join(readLines(t, filepath.Join(spy, "order")), " "); order != "base head base head" {
+		t.Errorf("the runs started in the order %q; want %q", order, "base head base head")
+	}
+}
+
+func TestReadyIsRunAgainUntilItSucceeds(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{
+		// ready fails the first time and succeeds the second time.
+		"elprovo.yml":        "version: 1\nstart: \"true\"\nready: test -f tried || { touch tried; false; }\n",
+		"proofs/feature.yml": "claim: The proof passes.\nbefore: skip\nrun: \"true\"\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/feature.yml", replay.Held, "", "pass", 0)
+}
+
+func TestTheDefaultBaseIsTheMergeBaseWithOriginHead(t *testing.T) {
+	repo := testrepo.New(t)
+	fork := repo.Commit(map[string]string{"elprovo.yml": app, "feature.txt": "off\n"})
+	repo.Git("switch", "-q", "-c", "change")
+	repo.Commit(map[string]string{"feature.txt": "on\n", "proofs/feature.yml": featureProof})
+	// main moves on after the branch was made.
+	repo.Git("switch", "-q", "main")
+	upstream := repo.Commit(map[string]string{"README": "later on main\n"})
+	repo.Git("switch", "-q", "change")
+	repo.Git("update-ref", "refs/remotes/origin/main", upstream)
+	repo.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+	r := replayIn(t, repo.Dir, "--runs", "1")
+
+	if r.report.Base != fork {
+		t.Errorf("the base commit is %s; want the merge base %s, not origin/HEAD %s", r.report.Base, fork, upstream)
+	}
+	wantResult(t, r, "proofs/feature.yml", replay.Verified, "fail", "pass", 0)
+}
+
+func TestProofArgumentsAndOutAreRelativeToTheWorkingDirectory(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"sub/README": "a subdirectory\n"})
+	repo.Commit(map[string]string{"elprovo.yml": app, "proofs/feature.yml": featureProof + "before: skip\n", "feature.txt": "on\n"})
+	sub := filepath.Join(repo.Dir, "sub")
+
+	var stdout, stderr bytes.Buffer
+	status := Run(context.Background(), "test", []string{"replay", "--base", base, "--runs", "1", "--out", "../out", "../proofs/feature.yml"},
+		Env{Stdout: &stdout, Stderr: &stderr, Environ: os.Environ(), Dir: sub})
+
+	if status != 0 || !strings.Contains(stdout.String(), "✓ held      proofs/feature.yml\n") {
+		t.Errorf("exit %d; want 0 and the proof held\n%s%s", status, stdout.String(), stderr.String())
+	}
+	if reports, _ := filepath.Glob(filepath.Join(repo.Dir, "out", "runs", "*", "report.json")); len(reports) != 1 {
+		t.Errorf("found %d reports in the out directory; want 1", len(reports))
+	}
+}
+
+func TestAllWithoutProofFilesSaysSo(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"README": "base\n"})
+	repo.Commit(map[string]string{"elprovo.yml": app})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--all")
+
+	if r.status != 0 || !strings.Contains(r.stdout, "No proof is selected: the head commit has no proof file.\n") {
+		t.Errorf("exit %d; want 0 and a message that the head commit has no proof file\n%s", r.status, r.stdout)
 	}
 }

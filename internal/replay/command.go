@@ -80,16 +80,37 @@ func runCommand(ctx context.Context, command, dir string, env []string, logPath 
 		result.interrupted = true
 	}
 
-	group := -cmd.Process.Pid
-	_ = syscall.Kill(group, syscall.SIGTERM)
-	select {
-	case <-done:
-	case <-time.After(killGrace):
-		_ = syscall.Kill(group, syscall.SIGKILL)
-		<-done
-	}
 	result.exitCode = -1
+	endGroup(-cmd.Process.Pid, done)
 	return result, nil
+}
+
+// endGroup sends SIGTERM to a process group, and SIGKILL after killGrace when
+// any process in it still runs, even after the shell itself has exited.
+// shellDone receives once when the shell exits.
+func endGroup(group int, shellDone <-chan error) {
+	_ = syscall.Kill(group, syscall.SIGTERM)
+	grace := time.NewTimer(killGrace)
+	defer grace.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		select {
+		case <-shellDone:
+			shellDone = nil
+		case <-poll.C:
+		case <-grace.C:
+			_ = syscall.Kill(group, syscall.SIGKILL)
+			if shellDone != nil {
+				<-shellDone
+			}
+			return
+		}
+		// Signal 0 checks whether any process in the group still exists.
+		if shellDone == nil && errors.Is(syscall.Kill(group, 0), syscall.ESRCH) {
+			return
+		}
+	}
 }
 
 func exited(err error) (commandResult, error) {

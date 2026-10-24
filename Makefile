@@ -27,8 +27,8 @@ mod-check: ## Fail when go.mod or go.sum is not tidy
 
 check: fmt-check vet mod-check test-race build ## Run every check that CI runs
 
-replay: build ## Replay this repository's proofs; set BASE to compare with another commit
-	./bin/elprovo replay --base $${BASE:-origin/main}
+replay: build ## Replay this repository's proofs against the merge base with origin/HEAD, or against BASE
+	./bin/elprovo replay $${BASE:+--base "$$BASE"}
 
 clean: ## Remove the build and replay output
 	rm -rf bin .elprovo

@@ -29,7 +29,7 @@ Each file must be one YAML document that holds a mapping, and must be at most 64
 | `timeouts.ready` | No | Duration | `5m` | The longest time Elprovo waits for `ready` to exit 0. |
 | `timeouts.stop` | No | Duration | `2m` | The longest time `stop` may take. |
 
-A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not start with `ELPROVO_`. A value in `env` is text: Elprovo takes a YAML scalar as written, so `8080` and `"8080"` give the same value.
+A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not start with `ELPROVO_`. A value in `env` is text: Elprovo takes a YAML scalar as written, so `8080` and `"8080"` give the same value. A missing value, `~` or `null` gives an empty value.
 
 `pass_env` may name `HOME` or `TMPDIR`. The command then gets the real directory instead of the run's own empty one, as section 4 says. Do this only when a tool cannot work without it, because commands can then change files there.
 
@@ -71,9 +71,9 @@ elprovo version
 | `--all` | Off | Also replay the proofs that the change does not add or modify, on the head commit only. |
 | `--runs N` | `2` | The number of runs on each commit. `N` must be from 1 to 10. |
 | `--require` | Off | Treat a replay with no selected proof as a failure. |
-| `--out DIR` | `.elprovo` | Where Elprovo writes logs, artifacts and the report. |
+| `--out DIR` | `.elprovo` | Where Elprovo writes logs, artifacts and the report. A relative path is relative to the working directory. |
 | `--dry-run` | Off | Check the files and print the selected proofs, without running any command. It exits 0 when the files are valid, 1 when no proof is selected and `--require` is on, and 2 when a file is invalid. |
-| `PROOF...` | | Replay only these proof files from the head commit. |
+| `PROOF...` | | Replay only these proof files from the head commit. A relative path is relative to the working directory. |
 
 Elprovo resolves `--base` and `--head` to commit IDs once, before it runs anything.
 
@@ -81,7 +81,7 @@ Elprovo resolves `--base` and `--head` to commit IDs once, before it runs anythi
 
 ### 3.1 Selecting proofs
 
-A proof is **claimed** when the change adds or modifies its file, as `git diff --name-only --diff-filter=AM <base> <head>` lists it. Only a claimed proof says something about the change, so only a claimed proof runs on the base commit.
+A proof is **claimed** when the change adds or modifies its file, as `git diff --name-only --no-renames --diff-filter=AM <base> <head>` lists it. A renamed proof file counts as added. Only a claimed proof says something about the change, so only a claimed proof runs on the base commit.
 
 Elprovo selects:
 
@@ -108,12 +108,12 @@ One run of proof `P` on commit `C` has these steps:
 1. Make a new directory for the run in the system's temporary directory. In it, make an empty directory named `elprovo-<run ID>`, the copy, where the run ID is 8 random characters from `[a-z0-9]`. Write the files of `C` into the copy, except `proofs/`, as a checkout of `C` writes them, with the repository's checkout filters such as Git LFS. The copy has no `.git` directory, no untracked or ignored files, and no submodule contents.
 2. Write `proofs/` from the head commit into the copy, so that both commits run the same proof.
 3. Take `elprovo.yml` from `C`. If `C` has none, take it from the head commit.
-4. Make the run's empty home directory and temporary directory in the run's directory, and its artifacts directory in the output directory.
+4. Make the run's empty home directory, temporary directory and artifacts directory in the run's directory, and the run's output directory, `<proof name>/<base|head>-<run number>/` in the replay's output directory. The logs go to the run's output directory.
 5. Run `start`. If it exits with a status other than 0 or takes longer than `timeouts.start`, the run's outcome is **not run**. Go to step 8.
 6. Run `ready` once a second until it exits 0. If it does not exit 0 within `timeouts.ready`, the outcome is **not run**. Go to step 8.
 7. Run the proof's `run`. If it exits 0, the outcome is **pass**. If it exits with any other status, is ended by a signal, or takes longer than the proof's `timeout`, the outcome is **fail**.
 8. If `stop` is set, run it, after every outcome. If `stop` exits with a status other than 0 or takes longer than `timeouts.stop`, the next run could not start clean. Elprovo then stops the whole replay, as section 3.5 says.
-9. Delete the run's directory, with the copy, the home directory and the temporary directory in it. Keep the logs and the artifacts in the output directory.
+9. Move the artifacts to `artifacts/` in the run's output directory. When they are more than 1 GiB together, or Elprovo cannot read them all, delete them instead, and the report says so. Then delete the run's directory, with everything in it.
 
 Docker Compose names a project after its directory by default, so each run gets its own Compose project without any setting.
 
@@ -149,7 +149,7 @@ Elprovo applies the first rule that matches:
 
 ### 3.5 Stopping early
 
-When `stop` fails, or when Elprovo gets `SIGINT` or `SIGTERM`, it ends the replay early:
+Elprovo ends the replay early when `stop` fails, when it cannot make a run's directories, copy a commit or start `/bin/sh`, or when it gets `SIGINT` or `SIGTERM`. A failure that an interrupt causes counts as the interrupt. To end early:
 
 1. It ends the command that runs, as section 4 says.
 2. On an interrupt, it runs `stop`, if set, with its timeout.
@@ -159,17 +159,17 @@ When `stop` fails, or when Elprovo gets `SIGINT` or `SIGTERM`, it ends the repla
 
 ## 4. How commands run
 
-- Each command runs as `/bin/sh -c '<command>'`, with the run's directory as its working directory, in its own process group.
-- When a command takes longer than its timeout, Elprovo sends `SIGTERM` to its process group, then `SIGKILL` 10 seconds later. A command that ends in time can leave processes running, as a server started by `start` does. `stop` must end them.
+- Each command runs as `/bin/sh -c '<command>'`, with the copy as its working directory, in its own process group.
+- When a command takes longer than its timeout, or on an interrupt, Elprovo sends `SIGTERM` to its process group. When any process in the group still runs 10 seconds later, even after the shell has exited, Elprovo sends `SIGKILL` to the group. A command that ends in time can leave processes running, as a server started by `start` does. `stop` must end them.
 - Each command gets only these environment variables, and a later item replaces an earlier one with the same name:
   1. `PATH`, and `USER` and `LANG` when they are set, from the environment of `elprovo replay`;
   2. `HOME` and `TMPDIR`, set to the run's own empty directories;
   3. the variables in `env`;
   4. the variables in `pass_env`, from the environment of `elprovo replay`;
-  5. `ELPROVO_RUN_ID`, the run ID, and `ELPROVO_ARTIFACTS`, the absolute path of the run's artifacts directory.
-- No variable says which commit runs or whether it is the base or the head commit. A proof that inspects the code to decide its result defeats the replay, and a reviewer should reject it.
+  5. `ELPROVO_RUN_ID`, the run ID, and `ELPROVO_ARTIFACTS`, the absolute path of the run's empty artifacts directory.
+- No variable, and no path in one, says which commit runs or whether it is the base or the head commit. A proof that inspects the code to decide its result defeats the replay, and a reviewer should reject it.
+- The run's own `HOME` and `TMPDIR` keep tools from using the real ones by default. They are not a sandbox: commands run as the user who runs Elprovo, with that user's access to files, processes and the network. A command can still reach the real home directory by its path.
 - Elprovo keeps the combined standard output and standard error of each command in a log file. After the run, it cuts a log longer than 10 MiB to 10 MiB, and adds a line that says so.
-- After the run, Elprovo deletes a run's artifacts when they are more than 1 GiB together, and the report says so.
 - Elprovo does not remove secrets from logs. Use test credentials only.
 
 ## 5. Output
@@ -194,7 +194,7 @@ A log file exists only for a command that ran.
 
 ### 5.2 Text
 
-Elprovo prints one block for each proof, then a summary line. The [README](README.md) shows the form. For a `failed` or `flaky` proof, the block also shows the path of `proof.log` from the first head run that failed. For a `not-run` proof, it shows the reason of the first run that did not run. The text form is for people. Programs read `report.json`.
+Elprovo prints one block for each proof, then a summary line. The [README](README.md) shows the form. For a `failed` or `flaky` proof, the block also shows the path of `proof.log` from the first head run that failed, or, when no head run failed, from the first base run that failed. For a `not-run` proof, it shows the reason and the log of the first run, in the order the runs ran, that did not run. The text form is for people. Programs read `report.json`.
 
 ### 5.3 `report.json`
 
@@ -237,9 +237,9 @@ The example shows one run of each commit to keep it short.
 | `outcome` | `pass`, `fail` or `not-run`, from section 3.2. |
 | `exit_code` | The exit status of `run`, or `null` when `run` did not run or did not exit by itself. |
 | `timed_out` | Whether `run` took longer than its timeout. |
-| `seconds` | How long the whole run took, from step 1 to step 9. |
+| `seconds` | How long the run took, from the start of step 1 to the end of step 8. |
 | `reason` | Why the outcome is `not-run`, such as `start exited with status 1` or `ready did not exit 0 within 5m`. It is empty otherwise. |
-| `artifacts_dropped` | Whether Elprovo deleted the run's artifacts because they were more than 1 GiB. |
-| `dir` | The run's directory, relative to the replay's output directory. |
+| `artifacts_dropped` | Whether Elprovo deleted the run's artifacts, because they were more than 1 GiB or it could not read them all. |
+| `dir` | The run's output directory, relative to the replay's output directory. |
 
 New fields may appear in a report of the same format. A program that reads reports must ignore fields it does not know.

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
@@ -158,8 +159,8 @@ func ParseProof(file string, data []byte) (Proof, error) {
 	switch {
 	case claim == "":
 		problems = append(problems, "claim is missing")
-	case strings.ContainsAny(claim, "\r\n"):
-		problems = append(problems, "claim must be one line")
+	case strings.ContainsFunc(claim, isControl):
+		problems = append(problems, "claim must be one line, without control characters")
 	case utf8.RuneCountInString(claim) > maxClaimLength:
 		problems = append(problems, fmt.Sprintf("claim has %d characters; the limit is %d", utf8.RuneCountInString(claim), maxClaimLength))
 	}
@@ -192,13 +193,36 @@ func decode(data []byte, v any) error {
 		if errors.Is(err, io.EOF) {
 			return errors.New("the file is empty")
 		}
-		return err
+		// The message can quote the file, which comes from the change, so
+		// it must not reach a terminal with control characters in it.
+		return errors.New(escapeControl(err.Error()))
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return errors.New("the file must hold one YAML document")
 	}
 	return nil
+}
+
+// isControl reports whether r is a control character or a line or paragraph
+// separator, which a terminal or a viewer can act on.
+func isControl(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp)
+}
+
+// escapeControl writes every control character in s, except line breaks
+// and tabs, as a Go escape sequence.
+func escapeControl(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if isControl(r) && r != '\n' && r != '\t' {
+			quoted := strconv.QuoteRuneToASCII(r)
+			b.WriteString(quoted[1 : len(quoted)-1])
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func requireCommand(problems []string, field, command string) []string {

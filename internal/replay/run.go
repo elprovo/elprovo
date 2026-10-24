@@ -3,6 +3,7 @@ package replay
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -68,31 +69,42 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 		}
 	}
 
+	// cannot ends the replay because Elprovo itself failed. When the replay
+	// was interrupted, the failure is a result of the interrupt.
+	cannot := func(format string, args ...any) (*RunReport, string) {
+		if ctx.Err() != nil {
+			return nil, "interrupted"
+		}
+		return nil, fmt.Sprintf(format, args...)
+	}
+
 	runDir := filepath.Join(r.dir, p.Name, fmt.Sprintf("%s-%d", side, n))
-	artifacts := filepath.Join(runDir, "artifacts")
-	if err := os.MkdirAll(artifacts, 0o755); err != nil {
-		return nil, fmt.Sprintf("could not make %s: %v", artifacts, err)
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return cannot("could not make %s: %v", runDir, err)
 	}
 	id := randomID()
 	scratch, err := os.MkdirTemp("", "elprovo-")
 	if err != nil {
-		return nil, fmt.Sprintf("could not make a temporary directory: %v", err)
+		return cannot("could not make a temporary directory: %v", err)
 	}
 	defer r.remove(scratch)
 	work := filepath.Join(scratch, "elprovo-"+id)
 	home := filepath.Join(scratch, "home")
 	tmp := filepath.Join(scratch, "tmp")
-	for _, dir := range []string{work, home, tmp} {
+	// The artifacts directory is in the run's directory, so its path does
+	// not show the commit, and it does not lead to the output directory.
+	artifacts := filepath.Join(scratch, "artifacts")
+	for _, dir := range []string{work, home, tmp, artifacts} {
 		if err := os.Mkdir(dir, 0o755); err != nil {
-			return nil, fmt.Sprintf("could not make %s: %v", dir, err)
+			return cannot("could not make %s: %v", dir, err)
 		}
 	}
 	inProofs := func(file string) bool { return strings.HasPrefix(file, config.ProofDir+"/") }
 	if err := r.plan.repo.Checkout(ctx, commit, work, scratch, func(f string) bool { return !inProofs(f) }); err != nil {
-		return nil, fmt.Sprintf("could not copy commit %s: %v", short(commit), err)
+		return cannot("could not copy commit %s: %v", short(commit), err)
 	}
 	if err := r.plan.repo.Checkout(ctx, r.plan.Head, work, scratch, inProofs); err != nil {
-		return nil, fmt.Sprintf("could not copy the proofs of commit %s: %v", short(r.plan.Head), err)
+		return cannot("could not copy the proofs of commit %s: %v", short(r.plan.Head), err)
 	}
 
 	env := commandEnv(r.opts.Environ, cfg, home, tmp, id, artifacts)
@@ -148,15 +160,12 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 			stop = result.describe("stop", cfg.StopTimeout)
 		}
 	}
-
-	r.cutLogs(runDir)
-	if size, err := dirSize(artifacts); err == nil && size > r.limits.ArtifactsBytes {
-		r.remove(artifacts)
-		run.ArtifactsDropped = os.MkdirAll(artifacts, 0o755) == nil
-	}
 	run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
 
-	if interrupted {
+	r.cutLogs(runDir)
+	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
+
+	if interrupted || (stop != "" && ctx.Err() != nil) {
 		return nil, "interrupted"
 	}
 	return run, stop
@@ -251,6 +260,84 @@ func (r runner) cutLogs(dir string) {
 		fmt.Fprintf(f, "\n[elprovo: this log was cut to its first %d bytes]\n", r.limits.LogBytes)
 		f.Close()
 	}
+}
+
+// keepArtifacts moves the run's artifacts from to the output directory to.
+// It drops them instead, and reports true, when they are over the limit or
+// when Elprovo cannot measure them. to exists afterwards in every case.
+func (r runner) keepArtifacts(from, to string) bool {
+	dropped := false
+	size, err := dirSize(from)
+	switch {
+	case err != nil:
+		r.warn(fmt.Sprintf("could not measure the artifacts for %s, so they were dropped: %v", to, err))
+		dropped = true
+	case size > r.limits.ArtifactsBytes:
+		dropped = true
+	default:
+		if err := moveDir(from, to); err != nil {
+			r.warn(fmt.Sprintf("could not keep the artifacts in %s, so they were dropped: %v", to, err))
+			r.remove(to)
+			dropped = true
+		}
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		r.warn(fmt.Sprintf("could not make %s: %v", to, err))
+	}
+	return dropped
+}
+
+// moveDir renames from to to, and copies it when the two are on different
+// file systems. It copies directories, regular files and symbolic links,
+// and leaves out other kinds of file, such as sockets.
+func moveDir(from, to string) error {
+	if os.Rename(from, to) == nil {
+		return nil
+	}
+	return filepath.WalkDir(from, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(from, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(to, rel)
+		switch {
+		case d.IsDir():
+			return os.MkdirAll(target, 0o755)
+		case d.Type()&fs.ModeSymlink != 0:
+			link, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(link, target)
+		case d.Type().IsRegular():
+			return copyFile(path, target)
+		}
+		return nil
+	})
+}
+
+func copyFile(from, to string) error {
+	info, err := os.Stat(from)
+	if err != nil {
+		return err
+	}
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_EXCL, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func dirSize(dir string) (int64, error) {

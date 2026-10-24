@@ -89,7 +89,7 @@ func runReplay(ctx context.Context, args []string, env Env) int {
 	out := output{w: env.Stdout, dir: env.Dir}
 	out.header(plan, opts.Runs, *dryRun)
 	if len(plan.Proofs) == 0 {
-		out.noProofs(*require)
+		out.noProofs(opts.All, *require)
 		if *require {
 			return 1
 		}
@@ -128,8 +128,12 @@ func (o output) header(plan replay.Plan, runs int, dryRun bool) {
 		plan.Base[:7], plan.Head[:7], count(len(plan.Proofs), "proof"), count(runs, "run"), note)
 }
 
-func (o output) noProofs(require bool) {
-	fmt.Fprintln(o.w, "No proof is selected: the change adds or modifies no proof file.")
+func (o output) noProofs(all, require bool) {
+	if all {
+		fmt.Fprintln(o.w, "No proof is selected: the head commit has no proof file.")
+	} else {
+		fmt.Fprintln(o.w, "No proof is selected: the change adds or modifies no proof file.")
+	}
 	if require {
 		fmt.Fprintln(o.w, "--require is on, so this is a failure.")
 	}
@@ -171,22 +175,44 @@ func (o output) proof(p replay.ProofReport) {
 
 	switch p.Result {
 	case replay.Failed, replay.Flaky:
-		for _, run := range p.Head {
-			if run.Outcome == replay.Fail {
-				fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, "proof.log")))
-				break
-			}
+		// A flaky proof can fail on the base commit only.
+		if run, ok := first(p.Head, replay.Fail); ok {
+			fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, "proof.log")))
+		} else if run, ok := first(p.Base, replay.Fail); ok {
+			fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(run.LogDir, "proof.log")))
 		}
 	case replay.ResultNotRun:
-		for _, run := range append(append([]replay.RunReport{}, p.Head...), p.Base...) {
-			if run.Outcome == replay.NotRun {
-				log := strings.Fields(run.Reason + " start")[0]
-				fmt.Fprintf(o.w, "%sreason: %s\n%slog: %s\n", indent, run.Reason, indent, o.rel(filepath.Join(run.LogDir, log+".log")))
-				break
-			}
+		if run, ok := first(inRunOrder(p), replay.NotRun); ok {
+			// The reason starts with the command that failed: start or ready.
+			log := strings.Fields(run.Reason + " start")[0]
+			fmt.Fprintf(o.w, "%sreason: %s\n%slog: %s\n", indent, run.Reason, indent, o.rel(filepath.Join(run.LogDir, log+".log")))
 		}
 	}
 	fmt.Fprintln(o.w)
+}
+
+func first(runs []replay.RunReport, outcome replay.Outcome) (replay.RunReport, bool) {
+	for _, run := range runs {
+		if run.Outcome == outcome {
+			return run, true
+		}
+	}
+	return replay.RunReport{}, false
+}
+
+// inRunOrder lists a proof's runs in the order they ran: base 1, head 1,
+// base 2, head 2, and so on.
+func inRunOrder(p replay.ProofReport) []replay.RunReport {
+	var runs []replay.RunReport
+	for i := 0; i < max(len(p.Base), len(p.Head)); i++ {
+		if i < len(p.Base) {
+			runs = append(runs, p.Base[i])
+		}
+		if i < len(p.Head) {
+			runs = append(runs, p.Head[i])
+		}
+	}
+	return runs
 }
 
 func (o output) summary(report replay.Report) {

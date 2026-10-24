@@ -123,9 +123,9 @@ Each command runs in the copy, with `/bin/sh -c`, and gets only these environmen
 - `PATH`, `USER` and `LANG` from your environment;
 - `HOME` and `TMPDIR`, set to empty directories that belong to the run;
 - the values in `env`, and the variables you name in `pass_env`;
-- `ELPROVO_RUN_ID` and `ELPROVO_ARTIFACTS`, the directory for traces and screenshots.
+- `ELPROVO_RUN_ID` and `ELPROVO_ARTIFACTS`, an empty directory for traces and screenshots. After the run, Elprovo moves what is there to the run's directory in `.elprovo`.
 
-So a run cannot read your dotfiles, and a tool that writes to the home directory writes to the run's own. Two things follow from this:
+So tools that read or write the home directory use the run's own, not yours. This is not a sandbox: commands run as you, so a command can still reach your real home by its path, and anything else you can reach. Two things follow from the empty home directory:
 
 - Tool managers such as mise and asdf find tools through the home directory, so their shims can fail in a run. Put the real tool directory first in `PATH`, or name what the tool needs in `pass_env`.
 - If `docker` cannot reach its daemon in a run, set `DOCKER_HOST` to the daemon's socket and add `DOCKER_HOST` to `pass_env`.
