@@ -25,7 +25,7 @@ Set the caches before you run Elprovo: `export GOCACHE="$(go env GOCACHE)" GOMOD
 
 ## 2. Reproduce the bug as a test
 
-Write one Go test, `func TestXxx(t *testing.T)`, that fails because of the bug, in the package where the bug is. A good test:
+Write one Go test that fails because of the bug, in the package where the bug is. Make it a top-level function, `func TestXxx(t *testing.T)`. Elprovo gives verdicts to top-level test functions only. A subtest, or a method of a testify suite, counts only through its top-level function, so even in a repository that uses suites, put the reproduction in its own function. A good test:
 
 - checks the exact result that the bug gets wrong, such as the value, the text or the status;
 - fails with a message that names the bug, such as `total after SAVE10 twice is 81.00; want 90.00`;

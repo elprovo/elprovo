@@ -297,6 +297,7 @@ A run is not a sandbox. Commands run as you, with your access to files, processe
 - It does not judge whether a test reproduces the right bug. Read the test, and the line that its base run failed with.
 - It does not prove that a change is correct. It shows that a test fails without the change and passes with it, and that the other tests in the same packages kept their results. A weak test shows little, and tests in other packages do not run.
 - It reads Go tests only, from one Go module at the repository root.
+- It gives verdicts to top-level test functions. A subtest, or a method of a testify suite, counts only through its top-level function.
 - It does not isolate a run beyond the environment, the home directory and the temporary directory. Docker images, caches, the network and anything outside the copy are shared.
 
 ## License
