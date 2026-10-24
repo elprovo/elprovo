@@ -50,20 +50,10 @@ func (r Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// AddedOrModified returns the files that are added or modified from base to
-// head. A renamed file counts as added.
-func (r Repo) AddedOrModified(ctx context.Context, base, head string) ([]string, error) {
-	out, err := git(ctx, r.root, nil, nil, "diff", "--name-only", "--no-renames", "--diff-filter=AM", "-z", base, head, "--")
-	if err != nil {
-		return nil, err
-	}
-	return splitNUL(out), nil
-}
-
-// Files returns the paths of the files in dir, and in its subdirectories, in
-// commit. dir is relative to the repository root.
-func (r Repo) Files(ctx context.Context, commit, dir string) ([]string, error) {
-	out, err := git(ctx, r.root, nil, nil, "ls-tree", "-r", "-z", "--name-only", commit, "--", dir+"/")
+// ChangedFiles returns the files that differ between base and head, in path
+// order, deleted files included. A renamed file counts as deleted and added.
+func (r Repo) ChangedFiles(ctx context.Context, base, head string) ([]string, error) {
+	out, err := git(ctx, r.root, nil, nil, "diff", "--name-only", "--no-renames", "-z", base, head, "--")
 	if err != nil {
 		return nil, err
 	}

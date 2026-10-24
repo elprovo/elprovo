@@ -1,22 +1,28 @@
-// Package replay runs proofs on fresh copies of the base and head commits, as
-// sections 3 to 5 of SPEC.md define.
+// Package replay runs the tests of a change on fresh copies of the base and
+// head commits, and gives each test a verdict, as sections 3 to 5 of SPEC.md
+// define.
 package replay
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/elprovo/elprovo-next/internal/config"
 	"github.com/elprovo/elprovo-next/internal/gitrepo"
+	"github.com/elprovo/elprovo-next/internal/gotest"
 )
 
-const maxProofs = 100
+// maxTestFileSize is the largest test file that Elprovo reads to find the
+// tests a change adds or edits.
+const maxTestFileSize = 4 << 20
 
 // Limits bounds what a run keeps. A zero field takes the limit from SPEC.md.
 type Limits struct {
@@ -41,44 +47,48 @@ type Options struct {
 	// Base and Head name the commits. An empty Base means the merge base of
 	// the head commit and origin/HEAD. An empty Head means HEAD.
 	Base, Head string
-	All        bool
 	Runs       int
 	// Out is the output directory.
 	Out string
-	// Proofs, when not empty, are the only proof files to replay.
-	Proofs []string
 	// Environ is the environment of elprovo replay, as os.Environ gives it.
 	Environ []string
 	Limits  Limits
 	// RunDone is called after each run ends. It may be nil.
-	RunDone func(proof ProofReport, side string, run RunReport)
-	// ProofDone is called after all the runs of a proof end. It may be nil.
-	ProofDone func(ProofReport)
+	RunDone func(side string, run RunReport)
 	// Warn reports a problem that does not change any result. It may be nil.
 	Warn func(string)
 }
 
-// Planned is a selected proof.
-type Planned struct {
-	config.Proof
-	// Claimed is true when the change adds or modifies the proof file.
-	Claimed bool
-	// OnBase is true when the proof runs on the base commit.
-	OnBase bool
+// ChangedTest is a test that the change adds or edits.
+type ChangedTest struct {
+	// Package is the package's directory, as go test takes it.
+	Package string
+	Name    string
+	// File is the test's file, a slash-separated path from the repository
+	// root.
+	File string
 }
 
 // Plan is a checked replay that has not run yet.
 type Plan struct {
 	Base, Head string
-	Proofs     []Planned
-	repo       gitrepo.Repo
+	// Changed holds the tests that the change adds or edits, in file and
+	// name order.
+	Changed []ChangedTest
+	// Packages are the directories of the Go files that the change adds,
+	// modifies or deletes, in order, as go test takes them, such as ./cart.
+	Packages []string
+	repo     gitrepo.Repo
+	// module is the path of the head commit's Go module.
+	module     string
 	headConfig config.Repo
-	// baseConfig is nil when the base commit has no elprovo.toml.
+	// baseConfig is nil when the base commit has no elprovo.toml of version
+	// 2. The base runs then use the head commit's.
 	baseConfig *config.Repo
 }
 
-// Prepare resolves the commits, selects the proofs and checks every file the
-// replay needs, without running any command.
+// Prepare resolves the commits, finds the changed tests and the packages to
+// test, and checks every file the replay needs, without running any command.
 func Prepare(ctx context.Context, opts Options) (Plan, error) {
 	if opts.Runs < 1 || opts.Runs > 10 {
 		return Plan{}, fmt.Errorf("--runs is %d; it must be from 1 to 10", opts.Runs)
@@ -106,42 +116,48 @@ func Prepare(ctx context.Context, opts Options) (Plan, error) {
 		return Plan{}, err
 	}
 
-	changed, err := repo.AddedOrModified(ctx, plan.Base, plan.Head)
-	if err != nil {
-		return Plan{}, err
-	}
-	files, err := selectProofs(ctx, repo, plan.Head, changed, opts)
+	files, err := repo.ChangedFiles(ctx, plan.Base, plan.Head)
 	if err != nil {
 		return Plan{}, err
 	}
 	for _, file := range files {
-		data, _, err := repo.ReadFile(ctx, plan.Head, file, config.MaxFileSize)
+		dir, ok := packageDir(file)
+		if !ok {
+			continue
+		}
+		if !slices.Contains(plan.Packages, dir) {
+			plan.Packages = append(plan.Packages, dir)
+		}
+		if !strings.HasSuffix(file, "_test.go") || !plan.headConfig.Tests.Matches(file) {
+			continue
+		}
+		names, err := changedTests(ctx, repo, plan.Base, plan.Head, file)
 		if err != nil {
 			return Plan{}, err
 		}
-		proof, err := config.ParseProof(file, data)
-		if err != nil {
+		for _, name := range names {
+			plan.Changed = append(plan.Changed, ChangedTest{Package: dir, Name: name, File: file})
+		}
+	}
+	slices.Sort(plan.Packages)
+	if len(plan.Packages) > 0 {
+		if plan.module, err = modulePath(ctx, repo, plan.Head); err != nil {
 			return Plan{}, err
 		}
-		claimed := slices.Contains(changed, file)
-		plan.Proofs = append(plan.Proofs, Planned{
-			Proof:   proof,
-			Claimed: claimed,
-			OnBase:  claimed && proof.Before == config.BeforeFail,
-		})
 	}
 
 	configs := []config.Repo{plan.headConfig}
-	if slices.ContainsFunc(plan.Proofs, func(p Planned) bool { return p.OnBase }) {
-		data, found, err := repo.ReadFile(ctx, plan.Base, config.RepoFile, config.MaxFileSize)
-		if err != nil {
+	data, found, err = repo.ReadFile(ctx, plan.Base, config.RepoFile, config.MaxFileSize)
+	if err != nil {
+		return Plan{}, err
+	}
+	if found {
+		base, err := config.ParseRepo(config.RepoFile+" in the base commit "+short(plan.Base), data)
+		switch {
+		case errors.Is(err, config.ErrVersion1):
+		case err != nil:
 			return Plan{}, err
-		}
-		if found {
-			base, err := config.ParseRepo(config.RepoFile+" in the base commit "+short(plan.Base), data)
-			if err != nil {
-				return Plan{}, err
-			}
+		default:
 			plan.baseConfig = &base
 			configs = append(configs, base)
 		}
@@ -168,72 +184,64 @@ func resolveBase(ctx context.Context, repo gitrepo.Repo, rev, head string) (stri
 	return repo.MergeBase(ctx, head, upstream)
 }
 
-// selectProofs applies section 3.1 of SPEC.md and returns the selected proof
-// files in file name order.
-func selectProofs(ctx context.Context, repo gitrepo.Repo, head string, changed []string, opts Options) ([]string, error) {
-	var candidates []string
-	switch {
-	case len(opts.Proofs) > 0:
-		inHead, err := repo.Files(ctx, head, config.ProofDir)
-		if err != nil {
-			return nil, err
-		}
-		for _, arg := range opts.Proofs {
-			file, err := repoPath(repo.Root(), opts.Dir, arg)
-			if err != nil {
-				return nil, err
-			}
-			if _, ok, err := config.ProofName(file); err != nil || !ok || !slices.Contains(inHead, file) {
-				return nil, fmt.Errorf("%q is not a proof file in the head commit %s", arg, short(head))
-			}
-			candidates = append(candidates, file)
-		}
-	case opts.All:
-		inHead, err := repo.Files(ctx, head, config.ProofDir)
-		if err != nil {
-			return nil, err
-		}
-		candidates = inHead
-	default:
-		candidates = changed
+// packageDir returns the directory of a Go file as go test takes it, such as
+// ./cart, or false when file is not a Go file or go test leaves it out: a
+// file in testdata or vendor, or one whose path has a name that starts with
+// . or _.
+func packageDir(file string) (string, bool) {
+	if !strings.HasSuffix(file, ".go") {
+		return "", false
 	}
-
-	var files []string
-	for _, file := range candidates {
-		_, ok, err := config.ProofName(file)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			files = append(files, file)
+	for _, name := range strings.Split(file, "/") {
+		if name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			return "", false
 		}
 	}
-	slices.Sort(files)
-	files = slices.Compact(files)
-	if len(files) > maxProofs {
-		return nil, fmt.Errorf("%d proofs are selected; the limit is %d", len(files), maxProofs)
+	if dir := path.Dir(file); dir != "." {
+		return "./" + dir, true
 	}
-	return files, nil
+	return ".", true
 }
 
-// repoPath turns arg, a path relative to the working directory dir, into a
-// slash-separated path from the repository root. The file need not exist in
-// the working tree, because Elprovo reads it from the head commit.
-func repoPath(root, dir, arg string) (string, error) {
-	path := arg
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(dir, path)
+// changedTests returns the tests in file that the head commit adds or
+// declares differently from the base commit. It returns none when the head
+// commit deletes the file.
+func changedTests(ctx context.Context, repo gitrepo.Repo, base, head, file string) ([]string, error) {
+	headData, found, err := repo.ReadFile(ctx, head, file, maxTestFileSize)
+	if err != nil || !found {
+		return nil, err
 	}
-	// Git reports the root with symbolic links resolved, so resolve the
-	// directory that holds the file too.
-	if parent, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
-		path = filepath.Join(parent, filepath.Base(path))
+	baseData, _, err := repo.ReadFile(ctx, base, file, maxTestFileSize)
+	if err != nil {
+		return nil, err
 	}
-	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%q is outside the repository %s", arg, root)
+	names, err := gotest.Changed(baseData, headData)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not valid Go in the base or the head commit: %v", config.EscapeControl(file), config.EscapeControl(err.Error()))
 	}
-	return filepath.ToSlash(rel), nil
+	return names, nil
+}
+
+// modulePath reads the module path from the go.mod at the root of commit.
+func modulePath(ctx context.Context, repo gitrepo.Repo, commit string) (string, error) {
+	data, found, err := repo.ReadFile(ctx, commit, "go.mod", config.MaxFileSize)
+	if err != nil {
+		return "", err
+	}
+	if found {
+		for _, line := range strings.Split(string(data), "\n") {
+			if fields := strings.Fields(line); len(fields) >= 2 && fields[0] == "module" {
+				return strings.Trim(fields[1], "\"`"), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("the head commit %s has no go.mod with a module line at the repository root; this release tests one Go module, at the root", short(commit))
+}
+
+// importPath returns the import path of pkg, a directory such as ./cart, as
+// go test prints it.
+func (p Plan) importPath(pkg string) string {
+	return p.module + strings.TrimPrefix(pkg, ".")
 }
 
 // Run replays a prepared plan and writes report.json. It returns an error
@@ -244,33 +252,47 @@ func Run(ctx context.Context, plan Plan, opts Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	report := Report{Format: 1, Base: plan.Base, Head: plan.Head, Runs: opts.Runs}
+	report := Report{
+		Format: 2, Base: plan.Base, Head: plan.Head, Runs: opts.Runs, Packages: append([]string{}, plan.Packages...),
+		Changed: []TestReport{}, Regressions: []TestReport{}, BaseRuns: []RunReport{}, HeadRuns: []RunReport{},
+	}
 	report.Dir = filepath.Join(out, "runs", randomID())
 	if err := os.MkdirAll(report.Dir, 0o755); err != nil {
 		return Report{}, err
 	}
 	r := runner{plan: plan, opts: opts, dir: report.Dir, limits: opts.Limits.withDefaults()}
-	for _, p := range plan.Proofs {
-		report.Proofs = append(report.Proofs, ProofReport{
-			File: p.File, Claim: p.Claim, Before: p.Before, Claimed: p.Claimed,
-			Result: Unfinished, Base: []RunReport{}, Head: []RunReport{},
-		})
-	}
 
-	for i, p := range plan.Proofs {
-		proofReport := &report.Proofs[i]
-		stop := r.replayProof(ctx, p, proofReport)
-		if len(proofReport.Head) == opts.Runs && (!p.OnBase || len(proofReport.Base) == opts.Runs) {
-			proofReport.Result = resultOf(outcomes(proofReport.Head), outcomes(proofReport.Base))
-			if opts.ProofDone != nil {
-				opts.ProofDone(*proofReport)
+	var baseResults, headResults []gotest.Results
+runs:
+	for n := 1; n <= opts.Runs; n++ {
+		for _, side := range []string{"base", "head"} {
+			if ctx.Err() != nil {
+				report.StoppedEarly = "interrupted"
+				break runs
+			}
+			run, results, stop := r.runOnce(ctx, side, n)
+			if run != nil {
+				if side == "base" {
+					report.BaseRuns = append(report.BaseRuns, *run)
+					baseResults = append(baseResults, results)
+				} else {
+					report.HeadRuns = append(report.HeadRuns, *run)
+					headResults = append(headResults, results)
+				}
+				if opts.RunDone != nil {
+					opts.RunDone(side, *run)
+				}
+				if run.Outcome == RunNotRun && stop == "" {
+					stop = fmt.Sprintf("%s run %d did not run: %s", side, n, run.Reason)
+				}
+			}
+			if stop != "" {
+				report.StoppedEarly = stop
+				break runs
 			}
 		}
-		if stop != "" {
-			report.StoppedEarly = stop
-			break
-		}
 	}
+	report.Changed, report.Regressions = plan.testReports(baseResults, headResults, report.StoppedEarly == "")
 
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -282,8 +304,65 @@ func Run(ctx context.Context, plan Plan, opts Options) (Report, error) {
 	return report, nil
 }
 
-func outcomes(runs []RunReport) []Outcome {
-	var list []Outcome
+// testReports gives each changed test, and each other test that a run
+// printed a result for, its results and, when every run ended, its verdict.
+func (p Plan) testReports(base, head []gotest.Results, finished bool) (changed, regressions []TestReport) {
+	changed, regressions = []TestReport{}, []TestReport{}
+	isChanged := map[gotest.Test]bool{}
+	for _, c := range p.Changed {
+		t := gotest.Test{Package: p.importPath(c.Package), Name: c.Name}
+		isChanged[t] = true
+		report := TestReport{Package: c.Package, Name: c.Name, File: c.File, Base: testRuns(base, t), Head: testRuns(head, t)}
+		if finished {
+			report.Verdict = changedVerdict(outcomes(report.Head), outcomes(report.Base))
+		}
+		changed = append(changed, report)
+	}
+
+	pkgOf := map[string]string{}
+	for _, pkg := range p.Packages {
+		pkgOf[p.importPath(pkg)] = pkg
+	}
+	seen := map[gotest.Test]bool{}
+	var others []gotest.Test
+	for _, results := range slices.Concat(base, head) {
+		for t := range results.Tests {
+			if _, ok := pkgOf[t.Package]; ok && !isChanged[t] && !seen[t] {
+				seen[t] = true
+				others = append(others, t)
+			}
+		}
+	}
+	slices.SortFunc(others, func(a, b gotest.Test) int {
+		return strings.Compare(pkgOf[a.Package]+"\x00"+a.Name, pkgOf[b.Package]+"\x00"+b.Name)
+	})
+	for _, t := range others {
+		report := TestReport{Package: pkgOf[t.Package], Name: config.EscapeControl(t.Name), Base: testRuns(base, t), Head: testRuns(head, t)}
+		if finished {
+			report.Verdict = regressionVerdict(outcomes(report.Head), outcomes(report.Base))
+		}
+		regressions = append(regressions, report)
+	}
+	return changed, regressions
+}
+
+// testRuns returns the result of t in each run, with control characters in
+// the messages escaped.
+func testRuns(runs []gotest.Results, t gotest.Test) []TestRun {
+	list := []TestRun{}
+	for _, results := range runs {
+		result := results.Result(t)
+		message := result.Message
+		if result.Outcome == gotest.Absent && message == "" {
+			message = "the run printed no result for this test"
+		}
+		list = append(list, TestRun{Outcome: result.Outcome, Message: config.EscapeControl(message)})
+	}
+	return list
+}
+
+func outcomes(runs []TestRun) []gotest.Outcome {
+	var list []gotest.Outcome
 	for _, run := range runs {
 		list = append(list, run.Outcome)
 	}

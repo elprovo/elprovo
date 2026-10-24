@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** the tests are the proofs. Elprovo runs the tests of a change on fresh copies of the base and head commits, and gives each test a verdict. Proof files, `proofs/`, `claim`, `before`, `--all` and `PROOF` arguments are gone.
+- **Breaking:** `elprovo.toml` is version 2. `[tests]` says which files hold the tests and how to run them, and the optional `[app]` table holds `start`, `ready` and `stop`. Elprovo rejects version 1 with a message that asks for version 2. This release reads `go test -json` output only.
+- Both copies run the head commit's tests, so only the code differs between them.
+- A changed test is `fixed`, `not-reproduced`, `new`, `not-fixed`, `flaky` or `skipped`. The other tests in the packages that the change touches are `kept`, `broke`, `already-failing`, `not-run`, `flaky`, `skipped` or `fixed`.
+- A test without a result is `absent`, never `failed`. So a test that does not build without the change is `new`, not `fixed`.
+- `--require` makes a replay in which no test is `fixed` fail.
+- **Breaking:** `report.json` is format 2, with the lists `changed`, `regressions`, `base_runs` and `head_runs`.
+- A run whose app does not start, or whose tests print no events, stops the replay with exit status 2.
+- `make replay` replays Elprovo's own Go tests.
+
 ## 0.2.0 (2026-10-24)
 
 - **Breaking:** Elprovo reads TOML files: `elprovo.toml` and `proofs/<name>.toml`, with the same fields as before. It no longer reads `elprovo.yml` or YAML proof files, because YAML changed some commands without notice. For example, it read `run: ! grep -q x f` as `grep -q x f`, and `claim: Issue #58 is fixed.` as `Issue`. TOML keeps every string as written.

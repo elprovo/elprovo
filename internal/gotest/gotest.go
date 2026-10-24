@@ -50,6 +50,9 @@ type Results struct {
 	// Reasons holds, for each package that failed, the first line that
 	// explains why, such as a compile error or a panic.
 	Reasons map[string]string
+	// Events is the number of lines that were go test -json events. It is 0
+	// when go test could not run at all.
+	Events int
 }
 
 const (
@@ -90,9 +93,10 @@ func Parse(r io.Reader) (Results, error) {
 	scanner.Buffer(make([]byte, 64<<10), maxLine)
 	for scanner.Scan() {
 		var e event
-		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil {
+		if err := json.Unmarshal(scanner.Bytes(), &e); err != nil || e.Action == "" {
 			continue
 		}
+		results.Events++
 		switch e.Action {
 		case "build-output":
 			if line := explaining(e.Output); line != "" {

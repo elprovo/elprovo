@@ -2,12 +2,16 @@
 package testrepo
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// Module is the path of the Go module that GoModule writes.
+const Module = "example.com/m"
 
 // Repo is a Git repository in a test's temporary directory.
 type Repo struct {
@@ -61,4 +65,25 @@ func (r Repo) Git(args ...string) string {
 		r.t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// GoModule returns files with the go.mod of the Go module Module added.
+func GoModule(files map[string]string) map[string]string {
+	module := map[string]string{"go.mod": "module " + Module + "\n\ngo 1.27\n"}
+	maps.Copy(module, files)
+	return module
+}
+
+// ShareGoCaches sets GOCACHE and GOMODCACHE to the caches that the go
+// command uses now, so that go test in a run, whose home directory is empty,
+// can list them in pass_env and does not build everything again.
+func ShareGoCaches(t testing.TB) {
+	t.Helper()
+	for _, name := range []string{"GOCACHE", "GOMODCACHE"} {
+		out, err := exec.Command("go", "env", name).Output()
+		if err != nil {
+			t.Fatalf("go env %s: %v", name, err)
+		}
+		t.Setenv(name, strings.TrimSpace(string(out)))
+	}
 }

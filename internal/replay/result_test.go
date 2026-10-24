@@ -1,37 +1,78 @@
 package replay
 
-import "testing"
+import (
+	"testing"
 
-func TestResultRulesApplyInOrder(t *testing.T) {
+	"github.com/elprovo/elprovo-next/internal/gotest"
+)
+
+const (
+	pass   = gotest.Passed
+	fail   = gotest.Failed
+	skip   = gotest.Skipped
+	absent = gotest.Absent
+)
+
+func TestChangedTestVerdictsApplyInOrder(t *testing.T) {
 	tests := []struct {
 		name       string
-		head, base []Outcome
-		want       Result
+		head, base []gotest.Outcome
+		want       Verdict
 	}{
-		{"rule 1: a head run did not run", []Outcome{Pass, NotRun}, []Outcome{Fail, Fail}, ResultNotRun},
-		{"rule 2: head runs disagree", []Outcome{Pass, Fail}, []Outcome{Fail, Fail}, Flaky},
-		{"rule 3: every head run fails", []Outcome{Fail, Fail}, []Outcome{Pass, Pass}, Failed},
-		{"rule 4: no base runs", []Outcome{Pass, Pass}, nil, Held},
-		{"rule 5: a base run did not run", []Outcome{Pass, Pass}, []Outcome{Fail, NotRun}, ResultNotRun},
-		{"rule 6: base runs disagree", []Outcome{Pass, Pass}, []Outcome{Pass, Fail}, Flaky},
-		{"rule 7: base runs pass too", []Outcome{Pass, Pass}, []Outcome{Pass, Pass}, NoEffect},
-		{"rule 8: fails on base, passes on head", []Outcome{Pass, Pass}, []Outcome{Fail, Fail}, Verified},
-		{"rule 1 comes before rule 3", []Outcome{Fail, NotRun}, []Outcome{Fail, Fail}, ResultNotRun},
-		{"rule 5 comes before rule 7", []Outcome{Pass, Pass}, []Outcome{Pass, NotRun}, ResultNotRun},
-		{"rule 5 comes before rule 8", []Outcome{Pass, Pass}, []Outcome{NotRun, Fail}, ResultNotRun},
+		{"fails without the change and passes with it", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, fail}, Fixed},
+		{"passes without the change too", []gotest.Outcome{pass, pass}, []gotest.Outcome{pass, pass}, NotReproduced},
+		{"has no result without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{absent, absent}, New},
+		{"fails with the change", []gotest.Outcome{fail, fail}, []gotest.Outcome{fail, fail}, NotFixed},
+		{"has no result with the change", []gotest.Outcome{absent, absent}, []gotest.Outcome{fail, fail}, NotFixed},
+		{"passes and fails with the change", []gotest.Outcome{pass, fail}, []gotest.Outcome{fail, fail}, Flaky},
+		{"passes once and has no result once with the change", []gotest.Outcome{absent, pass}, []gotest.Outcome{fail, fail}, Flaky},
+		{"fails and passes without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, pass}, Flaky},
+		{"fails and has no result without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{absent, fail}, Flaky},
+		{"is skipped with the change", []gotest.Outcome{skip, skip}, []gotest.Outcome{fail, fail}, Skipped},
+		{"is skipped without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{skip, skip}, Skipped},
+		{"is skipped once with the change", []gotest.Outcome{pass, skip}, []gotest.Outcome{fail, fail}, Flaky},
+		{"a failure with the change comes before a skip", []gotest.Outcome{fail, fail}, []gotest.Outcome{skip, skip}, NotFixed},
 	}
 	for _, tt := range tests {
-		if got := resultOf(tt.head, tt.base); got != tt.want {
-			t.Errorf("%s: resultOf(head %v, base %v) = %q; want %q", tt.name, tt.head, tt.base, got, tt.want)
+		if got := changedVerdict(tt.head, tt.base); got != tt.want {
+			t.Errorf("%s: changedVerdict(head %v, base %v) = %q; want %q", tt.name, tt.head, tt.base, got, tt.want)
+		}
+	}
+}
+
+func TestRegressionVerdictsApplyInOrder(t *testing.T) {
+	tests := []struct {
+		name       string
+		head, base []gotest.Outcome
+		want       Verdict
+	}{
+		{"passes on both", []gotest.Outcome{pass, pass}, []gotest.Outcome{pass, pass}, Kept},
+		{"passes without the change and fails with it", []gotest.Outcome{fail, fail}, []gotest.Outcome{pass, pass}, Broke},
+		{"fails on both", []gotest.Outcome{fail, fail}, []gotest.Outcome{fail, fail}, AlreadyFailing},
+		{"fails without the change and passes with it", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, fail}, Fixed},
+		{"has no result with the change", []gotest.Outcome{absent, absent}, []gotest.Outcome{pass, pass}, NotRun},
+		{"has no result once without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{pass, absent}, NotRun},
+		{"no result comes before disagreement", []gotest.Outcome{pass, fail}, []gotest.Outcome{absent, pass}, NotRun},
+		{"passes and fails with the change", []gotest.Outcome{pass, fail}, []gotest.Outcome{pass, pass}, Flaky},
+		{"passes and fails without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, pass}, Flaky},
+		{"is skipped on both", []gotest.Outcome{skip, skip}, []gotest.Outcome{skip, skip}, Skipped},
+		{"is skipped with the change", []gotest.Outcome{skip, skip}, []gotest.Outcome{pass, pass}, Skipped},
+	}
+	for _, tt := range tests {
+		if got := regressionVerdict(tt.head, tt.base); got != tt.want {
+			t.Errorf("%s: regressionVerdict(head %v, base %v) = %q; want %q", tt.name, tt.head, tt.base, got, tt.want)
 		}
 	}
 }
 
 func TestExitStatus(t *testing.T) {
-	report := func(stopped string, results ...Result) Report {
+	report := func(stopped string, changed []Verdict, regressions ...Verdict) Report {
 		r := Report{StoppedEarly: stopped}
-		for _, result := range results {
-			r.Proofs = append(r.Proofs, ProofReport{Result: result})
+		for _, v := range changed {
+			r.Changed = append(r.Changed, TestReport{Verdict: v})
+		}
+		for _, v := range regressions {
+			r.Regressions = append(r.Regressions, TestReport{Verdict: v})
 		}
 		return r
 	}
@@ -41,14 +82,17 @@ func TestExitStatus(t *testing.T) {
 		require bool
 		want    int
 	}{
-		{"verified and held", report("", Verified, Held), false, 0},
-		{"no proof", report(""), false, 0},
-		{"no proof with --require", report(""), true, 1},
-		{"a failed proof", report("", Verified, Failed), false, 1},
-		{"a no-effect proof", report("", NoEffect), false, 1},
-		{"a flaky proof beats a not-run proof", report("", ResultNotRun, Flaky), false, 1},
-		{"a not-run proof", report("", Verified, ResultNotRun), false, 2},
-		{"stopped early beats a failed proof", report("interrupted", Failed, Unfinished), false, 2},
+		{"fixed and kept", report("", []Verdict{Fixed}, Kept), false, 0},
+		{"new, skipped, already failing and not run", report("", []Verdict{New, Skipped}, AlreadyFailing, NotRun), false, 0},
+		{"no test", report("", nil), false, 0},
+		{"no fixed test with --require", report("", []Verdict{New}, Kept), true, 1},
+		{"a fixed regression test with --require", report("", nil, Fixed), true, 0},
+		{"not fixed", report("", []Verdict{Fixed, NotFixed}), false, 1},
+		{"not reproduced", report("", []Verdict{NotReproduced}), false, 1},
+		{"a flaky changed test", report("", []Verdict{Flaky}), false, 1},
+		{"broke", report("", []Verdict{Fixed}, Kept, Broke), false, 1},
+		{"a flaky regression test", report("", nil, Flaky), false, 1},
+		{"stopped early beats not fixed", report("interrupted", []Verdict{NotFixed}), false, 2},
 	}
 	for _, tt := range tests {
 		if got := tt.report.ExitStatus(tt.require); got != tt.want {

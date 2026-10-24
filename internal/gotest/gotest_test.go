@@ -67,6 +67,7 @@ func TestParseGivesTheExitOfAPackageWhoseTestMainExited(t *testing.T) {
 func TestParseCutsALongMessageAndSkipsLinesThatAreNotEvents(t *testing.T) {
 	long := strings.Repeat("x", 300)
 	input := "go: downloading example.com/m v1.0.0\n" +
+		`{"note":"a JSON line that is not an event"}` + "\n" +
 		`{"Action":"run","Package":"p","Test":"TestLong"}` + "\n" +
 		`{"Action":"output","Package":"p","Test":"TestLong","Output":"    a_test.go:3: ` + long + `\n"}` + "\n" +
 		`{"Action":"fail","Package":"p","Test":"TestLong"}` + "\n"
@@ -79,6 +80,9 @@ func TestParseCutsALongMessageAndSkipsLinesThatAreNotEvents(t *testing.T) {
 	got := results.Result(Test{"p", "TestLong"})
 	if got.Outcome != Failed || len([]rune(got.Message)) != maxMessage || !strings.HasPrefix(got.Message, "a_test.go:3: xxx") {
 		t.Errorf("result is %s with a message of %d characters; want failed with %d characters", got.Outcome, len([]rune(got.Message)), maxMessage)
+	}
+	if results.Events != 3 {
+		t.Errorf("Events is %d; want 3, one for each line that is an event", results.Events)
 	}
 }
 

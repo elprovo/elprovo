@@ -9,11 +9,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/elprovo/elprovo-next/internal/config"
+	"github.com/elprovo/elprovo-next/internal/gotest"
 )
 
 // readyInterval is the pause between two runs of ready.
@@ -27,6 +29,10 @@ const (
 	maxLastLine = 200
 )
 
+// plainWord matches a package directory that the shell reads as one word
+// without quotes.
+var plainWord = regexp.MustCompile(`^[A-Za-z0-9._/~+-]+$`)
+
 type runner struct {
 	plan   Plan
 	opts   Options
@@ -34,41 +40,10 @@ type runner struct {
 	limits Limits
 }
 
-// replayProof does every run of one proof, alternating the commits, and adds
-// the runs to report. It returns why the replay must stop, or "".
-func (r runner) replayProof(ctx context.Context, p Planned, report *ProofReport) string {
-	sides := []string{"head"}
-	if p.OnBase {
-		sides = []string{"base", "head"}
-	}
-	for n := 1; n <= r.opts.Runs; n++ {
-		for _, side := range sides {
-			if ctx.Err() != nil {
-				return "interrupted"
-			}
-			run, stop := r.runOnce(ctx, p, side, n)
-			if run != nil {
-				if side == "base" {
-					report.Base = append(report.Base, *run)
-				} else {
-					report.Head = append(report.Head, *run)
-				}
-				if r.opts.RunDone != nil {
-					r.opts.RunDone(*report, side, *run)
-				}
-			}
-			if stop != "" {
-				return stop
-			}
-		}
-	}
-	return ""
-}
-
-// runOnce does the steps of section 3.2 of SPEC.md for run n of proof p on
-// one side. It returns the run, or nil when the run did not end because of an
-// interrupt, and why the replay must stop, or "".
-func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*RunReport, string) {
+// runOnce does the steps of section 3.2 of SPEC.md for run n on one side. It
+// returns the run and its test results, or nil when the run did not end
+// because of an interrupt, and why the replay must stop, or "".
+func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, gotest.Results, string) {
 	started := time.Now()
 	commit, cfg := r.plan.Head, r.plan.headConfig
 	if side == "base" {
@@ -80,14 +55,15 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 
 	// cannot ends the replay because Elprovo itself failed. When the replay
 	// was interrupted, the failure is a result of the interrupt.
-	cannot := func(format string, args ...any) (*RunReport, string) {
+	cannot := func(format string, args ...any) (*RunReport, gotest.Results, string) {
 		if ctx.Err() != nil {
-			return nil, "interrupted"
+			return nil, gotest.Results{}, "interrupted"
 		}
-		return nil, fmt.Sprintf(format, args...)
+		return nil, gotest.Results{}, fmt.Sprintf(format, args...)
 	}
 
-	runDir := filepath.Join(r.dir, p.Name, fmt.Sprintf("%s-%d", side, n))
+	name := fmt.Sprintf("%s-%d", side, n)
+	runDir := filepath.Join(r.dir, name)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return cannot("could not make %s: %v", runDir, err)
 	}
@@ -108,81 +84,118 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 			return cannot("could not make %s: %v", dir, err)
 		}
 	}
-	inProofs := func(file string) bool { return strings.HasPrefix(file, config.ProofDir+"/") }
-	if err := r.plan.repo.Checkout(ctx, commit, work, scratch, func(f string) bool { return !inProofs(f) }); err != nil {
+	// Both commits run the head commit's tests, so that only the code
+	// differs between them.
+	isTest := r.plan.headConfig.Tests.Matches
+	if err := r.plan.repo.Checkout(ctx, commit, work, scratch, func(f string) bool { return !isTest(f) }); err != nil {
 		return cannot("could not copy commit %s: %v", short(commit), err)
 	}
-	if err := r.plan.repo.Checkout(ctx, r.plan.Head, work, scratch, inProofs); err != nil {
-		return cannot("could not copy the proofs of commit %s: %v", short(r.plan.Head), err)
+	if err := r.plan.repo.Checkout(ctx, r.plan.Head, work, scratch, isTest); err != nil {
+		return cannot("could not copy the tests of commit %s: %v", short(r.plan.Head), err)
+	}
+
+	// A package that the commit does not have would make go test print a
+	// path in the run's directory, so it is left out with a plain reason.
+	var packages []string
+	missing := map[string]string{}
+	for _, pkg := range r.plan.Packages {
+		if hasGoFiles(filepath.Join(work, filepath.FromSlash(pkg))) {
+			packages = append(packages, pkg)
+		} else {
+			missing[r.plan.importPath(pkg)] = fmt.Sprintf("the %s commit has no Go files in %s", side, pkg)
+		}
 	}
 
 	env := commandEnv(r.opts.Environ, cfg, home, tmp, id, artifacts)
 	command := func(ctx context.Context, name, line string, timeout time.Duration) (commandResult, error) {
 		return runCommand(ctx, line, work, env, filepath.Join(runDir, name+".log"), timeout)
 	}
-	run := &RunReport{Run: n, Outcome: NotRun, Dir: filepath.Join(p.Name, fmt.Sprintf("%s-%d", side, n)), LogDir: runDir}
+	run := &RunReport{Run: n, Outcome: RunNotRun, Dir: name, LogDir: runDir}
+	var results gotest.Results
 	stop := ""
 	interrupted := false
-	// decidedBy names the command whose log explains a fail or not-run
-	// outcome.
-	decidedBy := ""
 
-	result, err := command(ctx, "start", cfg.Start, cfg.StartTimeout)
+	ready := true
+	if cfg.App != nil {
+		ready = false
+		result, err := command(ctx, "start", cfg.App.Start, cfg.App.StartTimeout)
+		switch {
+		case err != nil:
+			stop = fmt.Sprintf("could not run start: %v", err)
+		case result.interrupted:
+			interrupted = true
+		case !result.ok():
+			run.Reason = result.describe("start", cfg.App.StartTimeout)
+			run.Log = filepath.Join(name, "start.log")
+		default:
+			ready, interrupted, run.Reason, err = r.waitReady(ctx, command, cfg.App.Ready, cfg.App.ReadyTimeout)
+			if err != nil {
+				stop = fmt.Sprintf("could not run ready: %v", err)
+			}
+			if run.Reason != "" {
+				run.Log = filepath.Join(name, "ready.log")
+			}
+		}
+	}
 	switch {
-	case err != nil:
-		stop = fmt.Sprintf("could not run start: %v", err)
-	case result.interrupted:
-		interrupted = true
-	case !result.ok():
-		run.Reason = result.describe("start", cfg.StartTimeout)
-		decidedBy = "start"
+	case !ready:
+	case len(packages) == 0:
+		run.Outcome = Ran
 	default:
-		var ready bool
-		ready, interrupted, run.Reason, err = r.waitReady(ctx, command, cfg.Ready, cfg.ReadyTimeout)
-		if err != nil {
-			stop = fmt.Sprintf("could not run ready: %v", err)
-		}
-		if run.Reason != "" {
-			decidedBy = "ready"
-		}
-		if ready {
-			result, err := command(ctx, "proof", p.Run, p.Timeout)
+		line := strings.ReplaceAll(cfg.Tests.Run, config.Packages, shellWords(packages))
+		result, err := command(ctx, "test", line, cfg.Tests.Timeout)
+		switch {
+		case err != nil:
+			stop = fmt.Sprintf("could not run the tests: %v", err)
+		case result.interrupted:
+			interrupted = true
+		default:
+			run.Log = filepath.Join(name, "test.log")
+			run.TimedOut = result.timedOut
+			if result.exitCode >= 0 {
+				code := result.exitCode
+				run.ExitCode = &code
+			}
+			// The parse comes before the cut, which drops the end of a long
+			// log.
+			results, err = parseLog(filepath.Join(runDir, "test.log"))
 			switch {
 			case err != nil:
-				stop = fmt.Sprintf("could not run the proof: %v", err)
-			case result.interrupted:
-				interrupted = true
-			default:
-				run.Outcome = Fail
-				if result.ok() {
-					run.Outcome = Pass
-				} else {
-					decidedBy = "proof"
+				run.Reason = fmt.Sprintf("could not read the output of the tests: %v", err)
+			case results.Events == 0:
+				run.Reason = "the tests printed no go test -json events"
+				if result.timedOut {
+					run.Reason = fmt.Sprintf("the tests did not end within %s and printed no go test -json events", formatDuration(cfg.Tests.Timeout))
 				}
-				run.TimedOut = result.timedOut
-				if result.exitCode >= 0 {
-					code := result.exitCode
-					run.ExitCode = &code
+			default:
+				run.Outcome = Ran
+				if result.timedOut {
+					for _, pkg := range packages {
+						setReason(&results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(cfg.Tests.Timeout)))
+					}
 				}
 			}
 		}
 	}
+	for pkg, reason := range missing {
+		setReason(&results, pkg, reason)
+	}
 
-	if cfg.Stop != "" {
+	if cfg.App != nil && cfg.App.Stop != "" {
 		// stop runs after an interrupt too, so it must not inherit ctx.
-		result, err := command(context.WithoutCancel(ctx), "stop", cfg.Stop, cfg.StopTimeout)
+		result, err := command(context.WithoutCancel(ctx), "stop", cfg.App.Stop, cfg.App.StopTimeout)
 		switch {
 		case err != nil:
 			stop = fmt.Sprintf("could not run stop: %v", err)
 		case !result.ok() && stop == "":
-			stop = result.describe("stop", cfg.StopTimeout)
+			stop = result.describe("stop", cfg.App.StopTimeout)
 		}
 	}
 	run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
 
 	// The cut drops the end of a long log, so the last line comes first.
-	if decidedBy != "" {
-		log := filepath.Join(runDir, decidedBy+".log")
+	if run.Outcome == RunNotRun && run.Log != "" {
+		log := filepath.Join(r.dir, run.Log)
 		if run.LastLine, err = lastLine(log); err != nil {
 			r.warn(fmt.Sprintf("could not read the last line of %s: %v", log, err))
 		}
@@ -191,9 +204,53 @@ func (r runner) runOnce(ctx context.Context, p Planned, side string, n int) (*Ru
 	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
 
 	if interrupted || (stop != "" && ctx.Err() != nil) {
-		return nil, "interrupted"
+		return nil, gotest.Results{}, "interrupted"
 	}
-	return run, stop
+	return run, results, stop
+}
+
+// hasGoFiles reports whether dir holds a Go file that go test reads.
+func hasGoFiles(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(entries, func(e os.DirEntry) bool {
+		name := e.Name()
+		return e.Type().IsRegular() && strings.HasSuffix(name, ".go") && !strings.HasPrefix(name, ".") && !strings.HasPrefix(name, "_")
+	})
+}
+
+// shellWords joins the packages for /bin/sh, and quotes a package whose
+// directory name the shell would change.
+func shellWords(packages []string) string {
+	words := make([]string, len(packages))
+	for i, pkg := range packages {
+		words[i] = pkg
+		if !plainWord.MatchString(pkg) {
+			words[i] = "'" + strings.ReplaceAll(pkg, "'", `'\''`) + "'"
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func parseLog(path string) (gotest.Results, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return gotest.Results{}, err
+	}
+	defer f.Close()
+	return gotest.Parse(f)
+}
+
+// setReason gives pkg a reason, unless go test gave it one.
+func setReason(results *gotest.Results, pkg, reason string) {
+	if results.Reasons == nil {
+		results.Reasons = map[string]string{}
+	}
+	if _, ok := results.Reasons[pkg]; !ok {
+		results.Reasons[pkg] = reason
+	}
 }
 
 // waitReady runs ready once a second until it exits 0 or timeout passes.
