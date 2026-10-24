@@ -1,8 +1,9 @@
 name: ci
 
-# CI runs only by hand while the repository is private: make check on the
-# developer's machine is the gate. When the repository goes public, add
-# push to main and pull_request to the triggers below.
+# CI runs only by hand, on the elprovo organization's self-hosted Linux
+# runners, as the other Elprovo repositories do. make check on the
+# developer's Mac is the gate, and it covers macOS. Do not run pull requests
+# from forks on self-hosted runners when the repository goes public.
 on:
   workflow_dispatch:
     inputs:
@@ -16,10 +17,7 @@ permissions:
 
 jobs:
   check:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,7 +29,7 @@ jobs:
 
   replay:
     # Elprovo replays its own proofs.
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

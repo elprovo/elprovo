@@ -19,7 +19,7 @@ Imports go one way: `cmd/elprovo` → `cli` → `replay` → `config` and `gitre
 
 ## Rules
 
-- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build. It is the gate: the CI workflow runs only by hand while the repository is private.
+- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build. It is the gate. The CI workflow runs only by hand, on the elprovo organization's self-hosted Linux runners.
 - A change to behavior that SPEC.md describes changes SPEC.md in the same commit. Keep the README examples equal to the real output.
 - `report.json` and the files Elprovo reads are contracts. Add fields to `report.json`; do not rename or remove them. A new field in `elprovo.yml` or a proof file needs a new format version.
 - Test through `cli.Run` or the `replay` package, with real Git repositories from `testrepo`, real `/bin/sh` and real processes. Do not mock Git or the shell. Watch a new test fail before you trust it.

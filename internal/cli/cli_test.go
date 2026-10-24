@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -747,4 +748,25 @@ func TestTheCopyAppliesCheckoutFilters(t *testing.T) {
 	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
 
 	wantResult(t, r, "proofs/filtered.yml", replay.Held, "", "pass", 0)
+}
+
+func TestAGitLFSFileIsCopiedWithItsContent(t *testing.T) {
+	if err := exec.Command("git", "lfs", "version").Run(); err != nil {
+		t.Skip("git-lfs is not installed")
+	}
+	repo := testrepo.New(t)
+	repo.Git("lfs", "install", "--local")
+	repo.Git("lfs", "track", "data.bin")
+	base := repo.Commit(map[string]string{"data.bin": "real content\n"})
+	if pointer := repo.Git("cat-file", "-p", base+":data.bin"); !strings.Contains(pointer, "git-lfs.github.com/spec") {
+		t.Fatalf("the commit holds %q; want a Git LFS pointer", pointer)
+	}
+	repo.Commit(map[string]string{
+		"elprovo.yml":    app,
+		"proofs/lfs.yml": "claim: The copy holds the file's content, not its Git LFS pointer.\nbefore: skip\nrun: grep -qx 'real content' data.bin\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/lfs.yml", replay.Held, "", "pass", 0)
 }
