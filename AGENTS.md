@@ -14,6 +14,7 @@ Elprovo is a command line tool, `elprovo`, that replays the proofs of a change. 
 | `internal/testrepo` | Throwaway Git repositories for tests only |
 | `skills/elprovo-proofs` | The skill that tells coding agents how to write proofs |
 | `elprovo.toml`, `proofs/` | Elprovo's own proofs, which `make replay` replays |
+| `assets/` | The README's demo: `demo-repo.sh` makes the demo repository, and `demo.tape` records `demo.gif` |
 
 Imports go one way: `cmd/elprovo` → `cli` → `replay` → `config` and `gitrepo`. Only tests import `testrepo`.
 
