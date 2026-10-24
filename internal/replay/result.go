@@ -32,8 +32,11 @@ const (
 	Broke          Verdict = "broke"
 	AlreadyFailing Verdict = "already-failing"
 	NotRun         Verdict = "not-run"
-	// The verdicts of both. An unchanged test that fails without the change
-	// and passes with it is fixed too.
+	// The verdicts of a test that elprovo reproduce runs.
+	Reproduced  Verdict = "reproduced"
+	CouldNotRun Verdict = "could-not-run"
+	// The verdicts of every kind of test. An unchanged test that fails
+	// without the change and passes with it is fixed too.
 	Flaky   Verdict = "flaky"
 	Skipped Verdict = "skipped"
 	// Unfinished is the verdict of every test when the replay stopped early.
@@ -83,9 +86,18 @@ type TestReport struct {
 	Head    []TestRun `json:"head"`
 }
 
+// The commands that write a report.
+const (
+	CommandReplay    = "replay"
+	CommandReproduce = "reproduce"
+)
+
 // Report is the result of one replay, as report.json holds it.
 type Report struct {
-	Format       int    `json:"format"`
+	Format int `json:"format"`
+	// Command is CommandReplay or CommandReproduce. A reproduce report has
+	// base runs only, and no other tests.
+	Command      string `json:"command"`
 	Base         string `json:"base"`
 	Head         string `json:"head"`
 	Runs         int    `json:"runs"`
@@ -117,6 +129,23 @@ func changedVerdict(head, base []gotest.Outcome) Verdict {
 		return NotReproduced
 	case all(base, gotest.Absent):
 		return New
+	default:
+		return Flaky
+	}
+}
+
+// reproduceVerdict applies the rules for a test that elprovo reproduce
+// runs, in order.
+func reproduceVerdict(base []gotest.Outcome) Verdict {
+	switch {
+	case all(base, gotest.Failed):
+		return Reproduced
+	case all(base, gotest.Passed):
+		return NotReproduced
+	case all(base, gotest.Absent):
+		return CouldNotRun
+	case all(base, gotest.Skipped):
+		return Skipped
 	default:
 		return Flaky
 	}
@@ -156,6 +185,18 @@ func all(outcomes []gotest.Outcome, want gotest.Outcome) bool {
 func (r Report) ExitStatus(require bool) int {
 	if r.StoppedEarly != "" {
 		return 2
+	}
+	if r.Command == CommandReproduce {
+		status := 0
+		for _, t := range r.Changed {
+			switch t.Verdict {
+			case CouldNotRun:
+				return 2
+			case NotReproduced, Flaky, Skipped:
+				status = 1
+			}
+		}
+		return status
 	}
 	for _, t := range slices.Concat(r.Changed, r.Regressions) {
 		switch t.Verdict {

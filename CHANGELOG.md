@@ -8,6 +8,7 @@
 - A changed test is `fixed`, `not-reproduced`, `new`, `not-fixed`, `flaky` or `skipped`. The other tests in the packages that the change touches are `kept`, `broke`, `already-failing`, `not-run`, `flaky`, `skipped` or `fixed`.
 - A test without a result is `absent`, never `failed`. So a test that does not build without the change is `new`, not `fixed`.
 - `--require` makes a replay in which no test is `fixed` fail.
+- `elprovo reproduce TEST_FILE...` checks a reproduction before the fix: it runs the changed tests in the files on the base commit only, and calls each `reproduced`, `not-reproduced`, `could-not-run`, `flaky` or `skipped`.
 - **Breaking:** `report.json` is format 2, with the lists `changed`, `regressions`, `base_runs` and `head_runs`.
 - A run whose app does not start, or whose tests print no events, stops the replay with exit status 2.
 - `make replay` replays Elprovo's own Go tests.

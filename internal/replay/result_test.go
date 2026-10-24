@@ -65,9 +65,56 @@ func TestRegressionVerdictsApplyInOrder(t *testing.T) {
 	}
 }
 
+func TestReproduceVerdictsApplyInOrder(t *testing.T) {
+	tests := []struct {
+		name string
+		base []gotest.Outcome
+		want Verdict
+	}{
+		{"fails in every run", []gotest.Outcome{fail, fail}, Reproduced},
+		{"passes in every run", []gotest.Outcome{pass, pass}, NotReproduced},
+		{"has no result in any run", []gotest.Outcome{absent, absent}, CouldNotRun},
+		{"is skipped in every run", []gotest.Outcome{skip, skip}, Skipped},
+		{"fails once and passes once", []gotest.Outcome{fail, pass}, Flaky},
+		{"fails once and has no result once", []gotest.Outcome{absent, fail}, Flaky},
+	}
+	for _, tt := range tests {
+		if got := reproduceVerdict(tt.base); got != tt.want {
+			t.Errorf("%s: reproduceVerdict(%v) = %q; want %q", tt.name, tt.base, got, tt.want)
+		}
+	}
+}
+
+func TestReproduceExitStatus(t *testing.T) {
+	report := func(stopped string, verdicts ...Verdict) Report {
+		r := Report{Command: CommandReproduce, StoppedEarly: stopped}
+		for _, v := range verdicts {
+			r.Changed = append(r.Changed, TestReport{Verdict: v})
+		}
+		return r
+	}
+	tests := []struct {
+		name   string
+		report Report
+		want   int
+	}{
+		{"every test is reproduced", report("", Reproduced, Reproduced), 0},
+		{"a test is not reproduced", report("", Reproduced, NotReproduced), 1},
+		{"a test is flaky", report("", Flaky), 1},
+		{"a test is skipped", report("", Skipped), 1},
+		{"a test could not run", report("", NotReproduced, CouldNotRun), 2},
+		{"stopped early", report("interrupted", Unfinished), 2},
+	}
+	for _, tt := range tests {
+		if got := tt.report.ExitStatus(false); got != tt.want {
+			t.Errorf("%s: exit status %d; want %d", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestExitStatus(t *testing.T) {
 	report := func(stopped string, changed []Verdict, regressions ...Verdict) Report {
-		r := Report{StoppedEarly: stopped}
+		r := Report{Command: CommandReplay, StoppedEarly: stopped}
 		for _, v := range changed {
 			r.Changed = append(r.Changed, TestReport{Verdict: v})
 		}

@@ -1,4 +1,5 @@
-// Command elprovo replays the proofs that come with a change. See README.md.
+// Command elprovo runs the tests of a change on copies of the code without
+// the change and with it. See README.md.
 package main
 
 import (

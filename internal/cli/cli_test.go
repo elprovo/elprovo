@@ -313,6 +313,102 @@ func TestASkippedTestIsSkipped(t *testing.T) {
 	wantLines(t, r, "! skipped         TestNetwork  cart/network_test.go", indent+"base run 1: network_test.go:6: needs a network")
 }
 
+func reproduceIn(t *testing.T, dir string, args ...string) result {
+	t.Helper()
+	return run(t, context.Background(), dir, append([]string{"reproduce"}, args...)...)
+}
+
+func TestReproduceShowsThatATestFailsWithoutTheFix(t *testing.T) {
+	repo, base := shop(t, buggyCart)
+	repo.Commit(map[string]string{"cart/cart_test.go": couponTest})
+	cart := filepath.Join(repo.Dir, "cart")
+
+	r := reproduceIn(t, cart, "--base", base, "cart_test.go")
+
+	wantVerdict(t, r, "TestCouponAppliesOnce", replay.Reproduced, "failed failed", "", 0)
+	wantLines(t, r,
+		"packages: ./cart",
+		"✓ reproduced      TestCouponAppliesOnce  cart/cart_test.go",
+		indent+"base: failed 2 of 2",
+		indent+"base run 1: cart_test.go:7: Total(100, 10) = 80; want 90",
+		"Tests: 1 reproduced.",
+	)
+	if len(r.report.HeadRuns) != 0 || len(r.report.Regressions) != 0 || strings.Contains(r.stdout, "TestNoDiscount") {
+		t.Errorf("%d head runs and %d other tests; want none, because reproduce runs only the base commit and the named file", len(r.report.HeadRuns), len(r.report.Regressions))
+	}
+}
+
+func TestReproduceSaysWhenATestPassesWithoutTheFix(t *testing.T) {
+	repo, base := shop(t, fixedCart)
+	repo.Commit(map[string]string{"cart/cart_test.go": couponTest})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--runs", "1", "cart/cart_test.go")
+
+	wantVerdict(t, r, "TestCouponAppliesOnce", replay.NotReproduced, "passed", "", 1)
+	wantLines(t, r, "✗ not reproduced  TestCouponAppliesOnce  cart/cart_test.go", "Tests: 1 not reproduced.")
+}
+
+func TestReproduceSaysWhenATestCannotRunWithoutTheFix(t *testing.T) {
+	repo, base := shop(t, fixedCart)
+	repo.Commit(map[string]string{
+		"cart/free_test.go": "package cart\n\nimport \"testing\"\n\nfunc TestFreeShipping(t *testing.T) {\n" +
+			"\tif !Free(50) {\n\t\tt.Error(\"an order of 50 ships for a fee\")\n\t}\n}\n",
+	})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--runs", "1", "cart/free_test.go")
+
+	wantVerdict(t, r, "TestFreeShipping", replay.CouldNotRun, "absent", "", 2)
+	wantLines(t, r, "! could not run   TestFreeShipping  cart/free_test.go", indent+"base run 1: cart/free_test.go:6:6: undefined: Free")
+}
+
+func TestReproduceSaysWhenATestIsFlaky(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	if err := os.WriteFile(counter, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COUNTER", counter)
+	repo, _ := shop(t, fixedCart)
+	base := repo.Commit(map[string]string{"elprovo.toml": strings.Replace(goConfig, `"GOMODCACHE"]`, `"GOMODCACHE", "COUNTER"]`, 1)})
+	// The test fails in the first run and passes in the second.
+	repo.Commit(map[string]string{"cart/counted_test.go": "package cart\n\nimport (\n\t\"os\"\n\t\"strconv\"\n\t\"testing\"\n)\n\n" +
+		"func TestCounted(t *testing.T) {\n" +
+		"\tdata, _ := os.ReadFile(os.Getenv(\"COUNTER\"))\n" +
+		"\tn, _ := strconv.Atoi(string(data))\n" +
+		"\tos.WriteFile(os.Getenv(\"COUNTER\"), []byte(strconv.Itoa(n+1)), 0o644)\n" +
+		"\tif n == 0 {\n\t\tt.Fatal(\"first run\")\n\t}\n}\n"})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "cart/counted_test.go")
+
+	wantVerdict(t, r, "TestCounted", replay.Flaky, "failed passed", "", 1)
+}
+
+func TestReproduceRejectsFilesItCannotUse(t *testing.T) {
+	repo, base := shop(t, buggyCart)
+	repo.Commit(map[string]string{"cart/cart_test.go": couponTest})
+	tests := []struct {
+		name        string
+		args        []string
+		wantInError string
+	}{
+		{"no file", nil, "reproduce needs at least one test file"},
+		{"a file that tests.files does not match", []string{"cart/cart.go"}, `"cart/cart.go" is not a test file: it does not match tests.files`},
+		{"a file that is not in the head commit", []string{"cart/missing_test.go"}, `"cart/missing_test.go" is not in the head commit`},
+		{"a file whose tests did not change", []string{"cart/total_test.go"}, `"cart/total_test.go" has no test that the head commit`},
+		{"a file outside the repository", []string{"../elsewhere_test.go"}, `"../elsewhere_test.go" is outside the repository`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := reproduceIn(t, repo.Dir, append([]string{"--base", base}, tt.args...)...)
+			if r.status != 2 || !strings.Contains(r.stderr, tt.wantInError) {
+				t.Errorf("exit %d, stderr %q; want 2 and an error that contains %q", r.status, r.stderr, tt.wantInError)
+			}
+			if _, err := os.Stat(filepath.Join(repo.Dir, ".elprovo")); err == nil {
+				t.Error("an invalid reproduce made the output directory")
+			}
+		})
+	}
+}
+
 func TestRequireFailsWhenNoTestIsFixed(t *testing.T) {
 	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
 

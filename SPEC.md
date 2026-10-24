@@ -1,6 +1,6 @@
 # Elprovo replay specification, version 2
 
-This document defines the file that Elprovo reads, how `elprovo replay` runs the tests of a change, and what it reports. The [README](README.md) shows the usage.
+This document defines the file that Elprovo reads, how `elprovo replay` and `elprovo reproduce` run the tests of a change, and what they report. The [README](README.md) shows the usage.
 
 The words "must" and "must not" state requirements. A file or a command that breaks one is an error.
 
@@ -69,20 +69,26 @@ Give `go test` a `-timeout` that is shorter than `tests.timeout`. Then a test th
 ## 2. Command line
 
 ```
+elprovo reproduce [--base REV] [--head REV] [--runs N] [--out DIR] TEST_FILE...
 elprovo replay [--base REV] [--head REV] [--runs N] [--require] [--out DIR] [--dry-run]
 elprovo version
 ```
 
-`elprovo replay` must run inside a Git repository. It reads commits, not the working tree, so it does not replay uncommitted changes. It takes no arguments: it finds the changed tests itself.
+- `elprovo reproduce` checks the tests that reproduce a bug, before the fix: it runs the changed tests in each `TEST_FILE` on the base commit only, as section 3.7 says.
+- `elprovo replay` compares the tests without the change and with it. It takes no arguments: it finds the changed tests itself.
+
+Both must run inside a Git repository. They read commits, not the working tree, so they do not run uncommitted changes. Options come before `TEST_FILE` arguments.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `--base REV` | The merge base of the head commit and `origin/HEAD` | The commit without the change. If `--base` is not given and `origin/HEAD` does not exist, Elprovo stops with an error that asks for `--base`. |
 | `--head REV` | `HEAD` | The commit with the change. |
 | `--runs N` | `2` | The number of runs on each commit. `N` must be from 1 to 10. |
-| `--require` | Off | Treat a replay in which no test is `fixed` as a failure. Use it for a change that fixes a bug. |
+| `--require` | Off | `replay` only. Treat a replay in which no test is `fixed` as a failure. Use it for a change that fixes a bug. |
 | `--out DIR` | `.elprovo` | Where Elprovo writes logs, artifacts and the report. A relative path is relative to the working directory. |
-| `--dry-run` | Off | Check the files and print the changed tests, without running any command. It exits 0 when the files are valid, 1 when the change touches no package and `--require` is on, and 2 when a file is invalid. |
+| `--dry-run` | Off | `replay` only. Check the files and print the changed tests, without running any command. It exits 0 when the files are valid, 1 when the change touches no package and `--require` is on, and 2 when a file is invalid. |
+
+A `TEST_FILE` is a path relative to the working directory. It must end in `_test.go`, match `tests.files`, be in the head commit, and have at least one changed test, from section 3.1.
 
 Elprovo resolves `--base` and `--head` to commit IDs once, before it runs anything.
 
@@ -198,6 +204,22 @@ Elprovo ends the replay early when a run is not run, when `app.stop` fails, when
 4. It writes the report for the runs that ended. The report marks the replay as stopped early, and gives no verdict to any test.
 5. It exits 2.
 
+### 3.7 Reproduce
+
+`elprovo reproduce` does only the base runs of section 3.2, for the packages of the `TEST_FILE` arguments. Its copy is the base copy of a replay, with the head commit's tests, so a test that it calls `reproduced` fails in the base runs of a replay too.
+
+It gives each changed test in the files a verdict. It applies the first rule that matches:
+
+| Rule | Base runs | Verdict |
+| --- | --- | --- |
+| 1 | All are `failed` | `reproduced` |
+| 2 | All are `passed` | `not-reproduced` |
+| 3 | All are `absent` | `could-not-run` |
+| 4 | All are `skipped` | `skipped` |
+| 5 | Any other mix | `flaky` |
+
+Its exit status is 2 when the input is invalid, the replay stopped early, or a test is `could-not-run`; 1 when a test is `not-reproduced`, `flaky` or `skipped`; and 0 when every test is `reproduced`.
+
 ## 4. How commands run
 
 - Each command runs as `/bin/sh -c '<command>'`, with the copy as its working directory, in its own process group.
@@ -252,13 +274,16 @@ A block shows the verdict, how the test ended on each commit, and the message of
 - `absent`, for `not-run`;
 - `skipped`, for `skipped`.
 
-For `not-fixed`, `flaky` and `broke`, the block also shows the path of that run's `test.log`. The text form is for people. Programs read `report.json`.
+For `not-fixed`, `flaky` and `broke`, the block also shows the path of that run's `test.log`. For `reproduce`, the explaining run is the first one that is `failed` for `reproduced`, and `absent` for `could-not-run`; the blocks show the base runs only, and one line counts the verdicts of the tests.
+
+The text form is for people. Programs read `report.json`.
 
 ### 5.3 `report.json`
 
 ```json
 {
   "format": 2,
+  "command": "replay",
   "base": "3f2a1c0e9d8b7a6f5e4d3c2b1a0f9e8d7c6b5a49",
   "head": "9b7e4d2a1c0f9e8d7c6b5a493f2a1c0e9d8b7a6f",
   "runs": 1,
@@ -297,6 +322,7 @@ The example shows one run on each commit to keep it short.
 | Field | Meaning |
 | --- | --- |
 | `format` | The report format. It is `2`. |
+| `command` | `replay` or `reproduce`. A `reproduce` report has no head runs and no other tests. |
 | `base`, `head` | The full commit IDs. |
 | `runs` | The number of runs on each commit. |
 | `stopped_early` | Why the replay ended early, such as `interrupted`, `stop exited with status 1` or `base run 1 did not run: start exited with status 1`. It is empty when the replay ended normally. |
@@ -306,7 +332,7 @@ The example shows one run on each commit to keep it short.
 | `package` | The test's package, as in `packages`. |
 | `name` | The test's name. |
 | `file` | The file of a changed test. Other tests do not have it. |
-| `verdict` | The verdict from section 3.4. It is empty when the replay stopped early. |
+| `verdict` | The verdict from section 3.4, or for `reproduce`, from section 3.7. It is empty when the replay stopped early. |
 | `base`, `head` in a test | The test's outcome and message in each run on that commit, from section 3.3, in run order. |
 | `base_runs`, `head_runs` | The runs on each commit, in run order. |
 | `outcome` in a run | `ran`, or `not-run` from section 3.2. |

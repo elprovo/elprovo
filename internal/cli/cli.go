@@ -30,8 +30,11 @@ const usage = `Elprovo runs the tests of a change on fresh copies of the code wi
 change and with it, and shows which tests the change fixed and which it broke.
 
 Usage:
-  elprovo replay [options]   compare the tests; see elprovo replay -h
-  elprovo version            print the version
+  elprovo reproduce [options] TEST_FILE...   check that new tests fail without the change
+  elprovo replay [options]                   compare the tests without and with the change
+  elprovo version                            print the version
+
+Run a command with -h to see its options.
 
 SPEC.md in the Elprovo repository defines the files and the results.
 `
@@ -46,6 +49,8 @@ func Run(ctx context.Context, version string, args []string, env Env) int {
 	switch args[0] {
 	case "replay":
 		return runReplay(ctx, args[1:], env)
+	case "reproduce":
+		return runReproduce(ctx, args[1:], env)
 	case "version", "--version":
 		fmt.Fprintf(env.Stdout, "elprovo %s\n", version)
 		return 0
@@ -58,32 +63,85 @@ func Run(ctx context.Context, version string, args []string, env Env) int {
 	}
 }
 
-func runReplay(ctx context.Context, args []string, env Env) int {
-	flags := flag.NewFlagSet("elprovo replay", flag.ContinueOnError)
+// newFlags makes the flag set of a command, with the options that replay
+// and reproduce share.
+func newFlags(name, usage string, env Env, opts *replay.Options) *flag.FlagSet {
+	flags := flag.NewFlagSet("elprovo "+name, flag.ContinueOnError)
 	flags.SetOutput(env.Stderr)
-	opts := replay.Options{Dir: env.Dir, Environ: env.Environ}
 	flags.StringVar(&opts.Base, "base", "", "the commit without the change (default: the merge base of the head commit and origin/HEAD)")
 	flags.StringVar(&opts.Head, "head", "", "the commit with the change (default: HEAD)")
 	flags.IntVar(&opts.Runs, "runs", 2, "the number of runs on each commit, from 1 to 10")
-	require := flags.Bool("require", false, "treat a replay in which no test is fixed as a failure")
 	flags.StringVar(&opts.Out, "out", ".elprovo", "the directory for logs, artifacts and the report")
-	dryRun := flags.Bool("dry-run", false, "check the files and print the changed tests, without running any command")
 	flags.Usage = func() {
-		fmt.Fprint(env.Stderr, "Usage: elprovo replay [options]\n\n")
+		fmt.Fprint(env.Stderr, usage)
 		flags.PrintDefaults()
 	}
+	return flags
+}
+
+// parse parses args, and returns false with the exit status when the
+// command must end.
+func parse(flags *flag.FlagSet, args []string, opts *replay.Options, env Env) (int, bool) {
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return 0
+			return 0, false
 		}
+		return 2, false
+	}
+	if !filepath.IsAbs(opts.Out) {
+		opts.Out = filepath.Join(env.Dir, opts.Out)
+	}
+	return 0, true
+}
+
+// runPlan runs a prepared plan, with progress on standard error.
+func runPlan(ctx context.Context, plan replay.Plan, opts replay.Options, env Env) (replay.Report, bool) {
+	opts.RunDone = func(side string, run replay.RunReport) {
+		fmt.Fprintf(env.Stderr, "%s run %d: %s (%.1fs)\n", side, run.Run, run.Outcome, run.Seconds)
+	}
+	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", message) }
+	report, err := replay.Run(ctx, plan, opts)
+	if err != nil {
+		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
+		return report, false
+	}
+	return report, true
+}
+
+func runReproduce(ctx context.Context, args []string, env Env) int {
+	opts := replay.Options{Dir: env.Dir, Environ: env.Environ}
+	flags := newFlags("reproduce", "Usage: elprovo reproduce [options] TEST_FILE...\n\n"+
+		"It runs the tests that the head commit adds or edits in each TEST_FILE on the\n"+
+		"base commit, and shows whether they fail there. Options come before TEST_FILE.\n\n", env, &opts)
+	if status, ok := parse(flags, args, &opts, env); !ok {
+		return status
+	}
+	plan, err := replay.PrepareReproduce(ctx, opts, flags.Args())
+	if err != nil {
+		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
 		return 2
+	}
+	out := output{w: env.Stdout, dir: env.Dir}
+	out.header(plan, count(opts.Runs, "run")+" on the base commit")
+	report, ok := runPlan(ctx, plan, opts, env)
+	if !ok {
+		return 2
+	}
+	out.results(report)
+	return report.ExitStatus(false)
+}
+
+func runReplay(ctx context.Context, args []string, env Env) int {
+	opts := replay.Options{Dir: env.Dir, Environ: env.Environ}
+	flags := newFlags("replay", "Usage: elprovo replay [options]\n\n", env, &opts)
+	require := flags.Bool("require", false, "treat a replay in which no test is fixed as a failure")
+	dryRun := flags.Bool("dry-run", false, "check the files and print the changed tests, without running any command")
+	if status, ok := parse(flags, args, &opts, env); !ok {
+		return status
 	}
 	if flags.NArg() > 0 {
 		fmt.Fprintf(env.Stderr, "elprovo: replay takes no arguments, but got %q; it finds the changed tests itself\n", config.EscapeControl(flags.Arg(0)))
 		return 2
-	}
-	if !filepath.IsAbs(opts.Out) {
-		opts.Out = filepath.Join(env.Dir, opts.Out)
 	}
 
 	plan, err := replay.Prepare(ctx, opts)
@@ -92,7 +150,11 @@ func runReplay(ctx context.Context, args []string, env Env) int {
 		return 2
 	}
 	out := output{w: env.Stdout, dir: env.Dir}
-	out.header(plan, opts.Runs, *dryRun)
+	runs := count(opts.Runs, "run") + " each"
+	if *dryRun {
+		runs += " (dry run)"
+	}
+	out.header(plan, runs)
 	if len(plan.Packages) == 0 {
 		fmt.Fprintln(out.w, "The change touches no Go package, so there is no test to run.")
 		if *require {
@@ -106,13 +168,8 @@ func runReplay(ctx context.Context, args []string, env Env) int {
 		return 0
 	}
 
-	opts.RunDone = func(side string, run replay.RunReport) {
-		fmt.Fprintf(env.Stderr, "%s run %d: %s (%.1fs)\n", side, run.Run, run.Outcome, run.Seconds)
-	}
-	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", message) }
-	report, err := replay.Run(ctx, plan, opts)
-	if err != nil {
-		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
+	report, ok := runPlan(ctx, plan, opts, env)
+	if !ok {
 		return 2
 	}
 	out.results(report)
@@ -133,16 +190,14 @@ type output struct {
 	dir string
 }
 
-func (o output) header(plan replay.Plan, runs int, dryRun bool) {
-	note := ""
-	if dryRun {
-		note = " (dry run)"
-	}
+// header names the commits, says how many runs there are, and lists the
+// packages.
+func (o output) header(plan replay.Plan, runs string) {
 	packages := "none"
 	if len(plan.Packages) > 0 {
 		packages = config.EscapeControl(strings.Join(plan.Packages, " "))
 	}
-	fmt.Fprintf(o.w, "base %s  head %s  %s each%s\npackages: %s\n\n", plan.Base[:7], plan.Head[:7], count(runs, "run"), note, packages)
+	fmt.Fprintf(o.w, "base %s  head %s  %s\npackages: %s\n\n", plan.Base[:7], plan.Head[:7], runs, packages)
 }
 
 func (o output) dryRun(plan replay.Plan) {
@@ -157,6 +212,7 @@ func (o output) dryRun(plan replay.Plan) {
 
 var marks = map[replay.Verdict]string{
 	replay.Fixed:         "✓",
+	replay.Reproduced:    "✓",
 	replay.Kept:          "✓",
 	replay.NotFixed:      "✗",
 	replay.NotReproduced: "✗",
@@ -187,6 +243,12 @@ func (o output) results(report replay.Report) {
 	if report.StoppedEarly != "" {
 		o.stoppedEarly(report)
 	}
+	if report.Command == replay.CommandReproduce {
+		fmt.Fprintf(o.w, "Tests: %s.\n", tally(report.Changed,
+			replay.Reproduced, replay.NotReproduced, replay.CouldNotRun, replay.Flaky, replay.Skipped))
+		fmt.Fprintf(o.w, "Report: %s\n", o.rel(filepath.Join(report.Dir, "report.json")))
+		return
+	}
 	fmt.Fprintf(o.w, "Changed tests: %s.\n", tally(report.Changed,
 		replay.Fixed, replay.New, replay.NotReproduced, replay.NotFixed, replay.Flaky, replay.Skipped))
 	fmt.Fprintf(o.w, "Other tests: %s.\n", tally(report.Regressions,
@@ -206,7 +268,11 @@ func (o output) test(report replay.Report, t replay.TestReport, where string) {
 		verdict = "no verdict"
 	}
 	fmt.Fprintf(o.w, "%s %-15s %s  %s\n", mark, verdict, t.Name, config.EscapeControl(where))
-	fmt.Fprintf(o.w, "%sbase: %s   head: %s\n", indent, outcomes(t.Base), outcomes(t.Head))
+	if report.Command == replay.CommandReproduce {
+		fmt.Fprintf(o.w, "%sbase: %s\n", indent, outcomes(t.Base))
+	} else {
+		fmt.Fprintf(o.w, "%sbase: %s   head: %s\n", indent, outcomes(t.Base), outcomes(t.Head))
+	}
 	if side, n, run, ok := explaining(t); ok {
 		message := run.Message
 		if message == "" {
@@ -230,6 +296,8 @@ func (o output) test(report replay.Report, t replay.TestReport, where string) {
 // first run, in the order the runs ran, for which the function is true.
 var explains = map[replay.Verdict]func(side string, o gotest.Outcome) bool{
 	replay.Fixed:          func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Failed },
+	replay.Reproduced:     func(_ string, o gotest.Outcome) bool { return o == gotest.Failed },
+	replay.CouldNotRun:    func(_ string, o gotest.Outcome) bool { return o == gotest.Absent },
 	replay.New:            func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Absent },
 	replay.NotFixed:       func(side string, o gotest.Outcome) bool { return side == "head" && o != gotest.Passed },
 	replay.Broke:          func(side string, o gotest.Outcome) bool { return side == "head" && o == gotest.Failed },

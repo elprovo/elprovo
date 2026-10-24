@@ -85,6 +85,9 @@ type Plan struct {
 	// baseConfig is nil when the base commit has no elprovo.toml of version
 	// 2. The base runs then use the head commit's.
 	baseConfig *config.Repo
+	// reproduce is true for a plan of elprovo reproduce, which runs on the
+	// base commit only.
+	reproduce bool
 }
 
 // Prepare resolves the commits, finds the changed tests and the packages to
@@ -173,6 +176,78 @@ func Prepare(ctx context.Context, opts Options) (Plan, error) {
 	return plan, nil
 }
 
+// PrepareReproduce is Prepare for elprovo reproduce. The plan runs on the
+// base commit only, and gives a verdict to the changed tests in files, which
+// are paths relative to opts.Dir.
+func PrepareReproduce(ctx context.Context, opts Options, files []string) (Plan, error) {
+	if len(files) == 0 {
+		return Plan{}, errors.New("reproduce needs at least one test file, such as cart/cart_test.go")
+	}
+	plan, err := Prepare(ctx, opts)
+	if err != nil {
+		return Plan{}, err
+	}
+	var paths []string
+	for _, arg := range files {
+		file, err := repoPath(plan.repo.Root(), opts.Dir, arg)
+		if err != nil {
+			return Plan{}, err
+		}
+		if !strings.HasSuffix(file, "_test.go") || !plan.headConfig.Tests.Matches(file) {
+			return Plan{}, fmt.Errorf("%q is not a test file: it does not match tests.files in %s, or its name does not end in _test.go", arg, config.RepoFile)
+		}
+		if _, ok := packageDir(file); !ok {
+			return Plan{}, fmt.Errorf("%q is in a directory that go test leaves out, such as testdata", arg)
+		}
+		_, found, err := plan.repo.ReadFile(ctx, plan.Head, file, maxTestFileSize)
+		if err != nil {
+			return Plan{}, err
+		}
+		if !found {
+			return Plan{}, fmt.Errorf("%q is not in the head commit %s; commit it first", arg, short(plan.Head))
+		}
+		if !slices.ContainsFunc(plan.Changed, func(t ChangedTest) bool { return t.File == file }) {
+			return Plan{}, fmt.Errorf("%q has no test that the head commit %s adds or edits, compared with the base commit %s", arg, short(plan.Head), short(plan.Base))
+		}
+		paths = append(paths, file)
+	}
+
+	var changed []ChangedTest
+	var packages []string
+	for _, t := range plan.Changed {
+		if !slices.Contains(paths, t.File) {
+			continue
+		}
+		changed = append(changed, t)
+		if !slices.Contains(packages, t.Package) {
+			packages = append(packages, t.Package)
+		}
+	}
+	slices.Sort(packages)
+	plan.Changed, plan.Packages, plan.reproduce = changed, packages, true
+	return plan, nil
+}
+
+// repoPath turns arg, a path relative to the working directory dir, into a
+// slash-separated path from the repository root. The file need not exist in
+// the working tree, because Elprovo reads it from the head commit.
+func repoPath(root, dir, arg string) (string, error) {
+	path := arg
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	// Git reports the root with symbolic links resolved, so resolve the
+	// directory that holds the file too.
+	if parent, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		path = filepath.Join(parent, filepath.Base(path))
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%q is outside the repository %s", arg, root)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
 func resolveBase(ctx context.Context, repo gitrepo.Repo, rev, head string) (string, error) {
 	if rev != "" {
 		return repo.Resolve(ctx, rev)
@@ -253,7 +328,7 @@ func Run(ctx context.Context, plan Plan, opts Options) (Report, error) {
 		return Report{}, err
 	}
 	report := Report{
-		Format: 2, Base: plan.Base, Head: plan.Head, Runs: opts.Runs, Packages: append([]string{}, plan.Packages...),
+		Format: 2, Command: CommandReplay, Base: plan.Base, Head: plan.Head, Runs: opts.Runs, Packages: append([]string{}, plan.Packages...),
 		Changed: []TestReport{}, Regressions: []TestReport{}, BaseRuns: []RunReport{}, HeadRuns: []RunReport{},
 	}
 	report.Dir = filepath.Join(out, "runs", randomID())
@@ -261,11 +336,16 @@ func Run(ctx context.Context, plan Plan, opts Options) (Report, error) {
 		return Report{}, err
 	}
 	r := runner{plan: plan, opts: opts, dir: report.Dir, limits: opts.Limits.withDefaults()}
+	sides := []string{"base", "head"}
+	if plan.reproduce {
+		report.Command = CommandReproduce
+		sides = sides[:1]
+	}
 
 	var baseResults, headResults []gotest.Results
 runs:
 	for n := 1; n <= opts.Runs; n++ {
-		for _, side := range []string{"base", "head"} {
+		for _, side := range sides {
 			if ctx.Err() != nil {
 				report.StoppedEarly = "interrupted"
 				break runs
@@ -313,10 +393,17 @@ func (p Plan) testReports(base, head []gotest.Results, finished bool) (changed, 
 		t := gotest.Test{Package: p.importPath(c.Package), Name: c.Name}
 		isChanged[t] = true
 		report := TestReport{Package: c.Package, Name: c.Name, File: c.File, Base: testRuns(base, t), Head: testRuns(head, t)}
-		if finished {
+		switch {
+		case !finished:
+		case p.reproduce:
+			report.Verdict = reproduceVerdict(outcomes(report.Base))
+		default:
 			report.Verdict = changedVerdict(outcomes(report.Head), outcomes(report.Base))
 		}
 		changed = append(changed, report)
+	}
+	if p.reproduce {
+		return changed, regressions
 	}
 
 	pkgOf := map[string]string{}
