@@ -4,7 +4,7 @@ This document defines the files that Elprovo reads, how `elprovo replay` runs pr
 
 The words "must" and "must not" state requirements. A file or a command that breaks one is an error.
 
-Elprovo runs on macOS and Linux. It needs `git` and `/bin/sh`.
+Elprovo runs on macOS and Linux. It needs `git` and `/bin/sh`. It does not support Windows: there, `elprovo replay` stops before it runs a command.
 
 ## 1. Files
 

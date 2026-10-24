@@ -731,3 +731,20 @@ func TestAllWithoutProofFilesSaysSo(t *testing.T) {
 		t.Errorf("exit %d; want 0 and a message that the head commit has no proof file\n%s", r.status, r.stdout)
 	}
 }
+
+func TestTheCopyAppliesCheckoutFilters(t *testing.T) {
+	repo := testrepo.New(t)
+	// Git LFS fills files through a checkout filter like this one, which
+	// writes the stored text in capitals.
+	repo.Git("config", "filter.upper.clean", "cat")
+	repo.Git("config", "filter.upper.smudge", "tr a-z A-Z")
+	base := repo.Commit(map[string]string{".gitattributes": "data.txt filter=upper\n", "data.txt": "hello\n"})
+	repo.Commit(map[string]string{
+		"elprovo.yml":         app,
+		"proofs/filtered.yml": "claim: The copy holds the filtered file.\nbefore: skip\nrun: grep -qx HELLO data.txt\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantResult(t, r, "proofs/filtered.yml", replay.Held, "", "pass", 0)
+}
