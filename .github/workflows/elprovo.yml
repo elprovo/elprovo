@@ -2,8 +2,9 @@ name: elprovo
 
 # Replays the tests of a pull request on the base commit and on the pull
 # request, and posts the verdicts on the pull request. The replay uses elprovo
-# built from the base commit, so a pull request cannot change the tool that
-# judges it.
+# built from the base commit, so a pull request cannot change the elprovo that
+# judges it. It can change this file, its go.mod and its elprovo.toml, so
+# review changes to them.
 on:
   pull_request:
     branches: [main]
@@ -18,7 +19,10 @@ concurrency:
 
 jobs:
   replay:
-    # Self-hosted runners must never run code from a fork.
+    # Self-hosted runners must never run code from a fork. A fork's pull
+    # request runs its own copy of this file, so the repository setting that
+    # keeps workflows from running for forks is the protection, not this
+    # condition.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     timeout-minutes: 60
@@ -72,10 +76,13 @@ jobs:
             const reportFile = dirs.map(d => `${runs}/${d}/report.json`).find(f => fs.existsSync(f));
             const report = reportFile ? JSON.parse(fs.readFileSync(reportFile, 'utf8')) : null;
             const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+            // The headline uses only what Elprovo wrote, never text from the
+            // change, which stays in the code block.
             const headline = () => {
-              if (output.includes('The change touches no Go package')) return 'No Go package changed, so there is no test to run.';
+              const packagesLine = read('replay.txt').split('\n')[1];
+              if (!report && packagesLine === 'packages: none') return 'No Go package changed, so there is no test to run.';
               if (!report || report.format !== 2) return 'Elprovo could not replay this pull request.';
-              if (report.stopped_early) return `The replay stopped early: ${report.stopped_early}.`;
+              if (report.stopped_early) return 'The replay stopped early.';
               const count = (tests, verdict) => tests.filter(t => t.verdict === verdict).length;
               const changed = report.changed, others = report.regressions;
               const parts = [];
