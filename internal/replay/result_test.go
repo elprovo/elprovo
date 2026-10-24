@@ -11,6 +11,7 @@ const (
 	fail   = gotest.Failed
 	skip   = gotest.Skipped
 	absent = gotest.Absent
+	stop   = stopped
 )
 
 func TestChangedTestVerdictsApplyInOrder(t *testing.T) {
@@ -31,6 +32,7 @@ func TestChangedTestVerdictsApplyInOrder(t *testing.T) {
 		{"is skipped with the change", []gotest.Outcome{skip, skip}, []gotest.Outcome{fail, fail}, Skipped},
 		{"is skipped without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{skip, skip}, Skipped},
 		{"is skipped once with the change", []gotest.Outcome{pass, skip}, []gotest.Outcome{fail, fail}, Flaky},
+		{"a skip without the change comes before a skip once with it", []gotest.Outcome{pass, skip}, []gotest.Outcome{skip, skip}, Skipped},
 		{"a failure with the change comes before a skip", []gotest.Outcome{fail, fail}, []gotest.Outcome{skip, skip}, NotFixed},
 	}
 	for _, tt := range tests {
@@ -50,13 +52,22 @@ func TestRegressionVerdictsApplyInOrder(t *testing.T) {
 		{"passes without the change and fails with it", []gotest.Outcome{fail, fail}, []gotest.Outcome{pass, pass}, Broke},
 		{"fails on both", []gotest.Outcome{fail, fail}, []gotest.Outcome{fail, fail}, AlreadyFailing},
 		{"fails without the change and passes with it", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, fail}, Fixed},
-		{"has no result with the change", []gotest.Outcome{absent, absent}, []gotest.Outcome{pass, pass}, NotRun},
+		{"passes without the change and is stopped with it", []gotest.Outcome{stop, stop}, []gotest.Outcome{pass, pass}, Broke},
+		{"passes without the change and is stopped once with it", []gotest.Outcome{pass, stop}, []gotest.Outcome{pass, pass}, Broke},
+		{"passes without the change and is not in the head commit", []gotest.Outcome{absent, absent}, []gotest.Outcome{pass, pass}, NotRun},
+		{"fails without the change and is stopped with it", []gotest.Outcome{stop, stop}, []gotest.Outcome{fail, fail}, NotRun},
+		{"is stopped without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{stop, pass}, NotRun},
 		{"has no result once without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{pass, absent}, NotRun},
-		{"no result comes before disagreement", []gotest.Outcome{pass, fail}, []gotest.Outcome{absent, pass}, NotRun},
+		{"no result without the change comes before no result with it", []gotest.Outcome{absent, absent}, []gotest.Outcome{absent, pass}, NotRun},
+		{"a failure with the change comes before no result without it", []gotest.Outcome{pass, fail}, []gotest.Outcome{absent, pass}, Flaky},
+		{"fails with the change and has no result without it", []gotest.Outcome{fail, fail}, []gotest.Outcome{absent, absent}, Broke},
+		{"fails with the change and is stopped without it", []gotest.Outcome{fail, fail}, []gotest.Outcome{stop, stop}, Broke},
+		{"fails with the change and is skipped without it", []gotest.Outcome{fail, fail}, []gotest.Outcome{skip, skip}, Broke},
 		{"passes and fails with the change", []gotest.Outcome{pass, fail}, []gotest.Outcome{pass, pass}, Flaky},
 		{"passes and fails without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{fail, pass}, Flaky},
 		{"is skipped on both", []gotest.Outcome{skip, skip}, []gotest.Outcome{skip, skip}, Skipped},
 		{"is skipped with the change", []gotest.Outcome{skip, skip}, []gotest.Outcome{pass, pass}, Skipped},
+		{"is skipped without the change", []gotest.Outcome{pass, pass}, []gotest.Outcome{skip, skip}, Skipped},
 	}
 	for _, tt := range tests {
 		if got := regressionVerdict(tt.head, tt.base); got != tt.want {

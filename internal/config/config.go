@@ -43,7 +43,7 @@ type Repo struct {
 
 // Tests says which files hold tests and how to run them.
 type Tests struct {
-	// Files are the patterns of section 1.3 of SPEC.md.
+	// Files are the patterns of section 1.2 of SPEC.md.
 	Files   []string
 	Run     string
 	Report  string
@@ -288,13 +288,13 @@ func isControl(r rune) bool {
 	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp)
 }
 
-// EscapeControl writes every control character in s, except line breaks
-// and tabs, as a Go escape sequence, so that text from a change cannot act on
-// a terminal.
+// EscapeControl writes every control character in s, except tabs, as a Go
+// escape sequence, so that text from a change cannot act on a terminal or add
+// lines to the output.
 func EscapeControl(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if isControl(r) && r != '\n' && r != '\t' {
+		if isControl(r) && r != '\t' {
 			quoted := strconv.QuoteRuneToASCII(r)
 			b.WriteString(quoted[1 : len(quoted)-1])
 			continue
@@ -321,7 +321,7 @@ func checkEnvName(problems []string, field, name string) []string {
 	return problems
 }
 
-// parseDuration parses a duration from section 1.3 of SPEC.md into *out, or
+// parseDuration parses a duration from section 1.2 of SPEC.md into *out, or
 // sets the default when text is empty.
 func parseDuration(problems []string, field, text string, fallback time.Duration, out *time.Duration) []string {
 	if text == "" {

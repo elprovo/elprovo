@@ -99,12 +99,12 @@ func runPlan(ctx context.Context, plan replay.Plan, opts replay.Options, env Env
 	opts.RunDone = func(side string, run replay.RunReport) {
 		fmt.Fprintf(env.Stderr, "%s run %d: %s (%.1fs)\n", side, run.Run, run.Outcome, run.Seconds)
 	}
-	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", message) }
+	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", config.EscapeControl(message)) }
 	report, err := replay.Run(ctx, plan, opts)
 	// The blank line parts the progress from the results in a terminal.
 	fmt.Fprintln(env.Stderr)
 	if err != nil {
-		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
+		fmt.Fprintf(env.Stderr, "elprovo: %s\n", config.EscapeControl(err.Error()))
 		return report, false
 	}
 	return report, true
@@ -120,7 +120,7 @@ func runReproduce(ctx context.Context, args []string, env Env) int {
 	}
 	plan, err := replay.PrepareReproduce(ctx, opts, flags.Args())
 	if err != nil {
-		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
+		fmt.Fprintf(env.Stderr, "elprovo: %s\n", config.EscapeControl(err.Error()))
 		return 2
 	}
 	out := output{w: env.Stdout, dir: env.Dir}
@@ -148,7 +148,7 @@ func runReplay(ctx context.Context, args []string, env Env) int {
 
 	plan, err := replay.Prepare(ctx, opts)
 	if err != nil {
-		fmt.Fprintf(env.Stderr, "elprovo: %v\n", err)
+		fmt.Fprintf(env.Stderr, "elprovo: %s\n", config.EscapeControl(err.Error()))
 		return 2
 	}
 	out := output{w: env.Stdout, dir: env.Dir}
@@ -297,12 +297,16 @@ func (o output) test(report replay.Report, t replay.TestReport, where string) {
 // explains says, for each verdict, which run's message explains it: the
 // first run, in the order the runs ran, for which the function is true.
 var explains = map[replay.Verdict]func(side string, o gotest.Outcome) bool{
-	replay.Fixed:          func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Failed },
-	replay.Reproduced:     func(_ string, o gotest.Outcome) bool { return o == gotest.Failed },
-	replay.CouldNotRun:    func(_ string, o gotest.Outcome) bool { return o == gotest.Absent },
-	replay.New:            func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Absent },
-	replay.NotFixed:       func(side string, o gotest.Outcome) bool { return side == "head" && o != gotest.Passed },
-	replay.Broke:          func(side string, o gotest.Outcome) bool { return side == "head" && o == gotest.Failed },
+	replay.Fixed:       func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Failed },
+	replay.Reproduced:  func(_ string, o gotest.Outcome) bool { return o == gotest.Failed },
+	replay.CouldNotRun: func(_ string, o gotest.Outcome) bool { return o == gotest.Absent },
+	replay.New:         func(side string, o gotest.Outcome) bool { return side == "base" && o == gotest.Absent },
+	replay.NotFixed: func(side string, o gotest.Outcome) bool {
+		return side == "head" && (o == gotest.Failed || o == gotest.Absent)
+	},
+	replay.Broke: func(side string, o gotest.Outcome) bool {
+		return side == "head" && (o == gotest.Failed || o == gotest.Absent)
+	},
 	replay.AlreadyFailing: func(side string, o gotest.Outcome) bool { return side == "head" && o == gotest.Failed },
 	replay.Flaky:          func(_ string, o gotest.Outcome) bool { return o == gotest.Failed || o == gotest.Absent },
 	replay.NotRun:         func(_ string, o gotest.Outcome) bool { return o == gotest.Absent },
@@ -328,7 +332,7 @@ func explaining(t replay.TestReport) (string, int, replay.TestRun, bool) {
 }
 
 func (o output) stoppedEarly(report replay.Report) {
-	fmt.Fprintf(o.w, "The replay stopped early: %s.\n", report.StoppedEarly)
+	fmt.Fprintf(o.w, "The replay stopped early: %s.\n", config.EscapeControl(report.StoppedEarly))
 	for _, side := range []struct {
 		name string
 		runs []replay.RunReport

@@ -164,18 +164,22 @@ func TestARunTestsOnlyThePackagesItsCommitHas(t *testing.T) {
 	}
 }
 
-func TestMessagesNameFilesRelativeToTheCopy(t *testing.T) {
-	// $PWD is the copy's path with symbolic links resolved, as the go
-	// command prints it.
-	script := `printf '{"Action":"output","Package":"example.com/m","Test":"TestA","Output":"%s/a_test.go:3: boom\\n"}\n' "$PWD"
-` + "printf '%s\\n' '{\"Action\":\"fail\",\"Package\":\"example.com/m\",\"Test\":\"TestA\"}'\n"
-
+func TestMessagesNameTheRunsDirectoriesWithoutTheirPaths(t *testing.T) {
+	// The message starts with 100 characters, so a cut at 200 before the
+	// paths are removed would cut it in a path. $PWD is the copy's path with
+	// symbolic links resolved, as the go command prints it, and $TMPDIR and
+	// $HOME are as the environment gives them, as a test prints them.
+	script := `msg="$(printf 'x%.0s' $(seq 100)) $PWD/a_test.go:3: boom in $TMPDIR/t/001 and $HOME/.zshrc"
+printf '{"Action":"output","Package":"example.com/m","Test":"TestA","Output":"%s\\n"}\n' "$msg"
+printf '%s\n' '{"Action":"fail","Package":"example.com/m","Test":"TestA"}'
+`
 	report, _ := replayOnce(t, script, replay.Limits{})
 
 	if len(report.Regressions) != 1 {
 		t.Fatalf("the report has %d other tests; want TestA", len(report.Regressions))
 	}
-	if got := report.Regressions[0].Head[0].Message; got != "a_test.go:3: boom" {
-		t.Errorf("the message is %q; want the file relative to the copy", got)
+	want := strings.Repeat("x", 100) + " a_test.go:3: boom in $TMPDIR/t/001 and $HOME/.zshrc"
+	if got := report.Regressions[0].Head[0].Message; got != want {
+		t.Errorf("the message is %q; want %q", got, want)
 	}
 }

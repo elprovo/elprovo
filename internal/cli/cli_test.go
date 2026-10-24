@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -253,6 +254,19 @@ func TestAChangeThatBreaksAnotherTestFails(t *testing.T) {
 	)
 }
 
+func TestAChangeThatStopsAnotherTestFromBuildingBrokeIt(t *testing.T) {
+	repo, base := shop(t, fixedCart)
+	repo.Commit(map[string]string{"cart/cart.go": strings.Replace(fixedCart, "func Total(", "func Sum(", 1)})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestNoDiscount", replay.Broke, "passed", "absent", 1)
+	wantLines(t, r,
+		"✗ broke           TestNoDiscount  ./cart",
+		indent+"head run 1: cart/total_test.go:6:12: undefined: Total",
+	)
+}
+
 func TestAPanicOnTheBaseLeavesTheLaterTestsNotRun(t *testing.T) {
 	testrepo.ShareGoCaches(t)
 	repo := testrepo.New(t)
@@ -391,7 +405,7 @@ func TestReproduceRejectsFilesItCannotUse(t *testing.T) {
 		wantInError string
 	}{
 		{"no file", nil, "reproduce needs at least one test file"},
-		{"a file that tests.files does not match", []string{"cart/cart.go"}, `"cart/cart.go" is not a test file: it does not match tests.files`},
+		{"a file that is not a Go test file", []string{"cart/cart.go"}, `"cart/cart.go" is not a Go test file`},
 		{"a file that is not in the head commit", []string{"cart/missing_test.go"}, `"cart/missing_test.go" is not in the head commit`},
 		{"a file whose tests did not change", []string{"cart/total_test.go"}, `"cart/total_test.go" has no test that the head commit`},
 		{"a file outside the repository", []string{"../elsewhere_test.go"}, `"../elsewhere_test.go" is outside the repository`},
@@ -463,6 +477,51 @@ func TestDryRunListsTheChangedTestsAndRunsNoCommand(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(spy, "started")); err == nil {
 		t.Error("a dry run ran start")
 	}
+}
+
+func TestNotFixedShowsTheFirstHeadRunThatFailed(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "counter")
+	if err := os.WriteFile(counter, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("COUNTER", counter)
+	// The runs go base 1, head 1, base 2, head 2. TestA is skipped in head
+	// run 1 and fails in the others.
+	script := `n=$(cat "$COUNTER"); echo $((n + 1)) > "$COUNTER"
+if [ "$n" -eq 1 ]; then
+  printf '%s\n' '{"Action":"output","Package":"example.com/m","Test":"TestA","Output":"x_test.go:5: skipped\n"}' '{"Action":"skip","Package":"example.com/m","Test":"TestA"}'
+else
+  printf '%s\n' "{\"Action\":\"output\",\"Package\":\"example.com/m\",\"Test\":\"TestA\",\"Output\":\"x_test.go:5: run $n fails\\n\"}" '{"Action":"fail","Package":"example.com/m","Test":"TestA"}'
+fi
+`
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("pass_env = [\"COUNTER\"]\n", "", ""), "run.sh": script}))
+	repo.Commit(map[string]string{"x_test.go": "package m\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base)
+
+	wantVerdict(t, r, "TestA", replay.NotFixed, "failed failed", "skipped failed", 1)
+	wantLines(t, r, indent+"head run 2: x_test.go:5: run 3 fails", indent+"log: "+filepath.Join(".elprovo", "runs", r.replayID(t), "head-2", "test.log"))
+}
+
+func TestATestThatMovesToAnotherFileIsNotChanged(t *testing.T) {
+	repo := testrepo.New(t)
+	moved := "package m\n\nimport \"testing\"\n\nfunc TestMoved(t *testing.T) { t.Log(1) }\n"
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a_test.go": moved}))
+	repo.Commit(map[string]string{"b_test.go": moved}, "a_test.go")
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	wantLines(t, r, "packages: .", "The change adds or edits no test.")
+}
+
+func TestAPackageInANestedModuleIsLeftOut(t *testing.T) {
+	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
+	repo.Commit(map[string]string{"tools/go.mod": "module example.com/tools\n\ngo 1.27\n", "tools/x.go": "package tools\n", "tools/sub/y.go": "package sub\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	wantLines(t, r, "packages: .")
 }
 
 func TestTheExitStatusOfTheTestCommandDecidesNothing(t *testing.T) {
@@ -961,6 +1020,265 @@ func TestControlCharactersNeverReachTheTerminal(t *testing.T) {
 			t.Errorf("the message is %q; want %q", got, `gone\x1b[2K`)
 		}
 	})
+}
+
+// emptyTest is a test file in the root package with one empty test, name.
+func emptyTest(name string) string {
+	return "package m\n\nimport \"testing\"\n\nfunc " + name + "(t *testing.T) {}\n"
+}
+
+func TestHeadNamesTheCommitWithTheChange(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": event("pass", "TestA"), "a.go": "package m\n"}))
+	head := repo.Commit(map[string]string{"a.go": "package m\n\nconst A = 1\n"})
+	repo.Commit(map[string]string{"run.sh": event("fail", "TestA")})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--head", head, "--runs", "1")
+
+	if r.report.Head != head {
+		t.Errorf("the head commit is %s; want %s", r.report.Head, head)
+	}
+	wantVerdict(t, r, "TestA", replay.Kept, "passed", "passed", 0)
+}
+
+func TestReproduceReadsTheFilesFromTheHeadCommit(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": event("fail", "TestA"), "a.go": "package m\n"}))
+	head := repo.Commit(map[string]string{"a_test.go": emptyTest("TestA")})
+	repo.Commit(nil, "a_test.go")
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--head", head, "--runs", "1", "a_test.go")
+
+	wantVerdict(t, r, "TestA", replay.Reproduced, "failed", "", 0)
+}
+
+func TestReproduceJudgesOnlyTheNamedFilesOnce(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": event("fail", "TestA") + event("pass", "TestB"), "a.go": "package m\n"}))
+	repo.Commit(map[string]string{"a_test.go": emptyTest("TestA"), "b_test.go": emptyTest("TestB")})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--runs", "1", "a_test.go", "./a_test.go")
+
+	wantVerdict(t, r, "TestA", replay.Reproduced, "failed", "", 0)
+	if len(r.report.Changed) != 1 {
+		t.Errorf("the report has %d changed tests; want TestA once", len(r.report.Changed))
+	}
+}
+
+func TestTheBaseConfigIsCheckedToo(t *testing.T) {
+	for _, tt := range []struct {
+		name, baseConfig, wantInError string
+	}{
+		{"an unknown field in version 2", scriptConfig("", "stopp = \"x\"\n", ""), "elprovo.toml in the base commit"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testrepo.New(t)
+			base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": tt.baseConfig, "run.sh": event("pass", "TestA"), "a.go": "package m\n"}))
+			repo.Commit(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a.go": "package m\n\nconst A = 1\n"})
+
+			r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+			if r.status != 2 || !strings.Contains(r.stderr, tt.wantInError) {
+				t.Errorf("exit %d, stderr %q; want 2 and an error that contains %q", r.status, r.stderr, tt.wantInError)
+			}
+		})
+	}
+}
+
+func TestAChangeThatOnlyDeletesAGoFileTestsItsPackage(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": event("pass", "TestA"), "a.go": "package m\n", "b.go": "package m\n"}))
+	repo.Commit(map[string]string{"run.sh": event("fail", "TestA")}, "b.go")
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestA", replay.Broke, "passed", "failed", 1)
+}
+
+func TestAMovedGoFileTouchesBothPackages(t *testing.T) {
+	repo := testrepo.New(t)
+	body := "package a\n\n// X is a constant with a body long enough for Git to find the rename.\nconst X = 1\n"
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a/x.go": body}))
+	repo.Commit(map[string]string{"b/x.go": body}, "a/x.go")
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	wantLines(t, r, "packages: ./a ./b")
+}
+
+func TestAPackageThatTheChangeDeletesIsNotRunWithAReason(t *testing.T) {
+	repo := testrepo.New(t)
+	script := `printf '%s\n' '{"Action":"pass","Package":"example.com/m/old","Test":"TestOld"}'` + "\n"
+	cfg := strings.Replace(scriptConfig("", "", ""), `files = ["**/*_test.go"]`, `files = ["e2e/**"]`, 1)
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": cfg, "run.sh": script, "old/o.go": "package old\n"}))
+	repo.Commit(nil, "old")
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestOld", replay.NotRun, "passed", "absent", 0)
+	if got := r.test(t, "TestOld").Head[0].Message; got != "the head commit has no Go files in ./old" {
+		t.Errorf("the head message is %q; want that the head commit has no Go files there", got)
+	}
+}
+
+func TestATimedOutRunKeepsTheResultsItPrinted(t *testing.T) {
+	repo := testrepo.New(t)
+	cfg := scriptConfig("", "timeout = \"1s\"\n", "")
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": cfg, "run.sh": event("pass", "TestA") + event("pass", "TestB"), "a.go": "package m\n"}))
+	repo.Commit(map[string]string{"run.sh": event("pass", "TestA") + "sleep 60\n", "a.go": "package m\n\nconst A = 1\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestA", replay.Kept, "passed", "passed", 1)
+	wantVerdict(t, r, "TestB", replay.Broke, "passed", "absent", 1)
+	if run := r.report.HeadRuns[0]; run.Outcome != replay.Ran || !run.TimedOut || run.ExitCode != nil {
+		t.Errorf("head run %+v; want ran, timed out, and no exit code", run)
+	}
+	if got := r.test(t, "TestB").Head[0].Message; got != "the tests did not end within 1s" {
+		t.Errorf("the head message of TestB is %q; want the timeout", got)
+	}
+}
+
+func TestAGoTestFileIsATestFileEvenWhenTestsFilesDoesNotMatchIt(t *testing.T) {
+	repo := testrepo.New(t)
+	cfg := strings.Replace(scriptConfig("", "", ""), `files = ["**/*_test.go"]`, `files = ["e2e/**"]`, 1)
+	// TestKept passes only on the head commit's kept_test.go.
+	script := "if grep -q head kept_test.go; then\n" + event("pass", "TestKept") + "else\n" + event("fail", "TestKept") + "fi\n" + event("pass", "TestNew")
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": cfg, "run.sh": script, "kept_test.go": "package m\n"}))
+	repo.Commit(map[string]string{"kept_test.go": "package m\n\n// head\n", "new_test.go": emptyTest("TestNew")})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestKept", replay.Kept, "passed", "passed", 1)
+	wantVerdict(t, r, "TestNew", replay.NotReproduced, "passed", "passed", 1)
+}
+
+func TestBaseRunsRunTheTestsAsTheHeadConfigSays(t *testing.T) {
+	repo := testrepo.New(t)
+	baseConfig := strings.Replace(scriptConfig("", "", ""), "sh run.sh {packages}", "sh other.sh {packages}", 1)
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": baseConfig, "run.sh": event("pass", "TestA"), "other.sh": event("fail", "TestA"), "a.go": "package m\n",
+	}))
+	repo.Commit(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a.go": "package m\n\nconst A = 1\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestA", replay.Kept, "passed", "passed", 0)
+}
+
+func TestAChangedTestNamedInTwoFilesOfItsPackageIsAnError(t *testing.T) {
+	repo := testrepo.New(t)
+	external := "package m_test\n\nimport \"testing\"\n\nfunc TestTotal(t *testing.T) {}\n"
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "a.go": "package m\n", "b_test.go": external}))
+	repo.Commit(map[string]string{"a_test.go": "package m\n\nimport \"testing\"\n\nfunc TestTotal(t *testing.T) { t.Log(1) }\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	if r.status != 2 || !strings.Contains(r.stderr, "a_test.go: TestTotal is declared in b_test.go too") {
+		t.Errorf("exit %d, stderr %q; want 2 and an error that names both files", r.status, r.stderr)
+	}
+}
+
+func TestTheBaseCopyTakesTheTestFilesThatTheHeadConfigNames(t *testing.T) {
+	repo := testrepo.New(t)
+	script := "if grep -qx new testdata/case.txt; then\n" + event("pass", "TestFixture") + "else\n" + event("fail", "TestFixture") + "fi\n"
+	base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": script, "a.go": "package m\n", "testdata/case.txt": "old\n"}))
+	headConfig := strings.Replace(scriptConfig("", "", ""), `files = ["**/*_test.go"]`, `files = ["**/*_test.go", "**/testdata/**"]`, 1)
+	repo.Commit(map[string]string{"elprovo.toml": headConfig, "testdata/case.txt": "new\n", "a.go": "package m\n\nconst A = 1\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestFixture", replay.Kept, "passed", "passed", 0)
+}
+
+func TestTheOutputListsFixedAndFlakyOtherTests(t *testing.T) {
+	counter := filepath.Join(t.TempDir(), "seen")
+	t.Setenv("COUNTER", counter)
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": scriptConfig("pass_env = [\"COUNTER\"]\n", "", ""), "a.go": "package m\n",
+		"run.sh": event("fail", "TestFixed") + event("pass", "TestFlaky"),
+	}))
+	// TestFlaky passes in head run 1 and fails in head run 2.
+	repo.Commit(map[string]string{
+		"a.go":   "package m\n\nconst A = 1\n",
+		"run.sh": event("pass", "TestFixed") + "if [ -f \"$COUNTER\" ]; then\n" + event("fail", "TestFlaky") + "else\ntouch \"$COUNTER\"\n" + event("pass", "TestFlaky") + "fi\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base)
+
+	wantLines(t, r, "✓ fixed           TestFixed  .", "✗ flaky           TestFlaky  .")
+}
+
+func TestReportJSONHasTheFieldsOfFormat2(t *testing.T) {
+	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	data, err := os.ReadFile(filepath.Join(repo.Dir, ".elprovo", "runs", r.replayID(t), "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report map[string]any
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for key := range report {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	want := []string{"base", "base_runs", "changed", "command", "format", "head", "head_runs", "packages", "regressions", "runs", "stopped_early"}
+	if !slices.Equal(keys, want) || report["format"] != float64(2) {
+		t.Errorf("report.json has the fields %v and format %v; want %v and 2", keys, report["format"], want)
+	}
+}
+
+func TestARunThatDidNotRunShowsItsLastLine(t *testing.T) {
+	t.Run("escaped", func(t *testing.T) {
+		repo, base := scriptRepo(t, scriptConfig("", "", ""), "printf 'gone\\033[2K\\n'\nexit 1\n")
+		r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+		wantNoControl(t, r, 2)
+		wantLines(t, r, `base run 1 ended with: gone\x1b[2K`)
+	})
+	t.Run("empty", func(t *testing.T) {
+		repo, base := scriptRepo(t, scriptConfig("", "", ""), "exit 1\n")
+		r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+		wantLines(t, r, "base run 1 printed nothing.")
+	})
+	t.Run("on the head commit", func(t *testing.T) {
+		repo := testrepo.New(t)
+		base := repo.Commit(testrepo.GoModule(map[string]string{"elprovo.toml": scriptConfig("", "", ""), "run.sh": event("pass", "TestA"), "a.go": "package m\n"}))
+		repo.Commit(map[string]string{"run.sh": "echo head broke\n", "a.go": "package m\n\nconst A = 1\n"})
+		r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+		if r.status != 2 {
+			t.Errorf("exit %d; want 2", r.status)
+		}
+		wantLines(t, r, "head run 1 ended with: head broke")
+	})
+}
+
+func TestTextFromAChangeCannotAddLines(t *testing.T) {
+	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
+	repo.Commit(map[string]string{"x\n✓ fixed           TestForged  forged_test.go\ny/b.go": "package y\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	if strings.Contains(r.stdout, "\n✓ fixed") {
+		t.Errorf("a directory name added a line to the output:\n%s", r.stdout)
+	}
+}
+
+func TestAnErrorAboutAFileFromAChangeIsEscaped(t *testing.T) {
+	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
+	// A test file over the size limit makes an error that names the file.
+	repo.Commit(map[string]string{"a\x1b[2J_test.go": "package m\n//" + strings.Repeat("x", 4<<20) + "\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--dry-run")
+
+	wantNoControl(t, r, 2)
+	if !strings.Contains(r.stderr, `a\x1b[2J_test.go`) {
+		t.Errorf("stderr does not name the file with its control character escaped: %q", r.stderr)
+	}
 }
 
 func wantNoControl(t *testing.T, r result, wantStatus int) {

@@ -1,0 +1,13 @@
+{"Time":"2026-10-24T18:58:08.968433+03:00","Action":"start","Package":"gj/count"}
+{"Time":"2026-10-24T18:58:09.146222+03:00","Action":"run","Package":"gj/count","Test":"TestFirstFails"}
+{"Time":"2026-10-24T18:58:09.14631+03:00","Action":"output","Package":"gj/count","Test":"TestFirstFails","Output":"=== RUN   TestFirstFails\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146378+03:00","Action":"output","Package":"gj/count","Test":"TestFirstFails","Output":"    x_test.go:10: first run fails\n","OutputType":"error"}
+{"Time":"2026-10-24T18:58:09.146387+03:00","Action":"output","Package":"gj/count","Test":"TestFirstFails","Output":"--- FAIL: TestFirstFails (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146392+03:00","Action":"fail","Package":"gj/count","Test":"TestFirstFails","Elapsed":0}
+{"Time":"2026-10-24T18:58:09.146401+03:00","Action":"run","Package":"gj/count","Test":"TestFirstFails"}
+{"Time":"2026-10-24T18:58:09.146411+03:00","Action":"output","Package":"gj/count","Test":"TestFirstFails","Output":"=== RUN   TestFirstFails\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146419+03:00","Action":"output","Package":"gj/count","Test":"TestFirstFails","Output":"--- PASS: TestFirstFails (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146425+03:00","Action":"pass","Package":"gj/count","Test":"TestFirstFails","Elapsed":0}
+{"Time":"2026-10-24T18:58:09.146429+03:00","Action":"output","Package":"gj/count","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146937+03:00","Action":"output","Package":"gj/count","Output":"FAIL\tgj/count\t0.178s\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:58:09.146956+03:00","Action":"fail","Package":"gj/count","Elapsed":0.179}

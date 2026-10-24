@@ -29,7 +29,7 @@ report = "go-test-json"
 | `version` | Yes | Integer | | The format version. It must be `2`. |
 | `env` | No | Table of name to string | Empty | Plain values that every command gets. The file is in the repository, so these must not be secrets. |
 | `pass_env` | No | Array of names | Empty | Variables that Elprovo copies from its own environment into every command, such as `GOCACHE` or `DOCKER_HOST`. A listed variable that is not set is an error. |
-| `tests.files` | Yes | Array of patterns | | The files of the tests: the test files, and the files that the tests read, such as those in `testdata`. Section 1.2 defines the patterns. |
+| `tests.files` | Yes | Array of patterns | | The files of the tests: the test files, and the files that the tests read, such as those in `testdata`. Go test files, `*_test.go`, always count, whether a pattern matches them or not. Section 1.2 defines the patterns. |
 | `tests.run` | Yes | Command | | Runs the tests and prints what `go test -json` prints. It must contain `{packages}`, where Elprovo puts the packages to test. |
 | `tests.report` | Yes | String | | The format of what `tests.run` prints. It must be `go-test-json`. |
 | `tests.timeout` | No | Duration | `10m` | The longest time `tests.run` may take. |
@@ -52,7 +52,7 @@ A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not s
 export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
 ```
 
-Give `go test` a `-timeout` that is shorter than `tests.timeout`. Then a test that hangs fails with a message, and the other tests keep their results.
+Give `go test` a `-timeout` that is shorter than `tests.timeout`. Then a test that hangs fails with a message, and the tests that ended before it keep their results.
 
 ### 1.2 Values
 
@@ -63,7 +63,7 @@ Give `go test` a `-timeout` that is shorter than `tests.timeout`. Then a test th
 ### 1.3 Versions
 
 - A version 2 reader rejects a field that this document does not define, so that a misspelled field fails instead of being ignored. Field names are case-sensitive: `RUN` is not `run`, and it is an error.
-- Version 1 was the format of Elprovo 0.2, with proof files. Elprovo rejects an `elprovo.toml` of version 1 in the head commit, and asks for version 2. In the base commit, a version 1 file is not an error: the base runs use the head commit's file, as section 3.2 says.
+- Version 1 was the format of Elprovo 0.2, with proof files. Elprovo rejects an `elprovo.toml` of version 1 in the head commit, and asks for version 2. In the base commit, a version 1 file is not an error: the base runs use the head commit's file only, as section 3.2 says.
 - A new field or a change in meaning comes with a new version. A release of Elprovo rejects a version it does not know.
 
 ## 2. Command line
@@ -98,12 +98,13 @@ Elprovo resolves `--base` and `--head` to commit IDs once, before it runs anythi
 
 Elprovo lists the files that differ between the base and head commits, as `git diff --name-only --no-renames <base> <head>` lists them. A renamed file counts as deleted and added.
 
-- The **packages** are the directories of the changed `.go` files, deleted ones included, such as `./cart`. Like `go test ./...`, Elprovo leaves out the files in `testdata` or `vendor`, and the files whose path has a name that starts with `.` or `_`.
-- A **changed test** is a test in a changed `_test.go` file that matches `tests.files` and that the head commit has. The test is changed when the base commit does not have it, or declares it differently. Elprovo compares the declarations without comments and spacing, so a change to a comment does not change a test.
+- The **packages** are the directories of the changed `.go` files, deleted ones included, such as `./cart`. Like `go test ./...`, Elprovo leaves out the files in `testdata` or `vendor`, the files whose path has a name that starts with `.` or `_`, and the directories of other Go modules: a directory with its own `go.mod` in the head commit, and every directory in it.
+- A **changed test** is a test in a changed `_test.go` file that the head commit has. The test is changed when no test file of its package in the base commit has it, or declares it differently. So a test that moves to another file of its package does not change. Elprovo compares the declarations without comments, blank lines and spacing, so a change to a comment does not change a test. A base test file that does not parse adds no tests.
+- `go test` runs two tests of one name in a package under that name, such as a test in package `x` and one in package `x_test`, or tests in files for different systems. Their results cannot be told apart, so a changed test whose name another test file of its package declares in the head commit is an error.
 - A **test** is a top-level function `func TestXxx(t *testing.T)`, by the rules of `go test`. Its subtests count through it.
 - The **other tests** are the tests in the packages that are not changed tests. Elprovo knows them from the results that the runs print.
 
-When the change touches a package, the head commit must have a `go.mod` with a `module` line at the repository root. When the change touches no package, Elprovo runs nothing.
+When the change touches a package, the head commit must have a `go.mod` with a `module` line at the repository root. When the change touches no package, Elprovo runs nothing and writes no report.
 
 Before it runs any command, Elprovo checks the head commit's `elprovo.toml`, the base commit's when it is of version 2, and the changed test files.
 
@@ -113,9 +114,9 @@ Elprovo alternates the commits: base run 1, head run 1, base run 2, head run 2, 
 
 One run on commit `C` has these steps:
 
-1. Make a new directory for the run in the system's temporary directory. In it, make an empty directory named `elprovo-<run ID>`, the copy, where the run ID is 8 random characters from `[a-z0-9]`. Write the files of `C` that do not match the head commit's `tests.files` into the copy, as a checkout of `C` writes them, with the repository's checkout filters such as Git LFS. The copy has no `.git` directory, no untracked or ignored files, and no submodule contents.
-2. Write the files of the head commit that match its `tests.files` into the copy. So both commits run the head commit's tests, and only the code differs between them.
-3. Take `elprovo.toml` from `C` when it is of version 2. Otherwise take the head commit's.
+1. Make a new directory for the run in the system's temporary directory. In it, make an empty directory named `elprovo-<run ID>`, the copy, where the run ID is 8 random characters from `[a-z0-9]`. Write the files of `C` that are not test files into the copy: the files that do not end in `_test.go` and that the head commit's `tests.files` does not match. Write them as a checkout of `C` writes them, with the repository's checkout filters such as Git LFS. The copy has no `.git` directory, no untracked or ignored files, and no submodule contents.
+2. Write the test files of the head commit into the copy. So both commits run the head commit's tests, and only the code differs between them.
+3. Take `[tests]`, `env` and `pass_env` from the head commit's `elprovo.toml`, so that both commits run the tests in the same way. Take `[app]` from the `elprovo.toml` of `C` when that file is of version 2 and has `[app]`, because the app belongs to the code. Otherwise take the head commit's `[app]`.
 4. Make the run's empty home directory, temporary directory and artifacts directory in the run's directory, and the run's output directory, `<base|head>-<run number>/` in the replay's output directory. The logs go to the run's output directory.
 5. If `[app]` is set, run `app.start`. If it exits with a status other than 0 or takes longer than `app.timeouts.start`, the run is **not run**. Go to step 8.
 6. If `[app]` is set, run `app.ready` once a second until it exits 0. If it does not exit 0 within `app.timeouts.ready`, the run is **not run**. Go to step 8.
@@ -134,16 +135,16 @@ In each run, each test gets one outcome from the `go test -json` events:
 | Outcome | When |
 | --- | --- |
 | `passed` | The test passed. |
-| `failed` | The test failed, also by a panic. |
+| `failed` | The test failed, also by a panic. A test that printed a panic and has no result also failed, as after `go test -timeout` or a panic in a goroutine. When one name has several results, as with `-count` or a test of the same name in package `x` and `x_test`, a failure counts over a pass, and a pass over a skip. |
 | `skipped` | The test was skipped, such as with `t.Skip`. |
 | `absent` | The run printed no result for the test. Its package did not build, its `TestMain` exited, an earlier test stopped the package with a panic, `C` has no Go files in the package, or `tests.run` did not end in time. |
 
 An outcome other than `passed` comes with a message:
 
-- for `failed` and `skipped`, the first line that the test printed, such as `cart_test.go:7: Total(100, 10) = 80; want 90`, or `panic: …`;
+- for `failed` and `skipped`, the first line that the test printed, such as `cart_test.go:7: Total(100, 10) = 80; want 90`, or `panic: …`. When that line holds only a location, such as `cart_test.go:7:` from testify, the next lines follow it;
 - for `absent`, the first line that says why the package failed, such as a compile error, or why Elprovo has no result.
 
-Elprovo removes the path of the copy from the message, so that a file in the copy has its path from the repository root. It keeps the first 200 characters of the message, and then writes control characters as escape sequences, such as `\x1b`.
+Elprovo removes the paths of the run's directories from the message, because they change in every run. A file in the copy gets its path from the repository root, and the run's home and temporary directories become `$HOME` and `$TMPDIR`. Then Elprovo keeps the first 200 characters of the message, and writes control characters as escape sequences, such as `\x1b` and `\n`.
 
 `absent` is never `failed`. So a new test that cannot build without the change, because it uses code that only the head commit has, is `new` and not `fixed`.
 
@@ -169,13 +170,18 @@ For another test:
 
 | Rule | Runs | Verdict |
 | --- | --- | --- |
-| 1 | A run on either commit is `absent` | `not-run` |
-| 2 | The runs on one commit have different outcomes | `flaky` |
-| 3 | `skipped` on either commit | `skipped` |
-| 4 | `passed` on both commits | `kept` |
-| 5 | `passed` on the base commit and `failed` on the head commit | `broke` |
-| 6 | `failed` on both commits | `already-failing` |
-| 7 | `failed` on the base commit and `passed` on the head commit | `fixed` |
+| 1 | A head run is `failed` and another is `passed`, and no base run is `failed` | `flaky` |
+| 2 | A head run is `failed`, and no base run is `failed` | `broke` |
+| 3 | A run on the base commit is `absent` | `not-run` |
+| 4 | Every base run is `passed`, and a head run is `absent` because its package failed, such as by a build error, a panic or a timeout | `broke` |
+| 5 | A run on the head commit is `absent` | `not-run` |
+| 6 | The runs on one commit have different outcomes | `flaky` |
+| 7 | `skipped` on either commit | `skipped` |
+| 8 | `passed` on both commits | `kept` |
+| 9 | `failed` on both commits | `already-failing` |
+| 10 | `failed` on the base commit and `passed` on the head commit | `fixed` |
+
+Rules 1 and 2 come first, so that a test that fails with the change is never `not-run` or `skipped`. Both commits run the same test files, so in rule 4 the change stopped the test. A test that is `absent` on the head commit without a package failure gets `not-run`, because Elprovo cannot tell why it has no result.
 
 `fixed` is the verdict that shows what the change did: the same test failed without the change and passed with it. Both commits run the head commit's tests, so only the code made the difference. A reviewer still reads the test, and the message of the base run, which the text output shows, to check that the test fails for the reason of the bug.
 
@@ -268,8 +274,8 @@ A block shows the verdict, how the test ended on each commit, and the message of
 
 - `failed` on the base commit, for `fixed`;
 - `absent` on the base commit, for `new`;
-- `failed` or `absent` on the head commit, for `not-fixed`;
-- `failed` on the head commit, for `broke` and `already-failing`;
+- `failed` or `absent` on the head commit, for `not-fixed` and `broke`;
+- `failed` on the head commit, for `already-failing`;
 - `failed` or `absent`, for `flaky`;
 - `absent`, for `not-run`;
 - `skipped`, for `skipped`.

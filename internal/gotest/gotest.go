@@ -12,6 +12,7 @@ import (
 	"go/printer"
 	"go/token"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -38,7 +39,8 @@ type Test struct {
 }
 
 // Result is a test's outcome in one run, with the first line of output that
-// explains it.
+// explains it. When that line holds only a location, such as testify prints,
+// the lines after it follow.
 type Result struct {
 	Outcome Outcome
 	Message string
@@ -56,9 +58,18 @@ type Results struct {
 }
 
 const (
-	maxMessage = 200
+	// maxMessage bounds the memory that one message takes. A report keeps
+	// fewer characters.
+	maxMessage = 1000
 	maxLine    = 1 << 20
 )
+
+// rank orders the outcomes of one name: the higher one counts.
+var rank = map[Outcome]int{Skipped: 0, Passed: 1, Failed: 2}
+
+// locationOnly matches a line that names a place in a file and nothing else,
+// such as "x_test.go:10:".
+var locationOnly = regexp.MustCompile(`^[^\s:]+\.go:[0-9]+:$`)
 
 // Result returns the result of t. A test without a result is Absent, with
 // its package's reason as the message.
@@ -80,10 +91,16 @@ type event struct {
 
 // Parse reads go test -json output. It skips lines that are not events, such
 // as messages from the go command, and the results of subtests, which count
-// through their parent.
+// through their parent. A test that printed a panic and has no result, as
+// after go test -timeout or a panic in a goroutine, failed. When one name has
+// several results, as with -count or a test of the same name in package x
+// and x_test, a failure counts over a pass, and a pass over a skip.
 func Parse(r io.Reader) (Results, error) {
 	results := Results{Tests: map[Test]Result{}, Reasons: map[string]string{}}
 	firstLines := map[Test]string{}
+	// continued holds the tests whose first line holds only a location.
+	continued := map[Test]bool{}
+	panicked := map[Test]bool{}
 	buildErrors := map[string]string{}
 	panics := map[string]string{}
 	packageLines := map[string]string{}
@@ -112,8 +129,19 @@ func Parse(r io.Reader) (Results, error) {
 			}
 			if e.Test == "" {
 				setFirst(packageLines, e.Package, line)
-			} else {
-				setFirst(firstLines, Test{e.Package, parent(e.Test)}, line)
+				continue
+			}
+			t := Test{e.Package, parent(e.Test)}
+			if strings.HasPrefix(line, "panic: ") {
+				panicked[t] = true
+			}
+			switch first, ok := firstLines[t]; {
+			case !ok:
+				firstLines[t] = line
+				continued[t] = locationOnly.MatchString(line)
+			case continued[t] && !strings.HasPrefix(line, "Error Trace:"):
+				firstLines[t] = cut(first + " " + strings.Join(strings.Fields(line), " "))
+				continued[t] = utf8.RuneCountInString(firstLines[t]) < maxMessage
 			}
 		case "pass", "fail", "skip":
 			ends = append(ends, e)
@@ -138,24 +166,40 @@ func Parse(r io.Reader) (Results, error) {
 		if result.Outcome != Passed {
 			result.Message = firstLines[t]
 		}
+		if previous, ok := results.Tests[t]; ok && rank[previous.Outcome] >= rank[result.Outcome] {
+			continue
+		}
 		results.Tests[t] = result
+	}
+	for t := range panicked {
+		if _, ok := results.Tests[t]; !ok {
+			results.Tests[t] = Result{Outcome: Failed, Message: firstLines[t]}
+		}
 	}
 	return results, nil
 }
 
 // explaining returns line without its indent, or "" when the line is one of
-// the markers that go test prints around every test.
+// the markers that go test prints around every test, or a rule of = signs,
+// as the race detector prints around its report.
 func explaining(output string) string {
 	line := strings.TrimSpace(output)
+	if strings.Trim(line, "=") == "" {
+		return ""
+	}
 	for _, marker := range []string{"=== RUN", "=== PAUSE", "=== CONT", "=== NAME", "--- PASS", "--- FAIL", "--- SKIP", "PASS", "FAIL", "ok  ", "# "} {
 		if strings.HasPrefix(line, marker) {
 			return ""
 		}
 	}
-	if runes := []rune(line); len(runes) > maxMessage {
-		line = string(runes[:maxMessage])
+	return cut(line)
+}
+
+func cut(text string) string {
+	if runes := []rune(text); len(runes) > maxMessage {
+		return string(runes[:maxMessage])
 	}
-	return line
+	return text
 }
 
 func setFirst[K comparable](m map[K]string, key K, line string) {
@@ -188,8 +232,9 @@ func firstOf(values ...string) string {
 // Func is a top-level test function in a Go file.
 type Func struct {
 	Name string
-	// Decl is the function's declaration, printed without comments, so that
-	// two versions compare equal when only comments or spacing differ.
+	// Decl is the function's declaration, printed without comments and
+	// blank lines, so that two versions compare equal when only comments or
+	// spacing differ.
 	Decl string
 }
 
@@ -211,7 +256,10 @@ func Funcs(src []byte) ([]Func, error) {
 		if err := printer.Fprint(&decl, fset, fn); err != nil {
 			return nil, err
 		}
-		funcs = append(funcs, Func{Name: fn.Name.Name, Decl: decl.String()})
+		// The printer keeps a blank line where a comment was.
+		lines := strings.Split(decl.String(), "\n")
+		lines = slices.DeleteFunc(lines, func(line string) bool { return strings.TrimSpace(line) == "" })
+		funcs = append(funcs, Func{Name: fn.Name.Name, Decl: strings.Join(lines, "\n")})
 	}
 	return funcs, nil
 }
@@ -243,18 +291,20 @@ func takesT(fn *ast.FuncType) bool {
 	return ok && sel.Sel.Name == "T"
 }
 
-// Changed returns, in name order, the tests in head that base lacks or
-// declares differently. A nil base means the file is new.
-func Changed(base, head []byte) ([]string, error) {
+// Changed returns, in name order, the tests in head, one test file, that
+// base lacks or declares differently. base holds the test files of the same
+// package in the base commit, so a test that moves to another file does not
+// change. A base file that does not parse adds no tests.
+func Changed(base [][]byte, head []byte) ([]string, error) {
 	headFuncs, err := Funcs(head)
 	if err != nil {
 		return nil, err
 	}
 	before := map[string]string{}
-	if base != nil {
-		baseFuncs, err := Funcs(base)
+	for _, file := range base {
+		baseFuncs, err := Funcs(file)
 		if err != nil {
-			return nil, err
+			continue
 		}
 		for _, f := range baseFuncs {
 			before[f.Name] = f.Decl

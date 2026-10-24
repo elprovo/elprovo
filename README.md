@@ -150,7 +150,7 @@ Add `.elprovo/` to your `.gitignore`.
 
 One run on a commit has four steps:
 
-1. Elprovo writes the commit's code into a new directory, as a checkout writes it, and the head commit's test files beside it. So both commits run the same tests, and only the code differs.
+1. Elprovo writes the commit's code into a new directory, as a checkout writes it, and the head commit's test files beside it. So both commits run the same tests, in the same way, and only the code differs.
 2. It gives the run an empty home directory and an empty temporary directory.
 3. It runs the test command, such as `go test -json`, on the packages, and reads the result of each test.
 4. It deletes the directory.
@@ -161,7 +161,7 @@ The base commit is the merge base with `origin/HEAD`, unless you give `--base`. 
 
 ## Read the verdicts
 
-In each run, each test passed, failed, was skipped, or is **absent**: the run printed no result for it, because its package did not build, its `TestMain` exited, or an earlier test panicked. Absent never counts as failed.
+In each run, each test passed, failed, was skipped, or is **absent**: the run printed no result for it, because its package did not build, its `TestMain` exited, or an earlier test panicked. A test that hangs until `go test -timeout`, or panics in a goroutine, failed. For a changed test, absent never counts as failed.
 
 | Changed test | What the runs did |
 | --- | --- |
@@ -175,9 +175,9 @@ In each run, each test passed, failed, was skipped, or is **absent**: the run pr
 | Other test | What the runs did |
 | --- | --- |
 | `kept` | Passed on both commits |
-| `broke` | Passed without the change and failed with it |
+| `broke` | Failed with the change and never without it, or passed without the change and stopped with it because its package failed, such as by a build error |
 | `already failing` | Failed on both commits |
-| `not run` | Was absent on a commit, so Elprovo cannot compare it |
+| `not run` | Was absent on a commit for another reason, so Elprovo cannot compare it |
 | `fixed` | Failed without the change and passed with it |
 | `flaky`, `skipped` | As for a changed test |
 
@@ -202,7 +202,7 @@ report = "go-test-json"
 | Field | Default | What it does |
 | --- | --- | --- |
 | `version` | | The format version. It must be `2`. |
-| `tests.files` | | The files of the tests: the test files, and the files that they read. The base copy gets the head commit's version of these files. `**` matches any number of directories. |
+| `tests.files` | | The files of the tests: the test files, and the files that they read. Go test files, `*_test.go`, always count. The base copy gets the head commit's version of these files. `**` matches any number of directories. |
 | `tests.run` | | The test command. Elprovo puts the packages, such as `./cart`, where `{packages}` is. It must print `go test -json` output. |
 | `tests.report` | | The format of that output. It must be `go-test-json`. |
 | `tests.timeout` | `10m` | The longest time the test command may take. Give `go test` a shorter `-timeout`, so that a test that hangs fails with a message. |
@@ -257,7 +257,7 @@ replay:
 
 The job needs `elprovo` on `PATH`. Make it a required status check of the branch, so that a pull request merges only when no test is `not fixed` or `broke`. On a private repository, GitHub offers required checks only on a paid plan.
 
-Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the tool that judges it. It also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
+Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `go.mod` and `elprovo.toml`, so review changes to them. The check also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
 
 ## For coding agents
 
@@ -296,7 +296,7 @@ A run is not a sandbox. Commands run as you, with your access to files, processe
 - It does not write tests or fixes.
 - It does not judge whether a test reproduces the right bug. Read the test, and the line that its base run failed with.
 - It does not prove that a change is correct. It shows that a test fails without the change and passes with it, and that the other tests in the same packages kept their results. A weak test shows little, and tests in other packages do not run.
-- It reads Go tests only, from one Go module at the repository root.
+- It reads Go tests only, from one Go module at the repository root. It leaves out the packages of nested modules, as `go test ./...` does.
 - It gives verdicts to top-level test functions. A subtest, or a method of a testify suite, counts only through its top-level function.
 - It does not isolate a run beyond the environment, the home directory and the temporary directory. Docker images, caches, the network and anything outside the copy are shared.
 

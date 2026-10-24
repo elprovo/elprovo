@@ -60,6 +60,15 @@ func (r Repo) ChangedFiles(ctx context.Context, base, head string) ([]string, er
 	return splitNUL(out), nil
 }
 
+// Files returns the paths of the files in commit, from the repository root.
+func (r Repo) Files(ctx context.Context, commit string) ([]string, error) {
+	out, err := git(ctx, r.root, nil, nil, "ls-tree", "-r", "-z", "--name-only", commit)
+	if err != nil {
+		return nil, err
+	}
+	return splitNUL(out), nil
+}
+
 // ReadFile returns the content of file in commit. It reports false when the
 // commit has no such file, and fails when the file is larger than max bytes.
 func (r Repo) ReadFile(ctx context.Context, commit, file string, max int64) ([]byte, bool, error) {

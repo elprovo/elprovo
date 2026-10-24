@@ -17,7 +17,7 @@ const (
 	RunNotRun RunOutcome = "not-run"
 )
 
-// Verdict is what all the runs show about one test, from section 3.3 of
+// Verdict is what all the runs show about one test, from section 3.4 of
 // SPEC.md.
 type Verdict string
 
@@ -70,7 +70,13 @@ type RunReport struct {
 type TestRun struct {
 	Outcome gotest.Outcome `json:"outcome"`
 	Message string         `json:"message"`
+	// stopped is true for an absent test whose package failed in the run,
+	// such as by a build error, a panic or a timeout.
+	stopped bool
 }
+
+// stopped is the outcome that regressionVerdict gets for a stopped run.
+const stopped gotest.Outcome = "stopped"
 
 // TestReport is one test, its result in every run, and its verdict.
 type TestReport struct {
@@ -152,10 +158,21 @@ func reproduceVerdict(base []gotest.Outcome) Verdict {
 }
 
 // regressionVerdict applies the rules for a test that the change does not
-// add or edit, in order.
+// add or edit, in order. Both commits run the same test files, so a test that
+// passed without the change and was stopped with it was stopped by the
+// change, such as by a build error or a panic. An absent test that was not
+// stopped is not in the commit.
 func regressionVerdict(head, base []gotest.Outcome) Verdict {
 	switch {
-	case anyOf(head, gotest.Absent) || anyOf(base, gotest.Absent):
+	case anyOf(head, gotest.Failed) && !anyOf(base, gotest.Failed) && anyOf(head, gotest.Passed):
+		return Flaky
+	case anyOf(head, gotest.Failed) && !anyOf(base, gotest.Failed):
+		return Broke
+	case anyOf(base, gotest.Absent, stopped):
+		return NotRun
+	case anyOf(head, stopped) && all(base, gotest.Passed):
+		return Broke
+	case anyOf(head, gotest.Absent, stopped):
 		return NotRun
 	case !all(head, head[0]) || !all(base, base[0]):
 		return Flaky
@@ -180,7 +197,7 @@ func all(outcomes []gotest.Outcome, want gotest.Outcome) bool {
 	return !slices.ContainsFunc(outcomes, func(o gotest.Outcome) bool { return o != want })
 }
 
-// ExitStatus is the exit status of section 3.4 of SPEC.md for a replay that
+// ExitStatus is the exit status of section 3.5 of SPEC.md for a replay that
 // ran. A replay that could not start exits 2 without a report.
 func (r Report) ExitStatus(require bool) int {
 	if r.StoppedEarly != "" {

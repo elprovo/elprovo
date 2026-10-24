@@ -64,8 +64,70 @@ func TestParseGivesTheExitOfAPackageWhoseTestMainExited(t *testing.T) {
 	wantResult(t, results, Test{"gj/mainfail", "TestNeverRuns"}, Absent, "exit status 3")
 }
 
+func TestParseFailsATestThatPanicsWithoutAnEnd(t *testing.T) {
+	// go test -timeout and a panic in a goroutine end the test binary
+	// without an end event for the test that was running.
+	hang := parseFile(t, "hang.jsonl")
+	wantResult(t, hang, Test{"gj/hang", "TestBefore"}, Passed, "")
+	wantResult(t, hang, Test{"gj/hang", "TestHang"}, Failed, "panic: test timed out after 2s")
+	wantResult(t, hang, Test{"gj/hang", "TestAfter"}, Absent, "panic: test timed out after 2s")
+
+	background := parseFile(t, "gopanic.jsonl")
+	wantResult(t, background, Test{"gj/gopanic", "TestBackground"}, Failed, "panic: boom in a goroutine")
+	wantResult(t, background, Test{"gj/gopanic", "TestAfter"}, Absent, "panic: boom in a goroutine")
+}
+
+func TestParseKeepsAFailureOfATestThatRanSeveralTimes(t *testing.T) {
+	// The output of go test -count=2: the test failed, and then passed.
+	results := parseFile(t, "count.jsonl")
+
+	wantResult(t, results, Test{"gj/count", "TestFirstFails"}, Failed, "x_test.go:10: first run fails")
+}
+
+func TestParseMergesTwoResultsOfOneName(t *testing.T) {
+	// Package p and package p_test in one directory can both declare TestX,
+	// and go test prints both under one name.
+	input := `{"Action":"pass","Package":"p","Test":"TestPassThenSkip"}
+{"Action":"skip","Package":"p","Test":"TestPassThenSkip"}
+{"Action":"output","Package":"p","Test":"TestFailThenPass","Output":"    a_test.go:3: wrong\n"}
+{"Action":"fail","Package":"p","Test":"TestFailThenPass"}
+{"Action":"pass","Package":"p","Test":"TestFailThenPass"}
+`
+	results, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantResult(t, results, Test{"p", "TestPassThenSkip"}, Passed, "")
+	wantResult(t, results, Test{"p", "TestFailThenPass"}, Failed, "a_test.go:3: wrong")
+}
+
+func TestParseSkipsTheRuleLinesOfTheRaceDetector(t *testing.T) {
+	input := `{"Action":"output","Package":"p","Test":"TestRace","Output":"==================\n"}
+{"Action":"output","Package":"p","Test":"TestRace","Output":"WARNING: DATA RACE\n"}
+{"Action":"fail","Package":"p","Test":"TestRace"}
+`
+	results, err := Parse(strings.NewReader(input))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantResult(t, results, Test{"p", "TestRace"}, Failed, "WARNING: DATA RACE")
+}
+
+func TestParseAddsTheNextLinesToALineWithOnlyALocation(t *testing.T) {
+	// testify prints the location alone on the first line.
+	results := parseFile(t, "tfy.jsonl")
+
+	got := results.Result(Test{"gj/tfy", "TestEqual"})
+	want := `x_test.go:10: Error: Not equal: expected: "90.00" actual : "81.00"`
+	if got.Outcome != Failed || !strings.HasPrefix(got.Message, want) {
+		t.Errorf("result is %s %q; want failed, starting with %q", got.Outcome, got.Message, want)
+	}
+}
+
 func TestParseCutsALongMessageAndSkipsLinesThatAreNotEvents(t *testing.T) {
-	long := strings.Repeat("x", 300)
+	long := strings.Repeat("x", 1500)
 	input := "go: downloading example.com/m v1.0.0\n" +
 		`{"note":"a JSON line that is not an event"}` + "\n" +
 		`{"Action":"run","Package":"p","Test":"TestLong"}` + "\n" +
@@ -131,8 +193,10 @@ import "testing"
 
 // TestKept now has a comment, and its body has other spacing.
 func TestKept(t *testing.T) {
+	// A comment on its own line.
+
 	if 1 != 1 {
-		t.Fatal("no")
+		t.Fatal("no") // A comment at the end of a line.
 	}
 }
 
@@ -140,11 +204,38 @@ func TestEdited(t *testing.T) { t.Log("new") }
 
 func TestAdded(t *testing.T) {}
 `
-	changed, err := Changed([]byte(base), []byte(head))
+	changed, err := Changed([][]byte{[]byte(base)}, []byte(head))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"TestAdded", "TestEdited"}; !slices.Equal(changed, want) {
+		t.Errorf("changed tests are %v; want %v", changed, want)
+	}
+}
+
+func TestChangedComparesWithEveryTestFileOfThePackage(t *testing.T) {
+	// TestMoved moves, unchanged, from a_test.go to the new file b_test.go.
+	baseA := "package p\n\nimport \"testing\"\n\nfunc TestMoved(t *testing.T) { t.Log(1) }\n"
+	baseOther := "package p\n\nimport \"testing\"\n\nfunc TestOther(t *testing.T) {}\n"
+	head := "package p\n\nimport \"testing\"\n\nfunc TestMoved(t *testing.T) { t.Log(1) }\n\nfunc TestNew(t *testing.T) {}\n"
+
+	changed, err := Changed([][]byte{[]byte(baseA), []byte(baseOther)}, []byte(head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"TestNew"}; !slices.Equal(changed, want) {
+		t.Errorf("changed tests are %v; want %v", changed, want)
+	}
+}
+
+func TestChangedSkipsABaseFileThatDoesNotParse(t *testing.T) {
+	head := "package p\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n"
+
+	changed, err := Changed([][]byte{[]byte("package p\nfunc TestA(t *testing.T) {")}, []byte(head))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"TestA"}; !slices.Equal(changed, want) {
 		t.Errorf("changed tests are %v; want %v", changed, want)
 	}
 }

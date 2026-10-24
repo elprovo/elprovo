@@ -25,8 +25,9 @@ const (
 	// lastLineBytes is how much of the end of a log Elprovo reads to find
 	// its last line.
 	lastLineBytes = 64 << 10
-	// maxLastLine is the most characters of a log line that a report keeps.
-	maxLastLine = 200
+	// maxReported is the most characters of a log line or a message that a
+	// report keeps.
+	maxReported = 200
 )
 
 // plainWord matches a package directory that the shell reads as one word
@@ -41,25 +42,29 @@ type runner struct {
 }
 
 // runOnce does the steps of section 3.2 of SPEC.md for run n on one side. It
-// returns the run and its test results, or nil when the run did not end
-// because of an interrupt, and why the replay must stop, or "".
-func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, gotest.Results, string) {
+// returns the run and its test results, or nil when an interrupt ended the
+// run or Elprovo could not make or copy it, and why the replay must stop, or
+// "".
+func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, runResults, string) {
 	started := time.Now()
+	// Both commits run the tests as the head commit's elprovo.toml says, so
+	// that only the code differs. The app belongs to the code, so a base run
+	// starts the base commit's app when the base commit has one.
 	commit, cfg := r.plan.Head, r.plan.headConfig
 	if side == "base" {
 		commit = r.plan.Base
-		if r.plan.baseConfig != nil {
-			cfg = *r.plan.baseConfig
+		if r.plan.baseApp != nil {
+			cfg.App = r.plan.baseApp
 		}
 	}
 
 	// cannot ends the replay because Elprovo itself failed. When the replay
 	// was interrupted, the failure is a result of the interrupt.
-	cannot := func(format string, args ...any) (*RunReport, gotest.Results, string) {
+	cannot := func(format string, args ...any) (*RunReport, runResults, string) {
 		if ctx.Err() != nil {
-			return nil, gotest.Results{}, "interrupted"
+			return nil, runResults{}, "interrupted"
 		}
-		return nil, gotest.Results{}, fmt.Sprintf(format, args...)
+		return nil, runResults{}, fmt.Sprintf(format, args...)
 	}
 
 	name := fmt.Sprintf("%s-%d", side, n)
@@ -86,7 +91,9 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, go
 	}
 	// Both commits run the head commit's tests, so that only the code
 	// differs between them.
-	isTest := r.plan.headConfig.Tests.Matches
+	isTest := func(file string) bool {
+		return strings.HasSuffix(file, "_test.go") || r.plan.headConfig.Tests.Matches(file)
+	}
 	if err := r.plan.repo.Checkout(ctx, commit, work, scratch, func(f string) bool { return !isTest(f) }); err != nil {
 		return cannot("could not copy commit %s: %v", short(commit), err)
 	}
@@ -169,7 +176,7 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, go
 				}
 			default:
 				run.Outcome = Ran
-				trimCopyPath(results, work)
+				cleanPaths(results, scratch, work)
 				if result.timedOut {
 					for _, pkg := range packages {
 						setReason(&results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(cfg.Tests.Timeout)))
@@ -177,9 +184,6 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, go
 				}
 			}
 		}
-	}
-	for pkg, reason := range missing {
-		setReason(&results, pkg, reason)
 	}
 
 	if cfg.App != nil && cfg.App.Stop != "" {
@@ -205,9 +209,9 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, go
 	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
 
 	if interrupted || (stop != "" && ctx.Err() != nil) {
-		return nil, gotest.Results{}, "interrupted"
+		return nil, runResults{}, "interrupted"
 	}
-	return run, results, stop
+	return run, runResults{Results: results, missing: missing}, stop
 }
 
 // hasGoFiles reports whether dir holds a Go file that go test reads.
@@ -244,21 +248,45 @@ func parseLog(path string) (gotest.Results, error) {
 	return gotest.Parse(f)
 }
 
-// trimCopyPath makes the paths in the messages relative to the copy, whose
-// path changes in every run. The go command prints it with symbolic links
-// resolved.
-func trimCopyPath(results gotest.Results, work string) {
-	if resolved, err := filepath.EvalSymlinks(work); err == nil {
-		work = resolved
+// cleanPaths removes from the messages the paths of the run's directories,
+// which change in every run. A path in the copy, work, becomes relative to
+// it, and the run's home and temporary directories in scratch become $HOME
+// and $TMPDIR. The go command prints paths with symbolic links resolved, and
+// a test prints them as its environment gives them, so both forms go.
+func cleanPaths(results gotest.Results, scratch, work string) {
+	var pairs []string
+	dirs := []string{scratch}
+	if resolved, err := filepath.EvalSymlinks(scratch); err == nil && resolved != scratch {
+		dirs = append(dirs, resolved)
 	}
-	prefix := work + string(filepath.Separator)
+	sep := string(filepath.Separator)
+	for _, dir := range dirs {
+		copyPath := filepath.Join(dir, filepath.Base(work))
+		pairs = append(pairs, copyPath+sep, "", copyPath, ".", filepath.Join(dir, "home"), "$HOME", filepath.Join(dir, "tmp"), "$TMPDIR")
+	}
+	replacer := strings.NewReplacer(pairs...)
 	for t, result := range results.Tests {
-		result.Message = strings.ReplaceAll(result.Message, prefix, "")
+		result.Message = replacer.Replace(result.Message)
 		results.Tests[t] = result
 	}
 	for pkg, reason := range results.Reasons {
-		results.Reasons[pkg] = strings.ReplaceAll(reason, prefix, "")
+		results.Reasons[pkg] = replacer.Replace(reason)
 	}
+}
+
+func cutRunes(text string, n int) string {
+	if runes := []rune(text); len(runes) > n {
+		return string(runes[:n])
+	}
+	return text
+}
+
+// runResults is what the tests of one run printed.
+type runResults struct {
+	gotest.Results
+	// missing holds, by import path, the packages that the copy has no Go
+	// files in, with the reason that their tests have no result.
+	missing map[string]string
 }
 
 // setReason gives pkg a reason, unless go test gave it one.
@@ -363,7 +391,7 @@ func (r runner) cutLogs(dir string) {
 }
 
 // lastLine returns the last non-empty line of the log at path, cut to
-// maxLastLine characters, with control characters escaped. It returns ""
+// maxReported characters, with control characters escaped. It returns ""
 // when the log has no such line.
 func lastLine(path string) (string, error) {
 	f, err := os.Open(path)
@@ -387,10 +415,7 @@ func lastLine(path string) (string, error) {
 		if line == "" {
 			continue
 		}
-		if runes := []rune(line); len(runes) > maxLastLine {
-			line = string(runes[:maxLastLine])
-		}
-		return config.EscapeControl(line), nil
+		return config.EscapeControl(cutRunes(line, maxReported)), nil
 	}
 	return "", nil
 }
