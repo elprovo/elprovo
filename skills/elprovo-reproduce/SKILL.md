@@ -21,14 +21,14 @@ run = "go test -json -count=1 -timeout=5m {packages}"
 report = "go-test-json"
 ```
 
-Set the caches before you run Elprovo: `export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"`. Each run gets an empty `HOME` and `TMPDIR`, and only `PATH`, `USER` and `LANG` from the environment. A test that needs more, such as a database, needs an `[app]` table with `start`, `ready` and `stop`, as SPEC.md section 1 shows.
+Set the caches before you run Elprovo: `export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"`. Elprovo writes logs and reports to `.elprovo/`; add it to `.gitignore`. Each run gets an empty `HOME` and `TMPDIR`, and only `PATH`, `USER` and `LANG` from the environment. A test that needs more, such as a database, needs an `[app]` table with `start`, `ready` and `stop`, as SPEC.md section 1 shows.
 
 ## 2. Reproduce the bug as a test
 
-Write one Go test that fails because of the bug, in the package where the bug is. Make it a top-level function, `func TestXxx(t *testing.T)`. Elprovo gives verdicts to top-level test functions only. A subtest, or a method of a testify suite, counts only through its top-level function, so even in a repository that uses suites, put the reproduction in its own function. A good test:
+Write a Go test that fails because of the bug, in the package where the bug is. When the bug has several symptoms, such as one for files and one for directories, write one test for each. Make each a top-level function, `func TestXxx(t *testing.T)`. Elprovo gives verdicts to top-level test functions only. A subtest, or a method of a testify suite, counts only through its top-level function, so even in a repository that uses suites, put the reproduction in its own function, and reuse the package's test helpers where they fit. A good test:
 
 - checks the exact result that the bug gets wrong, such as the value, the text or the status;
-- fails with a message that names the bug, such as `total after SAVE10 twice is 81.00; want 90.00`;
+- fails with a message that names the bug in its first 200 characters, such as `total after SAVE10 twice is 81.00; want 90.00`;
 - uses only code that exists before the fix, so that it builds without the fix;
 - keeps its data files in a path that `tests.files` matches, such as `testdata/`;
 - creates its own data, and does not depend on other tests or on their order;
@@ -40,7 +40,7 @@ Commit the test alone, before any fix. Commit only if you are allowed to. If you
 
 Run `elprovo reproduce --base <base> <test file>`, where the base is usually the merge base with the default branch, such as `origin/main`.
 
-- `reproduced`: the test failed in every run. Read the line `base run 1: …`. It must name the bug. If it names something else, such as a missing file, change the test.
+- `reproduced`: the test failed in every run. Read the line `base run 1: …`. It must name the bug. If it names something else, such as a missing file, change the test. The line keeps 200 characters; the whole output is in the run's `test.log`.
 - `not reproduced`: the test passed without the fix. It does not show the bug. Change the test until it fails for the bug's reason.
 - `could not run`: the test did not build without the fix, or its package failed. Make the test use only code that the base commit has.
 - `flaky`: the test gave different results. Remove the cause, such as time, randomness or order.
@@ -49,9 +49,9 @@ Go on only when every test is `reproduced`.
 
 ## 4. Fix the bug
 
-Make the smallest change that fixes the bug. Do not change the test to make it pass. If the test turns out to be wrong, go back to step 2, and say so in your report.
+Make the smallest change that fixes the bug, with the output and the documentation that the fix makes wrong. Do not change the test to make it pass. If the test turns out to be wrong, or you find another symptom, go back to step 2, and say so in your report.
 
-Commit the fix.
+Run the repository's own checks, such as `make check`, and commit the fix.
 
 ## 5. Prove the fix
 
@@ -65,6 +65,6 @@ If `elprovo` is not installed and you may not install it, do not run the steps b
 
 ## 6. Report
 
-If the repository replays pull requests in CI, the reviewer trusts that check, not your report. Name the test, so that the reviewer reads it first, and point to the check. If the repository has no such check, paste the summary of your local `elprovo replay` and say that it ran on your machine. Give the verdict, the runs and the base line, such as "fixed: base failed 2 of 2, head passed 2 of 2; base run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00", and the count of kept tests.
+If the repository replays pull requests in CI, the reviewer trusts that check, not your report. Name the test, so that the reviewer reads it first, and point to the check. If the repository has no such check, paste the summary of your local `elprovo replay` and say that it ran on your machine. Give the verdict, the runs and the base line, such as "fixed: base failed 2 of 2, head passed 2 of 2; base run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00", and the count of kept tests. Each top-level test counts once, with its subtests, so a testify suite is one test.
 
 Do not call a bug fixed when no test is `fixed`.
