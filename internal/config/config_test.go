@@ -31,14 +31,26 @@ func TestParseRepoReadsTables(t *testing.T) {
 	}
 }
 
+func TestParseRepoReadsEnvInEveryTableForm(t *testing.T) {
+	for _, env := range []string{"[env]\nPORT = \"8080\"\n", "env = { PORT = \"8080\" }\n", "env.PORT = \"8080\"\n"} {
+		repo, err := ParseRepo("elprovo.toml", []byte("version = 1\nstart = \"s\"\nready = \"r\"\n"+env))
+		if err != nil || repo.Env["PORT"] != "8080" {
+			t.Errorf("with %q, env is %v and the error is %v; want PORT=8080 and no error", env, repo.Env, err)
+		}
+	}
+}
+
 func TestParseRepoRejectsInvalidFiles(t *testing.T) {
 	tests := []struct {
 		name, content, wantInError string
 	}{
 		{"unknown field", "version = 1\nstart = \"s\"\nready = \"r\"\nstopp = \"x\"\n", `unknown field "stopp"`},
 		{"two unknown fields", "version = 1\nstart = \"s\"\nready = \"r\"\nstopp = \"x\"\nredy = \"y\"\n", `unknown fields "stopp", "redy"`},
+		{"field in capitals", "version = 1\nstart = \"s\"\nready = \"r\"\nREADY = \"x\"\n", `unknown field "READY"`},
+		{"table in capitals", "version = 1\nstart = \"s\"\nready = \"r\"\n[Timeouts]\nstart = \"1m\"\n", `unknown field "Timeouts"`},
 		{"unknown nested field", "version = 1\nstart = \"s\"\nready = \"r\"\n[timeouts]\nstrt = \"1m\"\n", `unknown field "timeouts.strt"`},
 		{"duplicate field", "version = 1\nstart = \"s\"\nstart = \"t\"\nready = \"r\"\n", "'start' has already been defined"},
+		{"env that is not a table", "version = 1\nstart = \"s\"\nready = \"r\"\nenv = \"PORT=8080\"\n", "env must be a table"},
 		{"env value that is not a string", "version = 1\nstart = \"s\"\nready = \"r\"\nenv = { PORT = 8080 }\n", "env.PORT"},
 		{"missing version", "start = \"s\"\nready = \"r\"\n", "version is missing"},
 		{"newer version", "version = 2\nstart = \"s\"\nready = \"r\"\n", "version 2 is not supported"},
@@ -115,6 +127,7 @@ func TestParseProofRejectsInvalidFiles(t *testing.T) {
 		{"missing run", "proofs/a.toml", "claim = \"c\"\n", "run is missing"},
 		{"unknown before", "proofs/a.toml", "claim = \"c\"\nrun = \"r\"\nbefore = \"pass\"\n", `before is "pass"`},
 		{"unknown field", "proofs/a.toml", "claim = \"c\"\nrun = \"r\"\ntimout = \"5m\"\n", `unknown field "timout"`},
+		{"field in another case", "proofs/a.toml", "claim = \"c\"\nrun = \"r\"\nClaim = \"d\"\n", `unknown field "Claim"`},
 		{"duplicate field", "proofs/a.toml", "claim = \"c\"\nrun = \"r\"\nrun = \"s\"\n", "'run' has already been defined"},
 		{"invalid name", "proofs/A.toml", "claim = \"c\"\nrun = \"r\"\n", "must match [a-z0-9][a-z0-9-]*"},
 		{"not in proofs", "proofs/sub/a.toml", "claim = \"c\"\nrun = \"r\"\n", "must be directly in proofs/"},
@@ -145,11 +158,22 @@ func TestProofNameClassifiesPaths(t *testing.T) {
 		{"proofs/Coupon.toml", "", false, true},
 		{"proofs/a.yml", "", false, true},
 		{"proofs/a.yaml", "", false, true},
+		{"proofs/a.YML", "", false, true},
+		{"proofs/a.TOML", "", false, true},
 	}
 	for _, tt := range tests {
 		name, proof, err := ProofName(tt.file)
 		if name != tt.wantName || proof != tt.wantProof || (err != nil) != tt.wantErr {
 			t.Errorf("ProofName(%q) = %q, %v, %v; want %q, %v, error %v", tt.file, name, proof, err, tt.wantName, tt.wantProof, tt.wantErr)
+		}
+	}
+}
+
+func TestProofNameEscapesControlCharactersInErrors(t *testing.T) {
+	for _, file := range []string{"proofs/\x1b[2J.yml", "proofs/\x1b[2J.toml"} {
+		_, _, err := ProofName(file)
+		if err == nil || strings.ContainsRune(err.Error(), 0x1b) {
+			t.Errorf("ProofName(%q) gave the error %q; want an error without a raw ESC character", file, err)
 		}
 	}
 }

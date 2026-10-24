@@ -3,8 +3,9 @@
 ## 0.2.0 (2026-10-24)
 
 - **Breaking:** Elprovo reads TOML files: `elprovo.toml` and `proofs/<name>.toml`, with the same fields as before. It no longer reads `elprovo.yml` or YAML proof files, because YAML changed some commands without notice. For example, it read `run: ! grep -q x f` as `grep -q x f`, and `claim: Issue #58 is fixed.` as `Issue`. TOML keeps every string as written.
+- Field names are case-sensitive. An unknown field, such as `CLAIM`, is an error, and so is an `env` that is not a table.
 - A value in `env` must be a TOML string, such as `PORT = "8080"`.
-- A `.yml` or `.yaml` file directly in `proofs/` is an error, so that a proof file in the old format is never skipped without notice.
+- A `.yml` or `.yaml` file directly in `proofs/` is an error, in any case, and so is a `.TOML` file. So a proof file in the old format or spelling is never skipped without notice.
 - Elprovo shows why a run failed. Each run in `report.json` has a new field, `last_line`: the last line that the proof printed, or, for a `not-run` outcome, the last line that `start` or `ready` printed. The text output shows it for the run that it points to, such as the first base run of a `verified` proof. A base run that fails because a file or a tool is missing also counts as a failure, and this line makes that visible.
 - `skills/elprovo-proofs` and the README tell agents to check the line that each base run ended with, to keep every file a proof needs in `proofs/`, and to point to the CI check instead of pasting a local summary as the evidence.
 - The README's CI job keeps `report.json` and the logs as an artifact, and says to make the job a required status check. Elprovo's own workflow keeps them too.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -72,15 +73,20 @@ func ProofName(file string) (string, bool, error) {
 	if dir != ProofDir+"/" {
 		return "", false, nil
 	}
-	if strings.HasSuffix(base, ".yml") || strings.HasSuffix(base, ".yaml") {
-		return "", false, fmt.Errorf("%s: Elprovo reads proof files that end in .toml. Rename a proof file to .toml, or move a YAML helper file into a subdirectory of %s/", file, ProofDir)
-	}
-	if !strings.HasSuffix(base, ".toml") {
+	ext := path.Ext(base)
+	switch strings.ToLower(ext) {
+	case ".yml", ".yaml":
+		return "", false, fmt.Errorf("%s: Elprovo reads proof files that end in .toml. Rename a proof file to .toml, or move a YAML helper file into a subdirectory of %s/", EscapeControl(file), ProofDir)
+	case ".toml":
+	default:
 		return "", false, nil
 	}
-	name := strings.TrimSuffix(base, ".toml")
+	if ext != ".toml" {
+		return "", false, fmt.Errorf("%s: a proof file name must end in .toml, in lowercase", EscapeControl(file))
+	}
+	name := strings.TrimSuffix(base, ext)
 	if !proofNamePattern.MatchString(name) {
-		return "", false, fmt.Errorf("%s: the name before .toml must match [a-z0-9][a-z0-9-]*", file)
+		return "", false, fmt.Errorf("%s: the name before .toml must match [a-z0-9][a-z0-9-]*", EscapeControl(file))
 	}
 	return name, true, nil
 }
@@ -201,18 +207,61 @@ func decode(data []byte, v any) error {
 	if len(meta.Keys()) == 0 {
 		return errors.New("the file is empty")
 	}
-	if unknown := meta.Undecoded(); len(unknown) > 0 {
-		names := make([]string, len(unknown))
-		for i, key := range unknown {
-			names[i] = strconv.Quote(key.String())
-		}
+	t := reflect.TypeOf(v).Elem()
+	if unknown := unknownKeys(meta, t); len(unknown) > 0 {
 		noun := "field"
-		if len(names) > 1 {
+		if len(unknown) > 1 {
 			noun = "fields"
 		}
-		return fmt.Errorf("unknown %s %s", noun, strings.Join(names, ", "))
+		return fmt.Errorf("unknown %s %s", noun, strings.Join(unknown, ", "))
+	}
+	// The decoder leaves a map field empty, without an error, when the file
+	// gives it a value that is not a table. Dotted keys, such as env.PORT,
+	// make a table whose type is empty.
+	for i := range t.NumField() {
+		field := t.Field(i)
+		name := field.Tag.Get("toml")
+		if kind := meta.Type(name); field.Type.Kind() == reflect.Map && kind != "" && kind != "Hash" {
+			return fmt.Errorf("%s must be a table, such as %s.NAME = \"value\"", name, name)
+		}
 	}
 	return nil
+}
+
+// unknownKeys lists, quoted, the keys of the file that no field of t has as
+// its exact toml tag. The decoder also matches a key to a field in another
+// case, so MetaData.Undecoded would let CLAIM set claim. A key under a map,
+// such as a name in env, is not checked.
+func unknownKeys(meta toml.MetaData, t reflect.Type) []string {
+	var unknown []string
+	for _, key := range meta.Keys() {
+		parent := t
+		for i, part := range key {
+			if parent.Kind() != reflect.Struct {
+				break
+			}
+			field, ok := fieldWithTag(parent, part)
+			if !ok {
+				// The keys under an unknown table would repeat its error, so
+				// only the table's own key reports it.
+				if i == len(key)-1 {
+					unknown = append(unknown, strconv.Quote(key.String()))
+				}
+				break
+			}
+			parent = field.Type
+		}
+	}
+	return unknown
+}
+
+func fieldWithTag(t reflect.Type, tag string) (reflect.StructField, bool) {
+	for i := range t.NumField() {
+		if field := t.Field(i); field.Tag.Get("toml") == tag {
+			return field, true
+		}
+	}
+	return reflect.StructField{}, false
 }
 
 // isControl reports whether r is a control character or a line or paragraph

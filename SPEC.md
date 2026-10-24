@@ -37,7 +37,7 @@ A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not s
 
 A proof file is a file named `proofs/<name>.toml`, directly in `proofs/`. `<name>` must match `[a-z0-9][a-z0-9-]*`. Every other file in `proofs/` and in its subdirectories is a helper file that proofs may use. Elprovo does not read helper files, and a helper file is never a proof.
 
-A file directly in `proofs/` whose name ends in `.yml` or `.yaml` is an error, so that a proof file in another format never becomes a helper file without notice. Put a YAML helper file in a subdirectory of `proofs/`.
+A file directly in `proofs/` whose name ends in `.yml` or `.yaml`, in any case, or in `.toml` with a capital letter, such as `.TOML`, is an error. So a proof file in another format or spelling never becomes a helper file without notice. Put a YAML helper file in a subdirectory of `proofs/`.
 
 | Field | Required | Type | Default | Meaning |
 | --- | --- | --- | --- | --- |
@@ -54,7 +54,7 @@ A file directly in `proofs/` whose name ends in `.yml` or `.yaml` is an error, s
 ### 1.4 Versions
 
 - The `version` in the head commit's `elprovo.toml` sets the format of the proof files too.
-- A version 1 reader rejects a field that this document does not define, so that a misspelled field fails instead of being ignored.
+- A version 1 reader rejects a field that this document does not define, so that a misspelled field fails instead of being ignored. Field names are case-sensitive: `CLAIM` is not `claim`, and it is an error.
 - A new field or a change in meaning comes with a new version. A release of Elprovo reads every version it knows, and it rejects a version it does not know.
 
 ## 2. Command line
@@ -136,7 +136,7 @@ Elprovo gives each proof one result from its runs. It applies the first rule tha
 
 `verified` is the only result that shows what the change did. `held` shows that a claim holds on the head commit. It does not show that the proof can fail, so a reviewer reads such a proof with more care.
 
-A run fails when the proof exits with a status other than 0, for any reason. So a proof that uses a file or a tool that only the head commit has, such as a test that the change adds outside `proofs/`, fails on the base commit because that file or tool is missing, and its result is `verified` all the same. The report keeps the last line that each failed run printed, `last_line` in section 5.3, so that a reviewer can check that each base run failed for the claim's reason.
+A run fails when the proof exits with a status other than 0, for any reason. So a proof that uses a file or a tool that only the head commit has, such as a test that the change adds outside `proofs/`, fails on the base commit because that file or tool is missing, and its result is `verified` all the same. The report keeps the last line that each failed run printed, `last_line` in section 5.3, so that a reviewer can check that each base run failed for the claim's reason. The proof prints that line itself, so a proof can also print a false reason. The reviewer reads the proof too.
 
 ### 3.4 Exit status
 
@@ -243,7 +243,7 @@ The example shows one run of each commit to keep it short.
 | `timed_out` | Whether `run` took longer than its timeout. |
 | `seconds` | How long the run took, from the start of step 1 to the end of step 8. |
 | `reason` | Why the outcome is `not-run`, such as `start exited with status 1` or `ready did not exit 0 within 5m`. It is empty otherwise. |
-| `last_line` | The last non-empty line of the log of the command that decided the outcome: `proof.log` for `fail`, and `start.log` or `ready.log` for `not-run`. Elprovo reads at most the last 64 KiB of the log, before it cuts a long log. It keeps at most 200 characters, and it writes control characters as escape sequences, such as `\x1b`. It is empty for `pass`, and when the log has no such line. |
+| `last_line` | The last non-empty line of the log of the command that decided the outcome: `proof.log` for `fail`, and `start.log` or `ready.log` for `not-run`. Elprovo reads at most the last 64 KiB of the log, before it cuts a long log. It keeps the first 200 characters of the line, and then writes control characters as escape sequences, such as `\x1b`. It is empty for `pass`, and when those 64 KiB hold no such line. |
 | `artifacts_dropped` | Whether Elprovo deleted the run's artifacts, because they were more than 1 GiB or it could not read them all. |
 | `dir` | The run's output directory, relative to the replay's output directory. |
 
