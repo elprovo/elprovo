@@ -8,7 +8,7 @@ help: ## List the targets
 	@awk -F ':.*## ' '/^[a-z-]+:.*## / { printf "%-10s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 build: ## Build bin/elprovo
-	$(GO) build -o bin/elprovo .
+	$(GO) build -o bin/elprovo ./cmd/elprovo
 
 test: ## Run the tests
 	$(GO) test ./...

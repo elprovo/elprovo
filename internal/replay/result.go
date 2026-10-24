@@ -1,6 +1,6 @@
 package replay
 
-import "github.com/elprovo/elprovo/internal/config"
+import "github.com/elprovo/elprovo-next/internal/config"
 
 // Outcome is how one run of a proof ended.
 type Outcome string

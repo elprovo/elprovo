@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/elprovo/elprovo/internal/replay"
+	"github.com/elprovo/elprovo-next/internal/replay"
 )
 
 // Env is what the command gets from the process that runs it.

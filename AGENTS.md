@@ -6,7 +6,7 @@ Elprovo is a command line tool, `elprovo`, that replays the proofs of a change. 
 
 | Path | Holds |
 | --- | --- |
-| `main.go` | The program: signals, the version, and the call to `internal/cli` |
+| `cmd/elprovo` | The program: signals, the version, and the call to `internal/cli` |
 | `internal/cli` | Arguments, text output and exit status |
 | `internal/replay` | Proof selection, runs, process groups, results and `report.json` |
 | `internal/config` | Reading and checking `elprovo.yml` and proof files |
@@ -15,7 +15,7 @@ Elprovo is a command line tool, `elprovo`, that replays the proofs of a change. 
 | `skills/elprovo-proofs` | The skill that tells coding agents how to write proofs |
 | `elprovo.yml`, `proofs/` | Elprovo's own proofs, which `make replay` replays |
 
-Imports go one way: `main` → `cli` → `replay` → `config` and `gitrepo`. Only tests import `testrepo`.
+Imports go one way: `cmd/elprovo` → `cli` → `replay` → `config` and `gitrepo`. Only tests import `testrepo`.
 
 ## Rules
 

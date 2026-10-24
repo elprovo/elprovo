@@ -1,4 +1,4 @@
-module github.com/elprovo/elprovo
+module github.com/elprovo/elprovo-next
 
 go 1.27.0
 

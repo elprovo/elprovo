@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/elprovo/elprovo/internal/replay"
-	"github.com/elprovo/elprovo/internal/testrepo"
+	"github.com/elprovo/elprovo-next/internal/replay"
+	"github.com/elprovo/elprovo-next/internal/testrepo"
 )
 
 // replayOnce prepares and runs a replay with one run on each commit.

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elprovo/elprovo/internal/replay"
-	"github.com/elprovo/elprovo/internal/testrepo"
+	"github.com/elprovo/elprovo-next/internal/replay"
+	"github.com/elprovo/elprovo-next/internal/testrepo"
 )
 
 // app is an elprovo.yml for an app that has nothing to keep running.
