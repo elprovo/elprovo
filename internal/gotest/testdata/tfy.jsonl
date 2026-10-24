@@ -1,0 +1,21 @@
+{"Time":"2026-10-24T18:56:42.695904+03:00","Action":"start","Package":"gj/tfy"}
+{"Time":"2026-10-24T18:56:42.886327+03:00","Action":"run","Package":"gj/tfy","Test":"TestEqual"}
+{"Time":"2026-10-24T18:56:42.886414+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"=== RUN   TestEqual\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:42.886481+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"    x_test.go:10: \n","OutputType":"error"}
+{"Time":"2026-10-24T18:56:42.886489+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \tError Trace:\t/src/gj/tfy/x_test.go:10\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886508+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \tError:      \tNot equal: \n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886514+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \texpected: \"90.00\"\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.88652+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \tactual  : \"81.00\"\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886534+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886547+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \tDiff:\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886552+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t--- Expected\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886557+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t+++ Actual\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886562+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t@@ -1 +1 @@\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886567+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t-90.00\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886571+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \t            \t+81.00\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886576+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"        \tTest:       \tTestEqual\n","OutputType":"error-continue"}
+{"Time":"2026-10-24T18:56:42.886587+03:00","Action":"output","Package":"gj/tfy","Test":"TestEqual","Output":"--- FAIL: TestEqual (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:42.886594+03:00","Action":"fail","Package":"gj/tfy","Test":"TestEqual","Elapsed":0}
+{"Time":"2026-10-24T18:56:42.886603+03:00","Action":"output","Package":"gj/tfy","Output":"FAIL\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:42.887092+03:00","Action":"output","Package":"gj/tfy","Output":"FAIL\tgj/tfy\t0.191s\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:42.887104+03:00","Action":"fail","Package":"gj/tfy","Elapsed":0.191}

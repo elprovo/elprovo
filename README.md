@@ -1,204 +1,222 @@
 # Elprovo
 
-Elprovo checks the claims of a pull request by running them. Each claim comes with a proof: a command that exits 0 when the claim holds. Elprovo runs the proof on a fresh copy of the code without the change, and on a fresh copy with it. A claim counts only when its proof fails without the change and passes with it.
+Elprovo shows that a bug fix fixes the bug. The fix comes with a test that reproduces the bug. Elprovo runs that test on a fresh copy of the code without the fix and on a fresh copy with it, and shows that the test failed first and then passed. It also runs the other tests in the packages that the fix touches, and shows that they kept their results.
 
-![elprovo replay verifies the claim of a fix: its proof fails on the base commit and passes on the head commit](assets/demo.gif)
+![elprovo reproduce shows that a new test fails on main, and elprovo replay shows that the fix makes it pass](assets/demo.gif)
 
-**Status:** 0.2.0. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the files, the replay, the results and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.3.0. It reads Go tests only. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the file, the runs, the verdicts and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 
-A pull request says "fixed, and the tests pass". That sentence costs nothing to write, whether a person or a coding agent writes it. Passing tests show that the code runs. They do not show that the change did what it claims: a test can pass with the change and without it, or not touch the claim at all.
+A pull request says "fixed, and the tests pass". That sentence costs nothing to write, whether a person or a coding agent writes it. Passing tests show that the code runs. They do not show that the change fixed the bug: a test can pass with the change and without it.
 
-The check that does show it is a counterfactual. Run the same check on the code without the change and on the code with it. If it fails first and then passes, the change made the claim true. Elprovo runs that check for each claim, on copies that the author's machine never touched, and repeats it to catch flaky results. The reviewer then reads a few claims, their proofs and their results, and spends the rest of the review on the parts of the change that no claim covers.
+The check that does show it starts from the bug:
+
+1. Write a test that fails because of the bug.
+2. Run it on the code without the fix. It must fail, for the reason of the bug.
+3. Fix the bug. Run the test on the code with the fix. It must pass.
+4. Run the other tests on both. They must keep their results.
+
+Benchmarks for coding agents, such as SWE-bench, grade a fix in the same way. Elprovo runs these checks on copies that the author's machine never touched, twice on each commit, and alternates the commits to catch flaky results. The reviewer then reads one test and the line it failed with, and spends the rest of the review on the code.
 
 ## Try it
 
-Elprovo needs Go 1.27, `git` and `/bin/sh`. The module is not published yet, so build it from a clone:
+Elprovo needs Go 1.27, `git` and `/bin/sh`. The module is not published yet, so build it from a clone. Each run has an empty home directory, so give `go test` its caches through the environment:
 
 ```console
 $ make build
 $ export PATH="$PWD/bin:$PATH"
+$ export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
 ```
 
-[`assets/demo-repo.sh`](assets/demo-repo.sh) makes a demo repository and prints its path. It holds a small shop API whose `SAVE10` coupon takes 10% off again each time the shop gets it, and a change on the branch `coupon-once` that fixes the bug. The demo needs `curl`, and port 8080 must be free.
+[`assets/demo-repo.sh`](assets/demo-repo.sh) makes a demo repository and prints its path. It holds a small shop API whose `SAVE10` coupon takes 10% off again on every use. Its branches follow the steps above:
 
 ```console
 $ cd "$(sh assets/demo-repo.sh)"
-$ git log --oneline
-7e13753 (HEAD -> coupon-once) Apply a coupon once per cart
-65041a7 (main) Add the shop API
+$ git log --oneline --graph --all
+* 07eb8ff (coupon-once) Apply a coupon once per cart
+| * e0c6c74 (late-check) Apply a coupon once per cart, with the check after the discount
+|/
+* 236ae3a (HEAD -> test-only) Reproduce: SAVE10 takes 10% off again on every use
+* fe71219 (main) Add the shop API
 ```
 
-The repository says once how to start its app, in `elprovo.toml`:
+### 1. Reproduce the bug
 
-```toml
-version = 1
-start = "go build -o bin/shop . && { ./bin/shop & echo $! > shop.pid; }"
-ready = "curl -fsS http://localhost:8080/healthz"
-stop = "kill $(cat shop.pid)"
+The branch `test-only` adds one test, `cart/coupon_test.go`, and no fix:
+
+```go
+// SAVE10 took 10% off again on every use, so two uses took 19% off.
+func TestCouponAppliesOnce(t *testing.T) {
+	var c Cart
+	c.Add(10000)
+	c.ApplyCoupon("SAVE10")
+	c.ApplyCoupon("SAVE10")
+	if got := c.Total(); got != "90.00" {
+		t.Errorf("total after SAVE10 twice is %s; want 90.00", got)
+	}
+}
 ```
 
-The fix adds one proof for its claim, `proofs/coupon-once.toml`:
-
-```toml
-claim = "A coupon applies once per cart, even when the shop gets it twice."
-run = '''
-set -eu
-curl -fsS -X POST 'http://localhost:8080/cart/items?price=100.00'
-curl -fsS -X POST 'http://localhost:8080/cart/coupon?code=SAVE10'
-curl -fsS -X POST 'http://localhost:8080/cart/coupon?code=SAVE10'
-total=$(curl -fsS http://localhost:8080/cart/total)
-[ "$total" = 90.00 ] || { echo "FAIL: the total is $total after SAVE10 twice, not 90.00"; exit 1; }
-'''
-```
-
-Replay it against `main`:
+Check that it fails on `main`:
 
 ```console
-$ elprovo replay --base main
-base 65041a7  head 7e13753  1 proof, 2 runs each
+$ elprovo reproduce --base main cart/coupon_test.go
+base fe71219  head 236ae3a  2 runs on the base commit
+packages: ./cart
 
-✓ verified  proofs/coupon-once.toml
-            A coupon applies once per cart, even when the shop gets it twice.
-            base: failed 2 of 2   head: passed 2 of 2
-            base run 1 ended with: FAIL: the total is 81.00 after SAVE10 twice, not 90.00
+✓ reproduced      TestCouponAppliesOnce  cart/coupon_test.go
+                  base: failed 2 of 2
+                  base run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00
 
-1 verified.
-Report: .elprovo/runs/opq01jji/report.json
+Tests: 1 reproduced.
+Report: .elprovo/runs/7di1gy1e/report.json
 ```
 
-Elprovo also prints a line for each run to standard error, such as `proofs/coupon-once.toml  base run 1: fail (5.5s)`, so you can follow a long replay. `elprovo replay --dry-run` checks the files and lists the proofs, and runs nothing:
+`reproduced` means that the test failed in every run on `main`. Read the line under it: it must name the bug. A test that fails for another reason, such as a missing file, reproduces nothing. A test that does not build without the fix is `could not run`, and a test that passes is `not reproduced`.
+
+Elprovo also prints a line for each run to standard error, such as `base run 1: ran (0.5s)`.
+
+### 2. Fix it, and replay
+
+The branch `coupon-once` adds the fix on top of the test:
+
+```console
+$ git switch -q coupon-once
+$ elprovo replay --base main
+base fe71219  head 07eb8ff  2 runs each
+packages: ./cart
+
+✓ fixed           TestCouponAppliesOnce  cart/coupon_test.go
+                  base: failed 2 of 2   head: passed 2 of 2
+                  base run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00
+
+Changed tests: 1 fixed.
+Other tests: 2 kept.
+Report: .elprovo/runs/tojisl44/report.json
+```
+
+`fixed` means that the test failed on `main` and passed with the fix, in every run. Both copies ran the same test, so only the code made the difference. `2 kept` means that the other two tests in `./cart` passed on both commits, so the fix broke nothing there.
+
+`elprovo replay --dry-run` lists the changed tests, and runs nothing:
 
 ```console
 $ elprovo replay --base main --dry-run
-base 65041a7  head 7e13753  1 proof, 2 runs each (dry run)
+base fe71219  head 07eb8ff  2 runs each (dry run)
+packages: ./cart
 
-proofs/coupon-once.toml  base and head
-            A coupon applies once per cart, even when the shop gets it twice.
+changed  TestCouponAppliesOnce  cart/coupon_test.go
 
 Dry run: no command ran.
 ```
 
-The demo has two more branches, `late-check` and `outside-test`. The next sections show what they teach.
+### 3. A fix that does not fix
 
-## How a replay works
-
-`elprovo replay` selects the proofs that the change adds or modifies. One run of a proof on a commit has four steps:
-
-1. Elprovo writes the files of the commit into a new directory, as a checkout writes them. It leaves out `proofs/` and writes the head commit's `proofs/` in its place, so both commits run the same proof.
-2. It gives the run an empty home directory and an empty temporary directory.
-3. It runs `start`, waits until `ready` exits 0, runs the proof, and runs `stop`.
-4. It deletes the directory.
-
-For each proof, it alternates the commits, two runs each by default: base 1, head 1, base 2, head 2. It never does two runs at the same time, so two apps never compete for a port.
-
-The base commit is the merge base with `origin/HEAD`, unless you give `--base`. Elprovo reads commits, not the working tree, so commit a change before you replay it. `elprovo replay --all` also replays the proofs that the change does not touch, on the head commit only, to show that their claims still hold. `elprovo replay -h` lists every option.
-
-## Read the result
-
-| Result | What the runs did |
-| --- | --- |
-| `verified` | Failed on the base commit and passed on the head commit, in every run |
-| `held` | Passed on the head commit in every run, and did not run on the base commit |
-| `failed` | Failed on the head commit in every run |
-| `flaky` | Passed in some runs and failed in others |
-| `no-effect` | Passed on the base commit too, so it shows nothing about the change |
-| `not-run` | The app did not start or did not get ready, so the claim was not tested |
-
-`elprovo replay` exits 0 when every proof is `verified` or `held`, 1 when a proof is `failed`, `flaky` or `no-effect`, and 2 when a proof is `not-run` or Elprovo could not replay. Programs read `report.json`, which [SPEC.md](SPEC.md) describes.
-
-`verified` is the only result that shows what the change did. Under it, Elprovo shows the last line that the first base run printed. Read that line, because a run fails on any exit status other than 0, for any reason. On the branch `outside-test`, the fix is the same, but the proof runs a test that the change adds outside `proofs/`:
-
-```console
-$ git switch -q outside-test
-$ elprovo replay --base main
-base 65041a7  head 9d0fc02  1 proof, 2 runs each
-
-✓ verified  proofs/coupon-once.toml
-            A coupon applies once per cart, even when the shop gets it twice.
-            base: failed 2 of 2   head: passed 2 of 2
-            base run 1 ended with: sh: tests/coupon-once.sh: No such file or directory
-
-1 verified.
-Report: .elprovo/runs/shiocgsa/report.json
-```
-
-The base copy does not have `tests/coupon-once.sh`, so the base runs failed before they tested anything. The result is `verified`, but it shows nothing about the fix. That is why everything a proof needs belongs in `proofs/`. A proof that prints why it fails, as the demo's proof does, makes the line easy to check.
-
-On the branch `late-check`, the fix checks the coupon only after it takes the discount, so the proof fails on the head commit too. The output points to the log of the failed run, and the run's `artifacts` directory holds what the proof wrote to `$ELPROVO_ARTIFACTS`:
+On the branch `late-check`, the fix checks the coupon only after it takes the discount. The test fails with the fix too:
 
 ```console
 $ git switch -q late-check
 $ elprovo replay --base main
-base 65041a7  head 0e3476e  1 proof, 2 runs each
+base fe71219  head e0c6c74  2 runs each
+packages: ./cart
 
-✗ failed    proofs/coupon-once.toml
-            A coupon applies once per cart, even when the shop gets it twice.
-            base: failed 2 of 2   head: failed 2 of 2
-            head run 1 ended with: FAIL: the total is 81.00 after SAVE10 twice, not 90.00
-            log: .elprovo/runs/k25zpmnj/coupon-once/head-1/proof.log
+✗ not fixed       TestCouponAppliesOnce  cart/coupon_test.go
+                  base: failed 2 of 2   head: failed 2 of 2
+                  head run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00
+                  log: .elprovo/runs/e2hsazj0/head-1/test.log
 
-1 failed.
-Report: .elprovo/runs/k25zpmnj/report.json
+Changed tests: 1 not fixed.
+Other tests: 2 kept.
+Report: .elprovo/runs/e2hsazj0/report.json
 ```
 
-`report.json` keeps every run. Base run 1 of this replay, with the same line in `last_line`:
+`elprovo replay` exits 1, and the output points to the log of the run that failed. `report.json` keeps every run. The changed test of this replay:
 
 ```json
-{ "run": 1, "outcome": "fail", "exit_code": 1, "timed_out": false, "seconds": 5.5, "reason": "", "last_line": "FAIL: the total is 81.00 after SAVE10 twice, not 90.00", "artifacts_dropped": false, "dir": "coupon-once/base-1" }
+{ "package": "./cart", "name": "TestCouponAppliesOnce", "file": "cart/coupon_test.go", "verdict": "not-fixed",
+  "base": [{ "outcome": "failed", "message": "coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00" }, { "outcome": "failed", "message": "coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00" }],
+  "head": [{ "outcome": "failed", "message": "coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00" }, { "outcome": "failed", "message": "coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00" }] }
 ```
 
 Add `.elprovo/` to your `.gitignore`.
 
-## The files
+## How a replay works
 
-Both files are [TOML](https://toml.io/en/v1.1.0). TOML quotes every string, so a claim or a command is exactly what the file shows. A multi-line literal string, `'''…'''`, keeps a script as written. Field names are case-sensitive, and a field that SPEC.md does not define is an error, so a misspelled field fails instead of being ignored.
+`elprovo replay` compares the base commit with the head commit:
 
-`elprovo.toml`, at the repository root:
+- The **changed tests** are the `TestXxx` functions that the change adds, or edits in more than comments and spacing.
+- The **packages** are the directories of the Go files that the change adds, modifies or deletes.
+- The **other tests** are the tests in those packages that the change does not touch.
 
-| Field | Default | What it does |
-| --- | --- | --- |
-| `version` | | The format version. It must be `1`. |
-| `start` | | Starts the app, or only builds it when nothing has to keep running. It must exit 0. |
-| `ready` | | Exits 0 when the app takes requests. Elprovo runs it once a second until it does. |
-| `stop` | none | Stops what `start` left running. It runs after every run, also after a failure. |
-| `env` | empty | A table of plain values that every command gets, such as `env.PORT = "8080"`. Not for secrets. |
-| `pass_env` | empty | Names of variables that Elprovo copies from its own environment, such as `["DOCKER_HOST"]`. |
-| `timeouts.start`, `timeouts.ready`, `timeouts.stop` | `10m`, `5m`, `2m` | The longest time each step may take. |
+One run on a commit has four steps:
 
-A command line tool has nothing to keep running, so `start` only builds it, and `stop` is not needed. Elprovo's own [`elprovo.toml`](elprovo.toml) is one:
+1. Elprovo writes the commit's code into a new directory, as a checkout writes it, and the head commit's test files beside it. So both commits run the same tests, in the same way, and only the code differs.
+2. It gives the run an empty home directory and an empty temporary directory.
+3. It runs the test command, such as `go test -json`, on the packages, and reads the result of each test.
+4. It deletes the directory.
+
+It alternates the commits, two runs each by default: base 1, head 1, base 2, head 2. It never does two runs at the same time. `elprovo reproduce` does only the base runs, for the files that you name.
+
+The base commit is the merge base with `origin/HEAD`, unless you give `--base`. Elprovo reads commits, not the working tree, so commit a test before you reproduce it. `elprovo replay -h` lists every option.
+
+## Read the verdicts
+
+In each run, each test passed, failed, was skipped, or is **absent**: the run printed no result for it, because its package did not build, its `TestMain` exited, or an earlier test panicked. A test that hangs until `go test -timeout`, or panics in a goroutine, failed. For a changed test, absent never counts as failed.
+
+| Changed test | What the runs did |
+| --- | --- |
+| `fixed` | Failed without the change and passed with it, in every run |
+| `not reproduced` | Passed without the change too, so it does not show the bug |
+| `new` | Was absent without the change, such as a test of a new function, and passed with it |
+| `not fixed` | Failed or was absent with the change |
+| `flaky` | Gave different results in different runs on the same commit |
+| `skipped` | Was skipped on either commit |
+
+| Other test | What the runs did |
+| --- | --- |
+| `kept` | Passed on both commits |
+| `broke` | Failed with the change and never without it, or passed without the change and stopped with it because its package failed, such as by a build error |
+| `already failing` | Failed on both commits |
+| `not run` | Was absent on a commit for another reason, so Elprovo cannot compare it |
+| `fixed` | Failed without the change and passed with it |
+| `flaky`, `skipped` | As for a changed test |
+
+`elprovo replay` exits 1 when a test is `not fixed`, `not reproduced`, `flaky` or `broke`, and 0 otherwise. With `--require`, it also exits 1 when no test is `fixed`, so use `--require` for a change that fixes a bug. It exits 2 when it could not replay, such as when the tests printed no results. `elprovo reproduce` exits 0 only when every test is `reproduced`, 2 when a test could not run, and 1 otherwise.
+
+Programs read `report.json`, which [SPEC.md](SPEC.md) describes.
+
+## elprovo.toml
+
+The repository says once how to run its tests, in `elprovo.toml` at its root. It is [TOML](https://toml.io/en/v1.1.0). The demo's file:
 
 ```toml
-version = 1
-start = "go build -o bin/elprovo ./cmd/elprovo"
-ready = "./bin/elprovo version"
-```
+version = 2
+pass_env = ["GOCACHE", "GOMODCACHE"]
 
-A proof file is `proofs/<name>.toml`, where `<name>` uses lowercase letters, digits and dashes:
+[tests]
+files = ["**/*_test.go", "**/testdata/**"]
+run = "go test -json -count=1 -timeout=5m {packages}"
+report = "go-test-json"
+```
 
 | Field | Default | What it does |
 | --- | --- | --- |
-| `claim` | | The claim, as one sentence of at most 200 characters. |
-| `run` | | The command. It exits 0 when the claim holds. |
-| `before` | `"fail"` | `"skip"` for a claim that also held before the change, such as a refactor that keeps a behavior. The proof then runs on the head commit only, so its best result is `held`. |
-| `timeout` | `10m` | The longest time `run` may take. |
+| `version` | | The format version. It must be `2`. |
+| `tests.files` | | The files of the tests: the test files, and the files that they read. Go test files, `*_test.go`, always count. The base copy gets the head commit's version of these files. `**` matches any number of directories. |
+| `tests.run` | | The test command. Elprovo puts the packages, such as `./cart`, where `{packages}` is. It must print `go test -json` output. |
+| `tests.report` | | The format of that output. It must be `go-test-json`. |
+| `tests.timeout` | `10m` | The longest time the test command may take. Give `go test` a shorter `-timeout`, so that a test that hangs fails with a message. |
+| `env` | empty | A table of plain values that every command gets, such as `env.PORT = "8080"`. Not for secrets. |
+| `pass_env` | empty | Names of variables that Elprovo copies from its own environment, such as `GOCACHE`. A listed variable that is not set is an error. |
+| `[app]` | none | For tests that need a running app, such as a database: `start`, `ready` and `stop` commands, and `timeouts.start`, `timeouts.ready` and `timeouts.stop`. |
 
-Every other file in `proofs/` is a helper file that proofs can use, such as a test, a fixture or a shared script. A `.yml` or `.yaml` file directly in `proofs/` is an error, so put a YAML helper file in a subdirectory.
+Put the files that the tests read, such as `testdata`, in `tests.files`. Otherwise a new test fails without the change only because its data file is missing, and that failure is not the bug.
 
-## Write good proofs
-
-- Write one claim per proof, as one plain sentence that a reviewer can check against the proof.
-- Test from the outside where you can: through the app's user interface, its API or its command line.
-- Check the exact result that the claim states, such as the value, the text or the status.
-- Print why the proof fails, as its last line.
-- Keep everything the proof needs in `proofs/`.
-- Make each proof create its own data. Don't make it depend on another proof, on the order of proofs, or on the commit it runs against.
-- A `held` proof never shows that it can fail. For such a proof, break the code on purpose once, see the proof fail, and undo the break.
+Field names are case-sensitive, and a field that SPEC.md does not define is an error, so a misspelled field fails instead of being ignored. Elprovo's own [`elprovo.toml`](elprovo.toml) is like the demo's.
 
 ## In CI
 
-The reviewer should trust a replay that their own CI ran, not a summary that the author pasted. This GitHub Actions job replays the proofs of a pull request, puts the output in the job summary, and keeps the report and the logs:
+The reviewer should trust a replay that their own CI ran, not a summary that the author pasted. This GitHub Actions job replays the tests of a pull request, puts the output in the job summary, and keeps the report and the logs:
 
 ```yaml
 replay:
@@ -209,12 +227,18 @@ replay:
       with:
         fetch-depth: 0
         persist-credentials: false
-    - name: Replay the proofs of this pull request
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: go.mod
+    - name: Replay the tests of this pull request
       shell: bash
       env:
         BASE_REF: ${{ github.base_ref }}
       run: |
         set +e
+        GOCACHE=$(go env GOCACHE)
+        GOMODCACHE=$(go env GOMODCACHE)
+        export GOCACHE GOMODCACHE
         elprovo replay --base "origin/$BASE_REF" > replay.txt
         status=$?
         cat replay.txt
@@ -231,17 +255,17 @@ replay:
         if-no-files-found: ignore
 ```
 
-The job needs `elprovo` on `PATH`, and the tools that `elprovo.toml` uses. Elprovo's own [workflow](.github/workflows/ci.yml) builds it first.
+The job needs `elprovo` on `PATH`. Make it a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan.
 
-Make the job a required status check of the branch, so that a pull request merges only when its proofs hold. On a private repository, GitHub offers required checks only on a paid plan.
+Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `go.mod` and `elprovo.toml`, so review changes to them. The check also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
 
 ## For coding agents
 
 Add this to the repository's `AGENTS.md`:
 
-> When a change adds or fixes behavior, add one proof for each claim in `proofs/`, as SPEC.md in the Elprovo repository describes. Run `elprovo replay`, and check that each base run ended with the claim failing, not with a missing file or command. In your report, name the proof files and point to the CI check that replays them. If there is no such check, paste the local summary and say that it ran locally. Don't claim a behavior that no proof shows.
+> To fix a bug, first write a Go test that fails because of the bug, and commit it alone. Run `elprovo reproduce <test file>`, and go on only when it says `reproduced` and the line under it names the bug. Then make the smallest fix, commit it, and run `elprovo replay --require`. In your report, name the test and point to the CI check that replays it. If there is no such check, paste the local summary and say that it ran locally.
 
-For agents that load skills, such as Claude Code, [skills/elprovo-proofs/SKILL.md](skills/elprovo-proofs/SKILL.md) gives the same rule with the steps.
+For agents that load skills, such as Claude Code, [skills/elprovo-reproduce/SKILL.md](skills/elprovo-reproduce/SKILL.md) gives the same rule with the steps.
 
 ## What a run can see
 
@@ -254,7 +278,7 @@ Each command runs in the copy, with `/bin/sh -c`, and gets only these environmen
 
 So tools that read or write the home directory use the run's own, not yours. No variable says which commit runs. Three things follow from the empty home directory:
 
-- Tools keep caches in the home directory, so each run starts with empty caches. In the demo, a run takes about 5.5 seconds, most of it to build the shop with an empty cache. To reuse Go's build cache, run `export GOCACHE="$(go env GOCACHE)"` and add `GOCACHE` to `pass_env`. The head runs of the demo then take less than 2 seconds.
+- Tools keep caches in the home directory, so each run starts with empty caches, unless `pass_env` names them, as `GOCACHE` and `GOMODCACHE` above.
 - Tool managers such as mise and asdf find tools through the home directory, so their shims can fail in a run. Put the real tool directory first in `PATH`, or name what the tool needs in `pass_env`.
 - If `docker` cannot reach its daemon in a run, set `DOCKER_HOST` to the daemon's socket and add `DOCKER_HOST` to `pass_env`.
 
@@ -262,17 +286,18 @@ So tools that read or write the home directory use the run's own, not yours. No 
 
 ## Security
 
-A run is not a sandbox. Commands run as you, with your access to files, processes and the network, so a command can still reach your real home by its path. Elprovo runs the commands of the change it replays: `start`, `ready`, `stop` and every proof. Replay only changes whose code you would run yourself.
+A run is not a sandbox. Commands run as you, with your access to files, processes and the network, so a command can still reach your real home by its path. Elprovo runs the code of the change it replays: its tests, its test command and its `[app]` commands. Replay only changes whose code you would run yourself.
 
 - In CI, replay pull requests from forks only in a job that has no secrets and a read-only token, such as a GitHub Actions job on `pull_request`.
 - Variables in `pass_env` reach every command of every run, and the logs keep what the commands print. Pass test credentials only.
 
 ## What Elprovo does not do
 
-- It does not judge whether the claims are the right ones, or read the code. The reviewer does that.
-- It does not write proofs.
-- It does not prove that a change is correct. It shows that each proof fails without the change and passes with it. A weak proof shows little.
-- The last line of a run is what the proof printed, so a proof can print a false reason. Read the proof too.
+- It does not write tests or fixes.
+- It does not judge whether a test reproduces the right bug. Read the test, and the line that its base run failed with.
+- It does not prove that a change is correct. It shows that a test fails without the change and passes with it, and that the other tests in the same packages kept their results. A weak test shows little, and tests in other packages do not run.
+- It reads Go tests only, from one Go module at the repository root. It leaves out the packages of nested modules, as `go test ./...` does.
+- It gives verdicts to top-level test functions. A subtest, or a method of a testify suite, counts only through its top-level function.
 - It does not isolate a run beyond the environment, the home directory and the temporary directory. Docker images, caches, the network and anything outside the copy are shared.
 
 ## License

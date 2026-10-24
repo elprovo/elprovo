@@ -3,7 +3,7 @@
 #
 #   make build && PATH="$PWD/bin:$PATH" vhs assets/demo.tape
 #
-# The replay runs for real, so the GIF shows its real timing.
+# The commands run for real, so the GIF shows their real timing.
 #
 # VHS 0.12 writes no GIF with ffmpeg 9, and it reports no error. Then replace
 # the Output line with `Output "<dir>/frames/"`, record, and join the frames:
@@ -17,7 +17,6 @@ Output assets/demo.gif
 
 Require elprovo
 Require go
-Require curl
 
 Set Shell "bash"
 Set FontSize 18
@@ -27,23 +26,30 @@ Set Padding 24
 Set TypingSpeed 50ms
 
 Hide
-Type `cd "$(sh assets/demo-repo.sh)" && clear`
+Type `cd "$(sh assets/demo-repo.sh)" && export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" && clear`
 Enter
 Sleep 2s
 Show
 
-Type "git log --oneline"
-Sleep 500ms
-Enter
-Sleep 2s
-
-Type "cat proofs/coupon-once.toml"
+Type "cat cart/coupon_test.go"
 Sleep 500ms
 Enter
 Sleep 5s
 
-Type "elprovo replay --base main"
+Type "elprovo reproduce --base main cart/coupon_test.go"
 Sleep 500ms
 Enter
-Wait+Screen@90s /Report:/
+Wait+Screen@60s /Tests: 1 reproduced/
+Sleep 5s
+
+Hide
+Type "clear"
+Enter
+Sleep 500ms
+Show
+
+Type "git switch -q coupon-once && elprovo replay --base main"
+Sleep 500ms
+Enter
+Wait+Screen@90s /Other tests:/
 Sleep 8s

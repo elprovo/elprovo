@@ -28,7 +28,7 @@ jobs:
       - run: make check
 
   replay:
-    # Elprovo replays its own proofs.
+    # Elprovo replays its own tests.
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,12 +39,15 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make build
-      - name: Replay the proofs
+      - name: Replay the tests
         shell: bash
         env:
           BASE: ${{ inputs.base }}
         run: |
           set +e
+          GOCACHE=$(go env GOCACHE)
+          GOMODCACHE=$(go env GOMODCACHE)
+          export GOCACHE GOMODCACHE
           ./bin/elprovo replay --base "$(git merge-base HEAD "$BASE")" > replay.txt
           status=$?
           cat replay.txt

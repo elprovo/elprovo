@@ -1,0 +1,6 @@
+{"ImportPath":"gj/broken [gj/broken.test]","Action":"build-output","Output":"# gj/broken [gj/broken.test]\n"}
+{"ImportPath":"gj/broken [gj/broken.test]","Action":"build-output","Output":"broken/x_test.go:5:41: undefined: NewThing\n"}
+{"ImportPath":"gj/broken [gj/broken.test]","Action":"build-fail"}
+{"Time":"2026-10-24T17:36:33.048974+03:00","Action":"start","Package":"gj/broken"}
+{"Time":"2026-10-24T17:36:33.049063+03:00","Action":"output","Package":"gj/broken","Output":"FAIL\tgj/broken [build failed]\n","OutputType":"frame"}
+{"Time":"2026-10-24T17:36:33.049078+03:00","Action":"fail","Package":"gj/broken","Elapsed":0,"FailedBuild":"gj/broken [gj/broken.test]"}

@@ -1,3 +1,9 @@
-version = 1
-start = "go build -o bin/elprovo ./cmd/elprovo"
-ready = "./bin/elprovo version"
+version = 2
+# Each run has an empty home directory, so go test gets its caches from the
+# environment. make replay and the CI workflow set both.
+pass_env = ["GOCACHE", "GOMODCACHE"]
+
+[tests]
+files = ["**/*_test.go", "**/testdata/**"]
+run = "go test -json -count=1 -timeout=5m {packages}"
+report = "go-test-json"

@@ -1,0 +1,12 @@
+{"Time":"2026-10-24T18:56:41.474452+03:00","Action":"start","Package":"gj/gopanic"}
+{"Time":"2026-10-24T18:56:41.858541+03:00","Action":"run","Package":"gj/gopanic","Test":"TestBackground"}
+{"Time":"2026-10-24T18:56:41.858611+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"=== RUN   TestBackground\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:41.861032+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"panic: boom in a goroutine\n"}
+{"Time":"2026-10-24T18:56:41.861053+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"\n"}
+{"Time":"2026-10-24T18:56:41.861063+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"goroutine 20 [running]:\n"}
+{"Time":"2026-10-24T18:56:41.861077+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"gj/gopanic.TestBackground.func1()\n"}
+{"Time":"2026-10-24T18:56:41.861093+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"\t/src/gj/gopanic/x_test.go:9 +0x2c\n"}
+{"Time":"2026-10-24T18:56:41.86111+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"created by gj/gopanic.TestBackground in goroutine 19\n"}
+{"Time":"2026-10-24T18:56:41.861119+03:00","Action":"output","Package":"gj/gopanic","Test":"TestBackground","Output":"\t/src/gj/gopanic/x_test.go:9 +0x24\n"}
+{"Time":"2026-10-24T18:56:41.861653+03:00","Action":"output","Package":"gj/gopanic","Output":"FAIL\tgj/gopanic\t0.387s\n","OutputType":"frame"}
+{"Time":"2026-10-24T18:56:41.861669+03:00","Action":"fail","Package":"gj/gopanic","Elapsed":0.387}

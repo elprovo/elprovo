@@ -1,5 +1,5 @@
-// Package config reads and checks elprovo.toml and proof files, as section 1
-// of SPEC.md defines them.
+// Package config reads and checks elprovo.toml, as section 1 of SPEC.md
+// defines it.
 package config
 
 import (
@@ -12,115 +12,95 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
 )
 
-// MaxFileSize is the largest elprovo.toml or proof file that Elprovo reads.
+// MaxFileSize is the largest elprovo.toml that Elprovo reads.
 const MaxFileSize = 64 << 10
 
 // RepoFile is the path of the repository file, relative to the repository root.
 const RepoFile = "elprovo.toml"
 
-// ProofDir is the directory that holds proof files and their helper files.
-const ProofDir = "proofs"
+// Packages is the placeholder in tests.run for the packages to test.
+const Packages = "{packages}"
 
-const maxClaimLength = 200
+// GoTestJSON is the only report format this release reads: the output of
+// go test -json.
+const GoTestJSON = "go-test-json"
+
+// ErrVersion1 is the error for an elprovo.toml in the format of Elprovo 0.2.
+var ErrVersion1 = errors.New("version 1 is the proof-file format of Elprovo 0.2; write version 2, as SPEC.md section 1 shows")
 
 // Repo is a checked elprovo.toml.
 type Repo struct {
+	Env     map[string]string
+	PassEnv []string
+	Tests   Tests
+	// App is nil when the file has no [app] table.
+	App *App
+}
+
+// Tests says which files hold tests and how to run them.
+type Tests struct {
+	// Files are the patterns of section 1.2 of SPEC.md.
+	Files   []string
+	Run     string
+	Timeout time.Duration
+}
+
+// App says how to start, check and stop an app that the tests need.
+type App struct {
 	Start        string
 	Ready        string
 	Stop         string
-	Env          map[string]string
-	PassEnv      []string
 	StartTimeout time.Duration
 	ReadyTimeout time.Duration
 	StopTimeout  time.Duration
 }
 
-// Before says what a proof must do on the base commit.
-type Before string
-
-const (
-	BeforeFail Before = "fail"
-	BeforeSkip Before = "skip"
-)
-
-// Proof is a checked proof file.
-type Proof struct {
-	File    string
-	Name    string
-	Claim   string
-	Run     string
-	Before  Before
-	Timeout time.Duration
-}
-
 var (
-	proofNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	envNamePattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	durationPattern  = regexp.MustCompile(`^([1-9][0-9]*)([smh])$`)
+	envNamePattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	durationPattern = regexp.MustCompile(`^([1-9][0-9]*)([smh])$`)
 )
-
-// ProofName reports whether file, a slash-separated path from the repository
-// root, is a proof file, and returns its name. A file directly in proofs/
-// that ends in .toml but has an invalid name is an error, not a helper file,
-// and so is a YAML file directly in proofs/.
-func ProofName(file string) (string, bool, error) {
-	dir, base := path.Split(file)
-	if dir != ProofDir+"/" {
-		return "", false, nil
-	}
-	ext := path.Ext(base)
-	switch strings.ToLower(ext) {
-	case ".yml", ".yaml":
-		return "", false, fmt.Errorf("%s: Elprovo reads proof files that end in .toml. Rename a proof file to .toml, or move a YAML helper file into a subdirectory of %s/", EscapeControl(file), ProofDir)
-	case ".toml":
-	default:
-		return "", false, nil
-	}
-	if ext != ".toml" {
-		return "", false, fmt.Errorf("%s: a proof file name must end in .toml, in lowercase", EscapeControl(file))
-	}
-	name := strings.TrimSuffix(base, ext)
-	if !proofNamePattern.MatchString(name) {
-		return "", false, fmt.Errorf("%s: the name before .toml must match [a-z0-9][a-z0-9-]*", EscapeControl(file))
-	}
-	return name, true, nil
-}
 
 type rawRepo struct {
-	Version  *int              `toml:"version"`
-	Start    string            `toml:"start"`
-	Ready    string            `toml:"ready"`
-	Stop     string            `toml:"stop"`
-	Env      map[string]string `toml:"env"`
-	PassEnv  []string          `toml:"pass_env"`
-	Timeouts struct {
-		Start string `toml:"start"`
-		Ready string `toml:"ready"`
-		Stop  string `toml:"stop"`
-	} `toml:"timeouts"`
+	Version *int              `toml:"version"`
+	Env     map[string]string `toml:"env"`
+	PassEnv []string          `toml:"pass_env"`
+	Tests   struct {
+		Files   []string `toml:"files"`
+		Run     string   `toml:"run"`
+		Report  string   `toml:"report"`
+		Timeout string   `toml:"timeout"`
+	} `toml:"tests"`
+	App struct {
+		Start    string `toml:"start"`
+		Ready    string `toml:"ready"`
+		Stop     string `toml:"stop"`
+		Timeouts struct {
+			Start string `toml:"start"`
+			Ready string `toml:"ready"`
+			Stop  string `toml:"stop"`
+		} `toml:"timeouts"`
+	} `toml:"app"`
 }
 
 // ParseRepo checks the content of an elprovo.toml. name is the file's name in
 // error messages.
 func ParseRepo(name string, data []byte) (Repo, error) {
 	var raw rawRepo
-	if err := decode(data, &raw); err != nil {
+	meta, err := decode(data, &raw)
+	if err != nil {
 		return Repo{}, fmt.Errorf("%s: %w", name, err)
 	}
 	var problems []string
 	switch {
 	case raw.Version == nil:
 		problems = append(problems, "version is missing")
-	case *raw.Version != 1:
-		problems = append(problems, fmt.Sprintf("version %d is not supported; this release reads version 1", *raw.Version))
+	case *raw.Version != 2:
+		problems = append(problems, fmt.Sprintf("version %d is not supported; this release reads version 2", *raw.Version))
 	}
-	problems = requireCommand(problems, "start", raw.Start)
-	problems = requireCommand(problems, "ready", raw.Ready)
 	for envName := range raw.Env {
 		problems = checkEnvName(problems, "env", envName)
 	}
@@ -128,114 +108,94 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 		problems = checkEnvName(problems, "pass_env", envName)
 	}
 
+	tests := raw.Tests
 	repo := Repo{
-		Start:   raw.Start,
-		Ready:   raw.Ready,
-		Stop:    strings.TrimSpace(raw.Stop),
 		Env:     raw.Env,
 		PassEnv: raw.PassEnv,
+		Tests:   Tests{Files: tests.Files, Run: tests.Run},
 	}
-	problems = parseDuration(problems, "timeouts.start", raw.Timeouts.Start, 10*time.Minute, &repo.StartTimeout)
-	problems = parseDuration(problems, "timeouts.ready", raw.Timeouts.Ready, 5*time.Minute, &repo.ReadyTimeout)
-	problems = parseDuration(problems, "timeouts.stop", raw.Timeouts.Stop, 2*time.Minute, &repo.StopTimeout)
+	if len(tests.Files) == 0 {
+		problems = append(problems, "tests.files is missing")
+	}
+	for _, pattern := range tests.Files {
+		if !validPattern(pattern) {
+			problems = append(problems, fmt.Sprintf("tests.files pattern %q is not valid", pattern))
+		}
+	}
+	switch {
+	case strings.TrimSpace(tests.Run) == "":
+		problems = append(problems, "tests.run is missing")
+	case !strings.Contains(tests.Run, Packages):
+		problems = append(problems, "tests.run must contain "+Packages+", where Elprovo puts the packages to test")
+	}
+	switch tests.Report {
+	case "":
+		problems = append(problems, "tests.report is missing")
+	case GoTestJSON:
+	default:
+		problems = append(problems, fmt.Sprintf("tests.report is %q; this release reads %s", tests.Report, GoTestJSON))
+	}
+	problems = parseDuration(problems, "tests.timeout", tests.Timeout, 10*time.Minute, &repo.Tests.Timeout)
+
+	if meta.IsDefined("app") {
+		app := raw.App
+		repo.App = &App{Start: app.Start, Ready: app.Ready, Stop: strings.TrimSpace(app.Stop)}
+		problems = requireCommand(problems, "app.start", app.Start)
+		problems = requireCommand(problems, "app.ready", app.Ready)
+		problems = parseDuration(problems, "app.timeouts.start", app.Timeouts.Start, 10*time.Minute, &repo.App.StartTimeout)
+		problems = parseDuration(problems, "app.timeouts.ready", app.Timeouts.Ready, 5*time.Minute, &repo.App.ReadyTimeout)
+		problems = parseDuration(problems, "app.timeouts.stop", app.Timeouts.Stop, 2*time.Minute, &repo.App.StopTimeout)
+	}
 	if len(problems) > 0 {
 		return Repo{}, fmt.Errorf("%s: %s", name, strings.Join(problems, "; "))
 	}
 	return repo, nil
 }
 
-type rawProof struct {
-	Claim   string `toml:"claim"`
-	Run     string `toml:"run"`
-	Before  string `toml:"before"`
-	Timeout string `toml:"timeout"`
-}
-
-// ParseProof checks the content of the proof file at file, a slash-separated
-// path from the repository root.
-func ParseProof(file string, data []byte) (Proof, error) {
-	name, ok, err := ProofName(file)
-	if err != nil {
-		return Proof{}, err
-	}
-	if !ok {
-		return Proof{}, fmt.Errorf("%s: a proof file must be directly in %s/ and end in .toml", file, ProofDir)
-	}
-	var raw rawProof
-	if err := decode(data, &raw); err != nil {
-		return Proof{}, fmt.Errorf("%s: %w", file, err)
-	}
-	var problems []string
-	claim := strings.TrimSpace(raw.Claim)
-	switch {
-	case claim == "":
-		problems = append(problems, "claim is missing")
-	case strings.ContainsFunc(claim, isControl):
-		problems = append(problems, "claim must be one line, without control characters")
-	case utf8.RuneCountInString(claim) > maxClaimLength:
-		problems = append(problems, fmt.Sprintf("claim has %d characters; the limit is %d", utf8.RuneCountInString(claim), maxClaimLength))
-	}
-	problems = requireCommand(problems, "run", raw.Run)
-
-	proof := Proof{File: file, Name: name, Claim: claim, Run: raw.Run}
-	switch Before(raw.Before) {
-	case "", BeforeFail:
-		proof.Before = BeforeFail
-	case BeforeSkip:
-		proof.Before = BeforeSkip
-	default:
-		problems = append(problems, fmt.Sprintf("before is %q; it must be fail or skip", raw.Before))
-	}
-	problems = parseDuration(problems, "timeout", raw.Timeout, 10*time.Minute, &proof.Timeout)
-	if len(problems) > 0 {
-		return Proof{}, fmt.Errorf("%s: %s", file, strings.Join(problems, "; "))
-	}
-	return proof, nil
-}
-
-// decode reads a TOML document into v and rejects keys that v has no field for.
-func decode(data []byte, v any) error {
+// decode reads a TOML document into raw and rejects keys that raw has no
+// field for.
+func decode(data []byte, raw *rawRepo) (toml.MetaData, error) {
 	if len(data) > MaxFileSize {
-		return fmt.Errorf("the file has %d bytes; the limit is %d", len(data), MaxFileSize)
+		return toml.MetaData{}, fmt.Errorf("the file has %d bytes; the limit is %d", len(data), MaxFileSize)
 	}
-	meta, err := toml.Decode(string(data), v)
+	meta, err := toml.Decode(string(data), raw)
 	if err != nil {
 		// The message can quote the file, which comes from the change, so
 		// it must not reach a terminal with control characters in it.
-		return errors.New(EscapeControl(err.Error()))
+		return meta, errors.New(EscapeControl(err.Error()))
 	}
 	if len(meta.Keys()) == 0 {
-		return errors.New("the file is empty")
+		return meta, errors.New("the file is empty")
 	}
-	t := reflect.TypeOf(v).Elem()
-	if unknown := unknownKeys(meta, t); len(unknown) > 0 {
+	// A version 1 file has fields that version 2 does not know, so its
+	// version decides before they do.
+	if raw.Version != nil && *raw.Version == 1 {
+		return meta, ErrVersion1
+	}
+	if unknown := unknownKeys(meta); len(unknown) > 0 {
 		noun := "field"
 		if len(unknown) > 1 {
 			noun = "fields"
 		}
-		return fmt.Errorf("unknown %s %s", noun, strings.Join(unknown, ", "))
+		return meta, fmt.Errorf("unknown %s %s", noun, strings.Join(unknown, ", "))
 	}
-	// The decoder leaves a map field empty, without an error, when the file
-	// gives it a value that is not a table. Dotted keys, such as env.PORT,
-	// make a table whose type is empty.
-	for i := range t.NumField() {
-		field := t.Field(i)
-		name := field.Tag.Get("toml")
-		if kind := meta.Type(name); field.Type.Kind() == reflect.Map && kind != "" && kind != "Hash" {
-			return fmt.Errorf("%s must be a table, such as %s.NAME = \"value\"", name, name)
-		}
+	// The decoder leaves a map empty, without an error, when the file gives
+	// it a value that is not a table. Dotted keys, such as env.PORT, make a
+	// table whose type is empty.
+	if kind := meta.Type("env"); kind != "" && kind != "Hash" {
+		return meta, errors.New(`env must be a table, such as env.NAME = "value"`)
 	}
-	return nil
+	return meta, nil
 }
 
-// unknownKeys lists, quoted, the keys of the file that no field of t has as
-// its exact toml tag. The decoder also matches a key to a field in another
-// case, so MetaData.Undecoded would let CLAIM set claim. A key under a map,
-// such as a name in env, is not checked.
-func unknownKeys(meta toml.MetaData, t reflect.Type) []string {
+// unknownKeys lists, quoted, the keys of the file that no field of rawRepo
+// has as its exact toml tag. The decoder also matches a key to a field in
+// another case, so MetaData.Undecoded would let RUN set run. A key under a
+// map, such as a name in env, is not checked.
+func unknownKeys(meta toml.MetaData) []string {
 	var unknown []string
 	for _, key := range meta.Keys() {
-		parent := t
+		parent := reflect.TypeFor[rawRepo]()
 		for i, part := range key {
 			if parent.Kind() != reflect.Struct {
 				break
@@ -264,19 +224,76 @@ func fieldWithTag(t reflect.Type, tag string) (reflect.StructField, bool) {
 	return reflect.StructField{}, false
 }
 
+// Matches reports whether file, a slash-separated path from the repository
+// root, matches one of the patterns in Files.
+func (t Tests) Matches(file string) bool {
+	name := strings.Split(file, "/")
+	for _, pattern := range t.Files {
+		if matchSegments(strings.Split(pattern, "/"), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchSegments matches a path segment by segment. A ** segment matches
+// any number of segments, and at the end of a pattern at least one, so that
+// e2e/** matches the files in e2e but not a file named e2e.
+func matchSegments(pattern, name []string) bool {
+	if len(pattern) == 0 {
+		return len(name) == 0
+	}
+	if pattern[0] == "**" {
+		if len(pattern) == 1 {
+			return len(name) > 0
+		}
+		for i := range len(name) {
+			if matchSegments(pattern[1:], name[i:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(name) == 0 {
+		return false
+	}
+	ok, _ := path.Match(pattern[0], name[0])
+	return ok && matchSegments(pattern[1:], name[1:])
+}
+
+func validPattern(pattern string) bool {
+	if pattern == "" || strings.HasPrefix(pattern, "/") {
+		return false
+	}
+	for _, segment := range strings.Split(pattern, "/") {
+		if segment == "" {
+			return false
+		}
+		if segment == "**" {
+			continue
+		}
+		// path.Match checks the whole pattern, even when the name does not
+		// match.
+		if _, err := path.Match(segment, ""); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // isControl reports whether r is a control character or a line or paragraph
 // separator, which a terminal or a viewer can act on.
 func isControl(r rune) bool {
 	return unicode.IsControl(r) || unicode.In(r, unicode.Zl, unicode.Zp)
 }
 
-// EscapeControl writes every control character in s, except line breaks
-// and tabs, as a Go escape sequence, so that text from a change cannot act on
-// a terminal.
+// EscapeControl writes every control character in s, except tabs, as a Go
+// escape sequence, so that text from a change cannot act on a terminal or add
+// lines to the output.
 func EscapeControl(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		if isControl(r) && r != '\n' && r != '\t' {
+		if isControl(r) && r != '\t' {
 			quoted := strconv.QuoteRuneToASCII(r)
 			b.WriteString(quoted[1 : len(quoted)-1])
 			continue
@@ -303,7 +320,7 @@ func checkEnvName(problems []string, field, name string) []string {
 	return problems
 }
 
-// parseDuration parses a duration from section 1.3 of SPEC.md into *out, or
+// parseDuration parses a duration from section 1.2 of SPEC.md into *out, or
 // sets the default when text is empty.
 func parseDuration(problems []string, field, text string, fallback time.Duration, out *time.Duration) []string {
 	if text == "" {
