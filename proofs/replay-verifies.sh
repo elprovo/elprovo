@@ -19,7 +19,10 @@ printf 'claim: The feature is on.\nrun: grep -qx on feature.txt\n' > proofs/feat
 echo on > feature.txt
 git add -A && git commit -q -m head
 
-"$elprovo" replay --base "$base" > "$TMPDIR/out.txt" 2> "$TMPDIR/err.txt"
-cat "$TMPDIR/out.txt"
+status=0
+"$elprovo" replay --base "$base" > "$TMPDIR/out.txt" 2> "$TMPDIR/err.txt" || status=$?
+cat "$TMPDIR/out.txt" "$TMPDIR/err.txt"
+echo "elprovo replay exited with status $status"
+[ "$status" -eq 0 ]
 grep -qx '✓ verified  proofs/feature.yml' "$TMPDIR/out.txt"
 grep -qx '1 verified.' "$TMPDIR/out.txt"
