@@ -302,10 +302,11 @@ func lastLine(path string) (string, error) {
 	}
 	start := max(0, info.Size()-lastLineBytes)
 	tail := make([]byte, info.Size()-start)
-	if _, err := f.ReadAt(tail, start); err != nil && !errors.Is(err, io.EOF) {
+	n, err := f.ReadAt(tail, start)
+	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	lines := strings.Split(strings.ToValidUTF8(string(tail), "\uFFFD"), "\n")
+	lines := strings.Split(strings.ToValidUTF8(string(tail[:n]), "\uFFFD"), "\n")
 	for _, line := range slices.Backward(lines) {
 		line = strings.TrimSpace(line)
 		if line == "" {

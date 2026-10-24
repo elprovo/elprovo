@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/elprovo/elprovo-next/internal/replay"
 	"github.com/elprovo/elprovo-next/internal/testrepo"
@@ -125,12 +126,12 @@ func TestTheLastLineKeepsAtMost200Characters(t *testing.T) {
 	base := repo.Commit(map[string]string{"README": "base\n"})
 	repo.Commit(map[string]string{
 		"elprovo.toml":     "version = 1\nstart = \"true\"\nready = \"true\"\n",
-		"proofs/wide.toml": "claim = \"The proof prints a wide line and fails.\"\nbefore = \"skip\"\nrun = \"printf 'x%.0s' $(seq 300); echo; exit 1\"\n",
+		"proofs/wide.toml": "claim = \"The proof prints a wide line and fails.\"\nbefore = \"skip\"\nrun = \"printf 'é%.0s' $(seq 300); echo; exit 1\"\n",
 	})
 
 	report, _ := replayOnce(t, repo, base, replay.Limits{})
 
-	if got := report.Proofs[0].Head[0].LastLine; got != strings.Repeat("x", 200) {
-		t.Errorf("last_line has %d characters; want 200 x characters", len(got))
+	if got := report.Proofs[0].Head[0].LastLine; got != strings.Repeat("é", 200) {
+		t.Errorf("last_line has %d characters in %d bytes; want 200 é characters", utf8.RuneCountInString(got), len(got))
 	}
 }

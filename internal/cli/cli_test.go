@@ -622,8 +622,8 @@ func TestAProofThatIsFlakyOnTheBasePointsToTheFailingBaseLog(t *testing.T) {
 
 	wantResult(t, r, "proofs/feature.toml", replay.Flaky, "pass fail", "pass pass", 1)
 	logPath := filepath.Join(".elprovo", "runs", r.replayID(t), "feature", "base-2", "proof.log")
-	if !strings.Contains(r.stdout, indent+"log: "+logPath+"\n") {
-		t.Errorf("stdout does not point to %s:\n%s", logPath, r.stdout)
+	if !strings.Contains(r.stdout, indent+"base run 2 printed nothing\n"+indent+"log: "+logPath+"\n") {
+		t.Errorf("stdout does not show base run 2 and point to %s:\n%s", logPath, r.stdout)
 	}
 }
 
@@ -646,8 +646,8 @@ func TestNotRunGivesTheReasonOfTheFirstRunThatDidNotRun(t *testing.T) {
 	r := replayIn(t, repo.Dir, "--base", base)
 
 	wantResult(t, r, "proofs/feature.toml", replay.ResultNotRun, "not-run not-run", "pass not-run", 2)
-	if !strings.Contains(r.stdout, indent+"reason: start exited with status 5\n") {
-		t.Errorf("stdout does not give the reason of base run 1, the first run that did not run:\n%s", r.stdout)
+	if !strings.Contains(r.stdout, indent+"reason: start exited with status 5\n"+indent+"base run 1 printed nothing\n") {
+		t.Errorf("stdout does not give the reason and the last line of base run 1, the first run that did not run:\n%s", r.stdout)
 	}
 }
 
@@ -869,5 +869,50 @@ func TestNotRunShowsWhatReadyPrinted(t *testing.T) {
 	wantResult(t, r, "proofs/feature.toml", replay.ResultNotRun, "", "not-run", 2)
 	if got := r.proof(t, "proofs/feature.toml").Head[0].LastLine; got != "connection refused" {
 		t.Errorf("last_line is %q; want %q", got, "connection refused")
+	}
+}
+
+func TestVerifiedShowsTheFirstOfSeveralBaseRuns(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(map[string]string{"feature.txt": "off\n"})
+	repo.Commit(map[string]string{
+		"elprovo.toml":        app,
+		"feature.txt":         "on\n",
+		"proofs/feature.toml": "claim = \"The feature file says on.\"\nrun = 'echo \"run $ELPROVO_RUN_ID\"; grep -qx on feature.txt'\n",
+	})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "2")
+
+	wantResult(t, r, "proofs/feature.toml", replay.Verified, "fail fail", "pass pass", 0)
+	p := r.proof(t, "proofs/feature.toml")
+	if p.Base[0].LastLine == p.Base[1].LastLine || !strings.Contains(r.stdout, indent+"base run 1 ended with: "+p.Base[0].LastLine+"\n") {
+		t.Errorf("stdout does not show base run 1, which printed %q; base run 2 printed %q:\n%s", p.Base[0].LastLine, p.Base[1].LastLine, r.stdout)
+	}
+}
+
+func TestHeldAndNoEffectShowNoLastLine(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		baseFeat   string
+		proof      string
+		wantResult replay.Result
+	}{
+		{"held", "off\n", printingProof + "before = \"skip\"\n", replay.Held},
+		{"no-effect", "on\n", printingProof, replay.NoEffect},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testrepo.New(t)
+			base := repo.Commit(map[string]string{"feature.txt": tt.baseFeat})
+			repo.Commit(map[string]string{"elprovo.toml": app, "feature.txt": "on\n", "proofs/feature.toml": tt.proof})
+
+			r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+			if p := r.proof(t, "proofs/feature.toml"); p.Result != tt.wantResult {
+				t.Fatalf("result %q; want %q", p.Result, tt.wantResult)
+			}
+			if strings.Contains(r.stdout, "ended with") || strings.Contains(r.stdout, "printed nothing") {
+				t.Errorf("stdout shows a last line for a proof whose runs all passed:\n%s", r.stdout)
+			}
+		})
 	}
 }

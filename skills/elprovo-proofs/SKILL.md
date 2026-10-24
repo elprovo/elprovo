@@ -78,7 +78,7 @@ Replay reads commits, so the change must be committed. Commit only if you are al
 
 Run `elprovo replay --base <base>`, where the base is usually the merge base with the default branch. `elprovo replay --dry-run` checks the files first without running anything.
 
-Under each `verified` proof, read the line `base run 1 ended with: …`. It must show the claim failing, such as a wrong value or status. If it shows a missing file or command, the base run failed for another reason, and the proof does not show your change. Fix the proof.
+Under each `verified` proof, read the line `base run 1 ended with: …`. It must show the claim failing, such as a wrong value or status. If it shows a missing file or command, the base run failed for another reason, and the proof does not show your change. Fix the proof. If it says `printed nothing`, nobody can see why the base run failed: make the proof print why it fails.
 
 If `elprovo` is not installed and you may not install it, do not replay the proofs by hand and do not call any claim verified. Tell the user the proofs are ready and that they need `elprovo replay`.
 
