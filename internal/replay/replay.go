@@ -490,14 +490,14 @@ runs:
 func (p Plan) testReports(base, head []runResults, finished bool) (changed, regressions []TestReport) {
 	changed, regressions = []TestReport{}, []TestReport{}
 	runs := slices.Concat(base, head)
-	owners := owners(p.Suites(), runs)
+	owner := owners(p.Suites(), runs)
 	isChanged := map[gotest.Test]bool{}
 	for _, c := range p.Changed {
 		t := gotest.Test{Package: p.importPath(c.Package), Name: c.Name}
 		isChanged[t] = true
 		report := TestReport{
 			Package: c.Package, Name: c.Name, File: c.File, Suites: reportedBy(t, runs, p.Suites()),
-			Base: testRuns(base, t, owners), Head: testRuns(head, t, owners),
+			Base: testRuns(base, t, owner(t)), Head: testRuns(head, t, owner(t)),
 		}
 		switch {
 		case !finished:
@@ -536,7 +536,7 @@ func (p Plan) testReports(base, head []runResults, finished bool) (changed, regr
 	for _, t := range others {
 		report := TestReport{
 			Package: config.EscapeControl(p.packageDir(t.Package)), Name: config.EscapeControl(t.Name), Suites: reportedBy(t, runs, p.Suites()),
-			Base: testRuns(base, t, owners), Head: testRuns(head, t, owners),
+			Base: testRuns(base, t, owner(t)), Head: testRuns(head, t, owner(t)),
 		}
 		if finished {
 			report.Verdict = regressionVerdict(regressionOutcomes(report.Head), regressionOutcomes(report.Base))
@@ -548,22 +548,23 @@ func (p Plan) testReports(base, head []runResults, finished bool) (changed, regr
 
 // testRuns returns the result of t in each run, with control characters in
 // the messages escaped.
-func testRuns(runs []runResults, t gotest.Test, owners map[string]string) []TestRun {
+func testRuns(runs []runResults, t gotest.Test, owner string) []TestRun {
 	list := []TestRun{}
 	for _, results := range runs {
-		run := results.result(t, owners[t.Package])
+		run := results.result(t, owner)
 		run.Message = config.EscapeControl(cutRunes(run.Message, maxReported))
 		list = append(list, run)
 	}
 	return list
 }
 
-// owners returns, for each package, the first suite, in suite order, that
-// reports a test in it in any run. Another suite can only fail to build the
-// package, as a unit suite does for an e2e package with a build tag, so its
-// reason must not explain the owner's tests.
-func owners(suites []string, runs []runResults) map[string]string {
-	owners := map[string]string{}
+// owners returns a function that gives the suite that runs a test: the
+// first suite, in suite order, that reports the test in any run, or "" for
+// a test that no suite reports. Another suite can only fail to build the
+// test, as a unit suite does for an e2e test with a build tag, so its reason
+// must not explain the test.
+func owners(suites []string, runs []runResults) func(gotest.Test) string {
+	tests := map[gotest.Test]string{}
 	for _, suite := range slices.Backward(suites) {
 		for _, results := range runs {
 			for _, s := range results.suites {
@@ -571,12 +572,12 @@ func owners(suites []string, runs []runResults) map[string]string {
 					continue
 				}
 				for t := range s.Tests {
-					owners[t.Package] = suite
+					tests[t] = suite
 				}
 			}
 		}
 	}
-	return owners
+	return func(t gotest.Test) string { return tests[t] }
 }
 
 // reportedBy returns, in suite order, the suites that report t in any run.

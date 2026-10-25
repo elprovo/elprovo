@@ -91,6 +91,12 @@ func eventIn(pkg, action, name string) string {
 	return fmt.Sprintf(`printf '%%s\n' '{"Action":"%s","Package":"%s/%s","Test":"%s"}'`+"\n", action, testrepo.Module, pkg, name)
 }
 
+// buildFailure is a shell line that prints the go test -json events of a
+// package pkg of testrepo.Module that does not build, for reason.
+func buildFailure(pkg, reason string) string {
+	return fmt.Sprintf(`printf '%%s\n' '{"ImportPath":"%[1]s/%[2]s","Action":"build-output","Output":"%[3]s\n"}' '{"ImportPath":"%[1]s/%[2]s","Action":"build-fail"}' '{"Action":"fail","Package":"%[1]s/%[2]s","FailedBuild":"%[1]s/%[2]s"}'`+"\n", testrepo.Module, pkg, reason)
+}
+
 // onHead prints then when a.go says head, and otherwise otherwise.
 func onHead(then, otherwise string) string {
 	return "if grep -q head a.go; then\n" + then + "else\n" + otherwise + "fi\n"
@@ -498,6 +504,22 @@ func TestDryRunListsTheChangedTestsAndRunsNoCommand(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(spy, "started")); err == nil {
 		t.Error("a dry run ran start")
+	}
+}
+
+func TestAChangedTestWithoutAResultShowsTheLogOfTheOnlySuite(t *testing.T) {
+	repo, base := scriptRepo(t, scriptConfig("", "", ""), event("pass", "TestA"))
+	repo.Commit(map[string]string{"b_test.go": "package m\n\nimport \"testing\"\n\nfunc TestB(t *testing.T) {}\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestB", replay.NotFixed, "absent", "absent", 1)
+	wantLines(t, r,
+		indent+"head run 1: the run printed no result for this test",
+		indent+"log: "+filepath.Join(".elprovo", "runs", r.replayID(t), "head-1", "tests", "test.log"),
+	)
+	if strings.Contains(r.stdout, "suites:") {
+		t.Errorf("the output of a file with one suite has a suites line:\n%s", r.stdout)
 	}
 }
 
@@ -1302,7 +1324,13 @@ func TestAWholeSuiteRunsOnEveryReplayAndAllItsResultsCount(t *testing.T) {
 
 	wantVerdict(t, r, "TestCheckout", replay.Broke, "passed", "failed", 1)
 	wantVerdict(t, r, "TestUnit", replay.Kept, "passed", "passed", 1)
-	wantLines(t, r, "packages: .", "suites: unit, e2e", "✗ broke           TestCheckout  ./e2e")
+	wantLines(t, r, "packages: .", "suites: unit, e2e", "✗ broke           TestCheckout  ./e2e",
+		indent+"log: "+filepath.Join(".elprovo", "runs", r.replayID(t), "head-1", "e2e", "test.log"))
+	for _, line := range []string{"base run 1: unit ran (", "head run 1: unit ran ("} {
+		if !strings.Contains(r.stderr, line) || !strings.Contains(r.stderr, "), e2e ran (") {
+			t.Errorf("standard error has no progress line %q…, e2e ran (…:\n%s", line, r.stderr)
+		}
+	}
 	if got := r.test(t, "TestCheckout"); !slices.Equal(got.Suites, []string{"e2e"}) || got.Head[0].Suite != "e2e" {
 		t.Errorf("TestCheckout has suites %v and head suite %q; want e2e", got.Suites, got.Head[0].Suite)
 	}
@@ -1334,6 +1362,9 @@ func TestAPackageSuiteWithoutPackagesDoesNotRunButAWholeSuiteDoes(t *testing.T) 
 	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
 
 	wantVerdict(t, r, "TestCheckout", replay.Kept, "passed", "passed", 0)
+	if got := r.test(t, "TestCheckout").Package; got != "./e2e" {
+		t.Errorf("TestCheckout is in package %q; want ./e2e", got)
+	}
 	for _, ran := range []string{"unit", "unit-app"} {
 		if _, err := os.Stat(filepath.Join(spy, ran)); err == nil {
 			t.Errorf("%s ran, though the change touches no Go package", ran)
@@ -1367,20 +1398,31 @@ func TestASuiteWhoseAppFailsStopsTheReplayAndIsNamed(t *testing.T) {
 }
 
 func TestOneTestFromTwoSuitesTakesTheFailure(t *testing.T) {
-	repo := testrepo.New(t)
-	base := repo.Commit(testrepo.GoModule(map[string]string{
-		"elprovo.toml": suitesConfig("", ""),
-		"unit.sh":      event("pass", "TestShared"),
-		"e2e.sh":       onHead(event("fail", "TestShared"), event("pass", "TestShared")),
-		"a.go":         "package m\n",
-	}))
-	repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
+	broken := onHead(event("fail", "TestShared"), event("pass", "TestShared"))
+	tests := []struct {
+		name, unit, e2e, wantHeadSuite string
+	}{
+		{"failure in the later suite", event("pass", "TestShared"), broken, "e2e"},
+		{"failure in the earlier suite", broken, event("pass", "TestShared"), "unit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testrepo.New(t)
+			base := repo.Commit(testrepo.GoModule(map[string]string{
+				"elprovo.toml": suitesConfig("", ""),
+				"unit.sh":      tt.unit,
+				"e2e.sh":       tt.e2e,
+				"a.go":         "package m\n",
+			}))
+			repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
 
-	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+			r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
 
-	wantVerdict(t, r, "TestShared", replay.Broke, "passed", "failed", 1)
-	if got := r.test(t, "TestShared"); !slices.Equal(got.Suites, []string{"unit", "e2e"}) || got.Head[0].Suite != "e2e" {
-		t.Errorf("TestShared has suites %v and head suite %q; want unit and e2e, and e2e on the head", got.Suites, got.Head[0].Suite)
+			wantVerdict(t, r, "TestShared", replay.Broke, "passed", "failed", 1)
+			if got := r.test(t, "TestShared"); !slices.Equal(got.Suites, []string{"unit", "e2e"}) || got.Head[0].Suite != tt.wantHeadSuite {
+				t.Errorf("TestShared has suites %v and head suite %q; want unit and e2e, and %s on the head", got.Suites, got.Head[0].Suite, tt.wantHeadSuite)
+			}
+		})
 	}
 }
 
@@ -1389,13 +1431,10 @@ func TestAPackagesReasonComesFromTheSuiteThatRunsItsTests(t *testing.T) {
 	// The unit suite cannot build the e2e package, which has a build tag. On
 	// the base commit, the e2e suite cannot build it either, for another
 	// reason.
-	buildFailure := func(reason string) string {
-		return fmt.Sprintf(`printf '%%s\n' '{"ImportPath":"%[1]s/e2e","Action":"build-output","Output":"%[2]s\n"}' '{"ImportPath":"%[1]s/e2e","Action":"build-fail"}' '{"Action":"fail","Package":"%[1]s/e2e","FailedBuild":"%[1]s/e2e"}'`+"\n", testrepo.Module, reason)
-	}
 	base := repo.Commit(testrepo.GoModule(map[string]string{
 		"elprovo.toml": suitesConfig("", ""),
-		"unit.sh":      buildFailure("build constraints exclude all Go files in e2e"),
-		"e2e.sh":       onHead(eventIn("e2e", "pass", "TestCheckout"), buildFailure("e2e/checkout_test.go:5:2: undefined: m.Checkout")),
+		"unit.sh":      buildFailure("e2e", "build constraints exclude all Go files in e2e"),
+		"e2e.sh":       onHead(eventIn("e2e", "pass", "TestCheckout"), buildFailure("e2e", "e2e/checkout_test.go:5:2: undefined: m.Checkout")),
 		"a.go":         "package m\n",
 	}))
 	repo.Commit(map[string]string{"a.go": "package m\n\n// head\n", "e2e/checkout_test.go": "package e2e\n\nimport \"testing\"\n\nfunc TestCheckout(t *testing.T) {}\n"})
@@ -1405,6 +1444,192 @@ func TestAPackagesReasonComesFromTheSuiteThatRunsItsTests(t *testing.T) {
 	wantVerdict(t, r, "TestCheckout", replay.New, "absent", "passed", 0)
 	if got := r.test(t, "TestCheckout").Base[0].Message; got != "e2e/checkout_test.go:5:2: undefined: m.Checkout" {
 		t.Errorf("the base message is %q; want the e2e suite's reason", got)
+	}
+}
+
+func TestATestOfAPackageWithUnitAndE2ETestsTakesTheReasonOfItsOwnSuite(t *testing.T) {
+	repo := testrepo.New(t)
+	// The package api has unit tests and e2e tests with a build tag. The
+	// change breaks the build of the e2e tests only.
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": suitesConfig("", ""),
+		"unit.sh":      eventIn("api", "pass", "TestHandler"),
+		"e2e.sh":       onHead(buildFailure("api", "api/e2e_test.go:9:2: undefined: api.Serve"), eventIn("api", "pass", "TestE2E")),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestE2E", replay.Broke, "passed", "absent", 1)
+	if got := r.test(t, "TestE2E").Head[0]; got.Message != "api/e2e_test.go:9:2: undefined: api.Serve" || got.Suite != "e2e" {
+		t.Errorf("the head result is %+v; want the e2e suite's build error", got)
+	}
+}
+
+func TestAWholeSuiteThatTimesOutGivesItsMissingTestsTheTimeout(t *testing.T) {
+	repo := testrepo.New(t)
+	config := strings.Replace(suitesConfig("", ""), "[suites.e2e]\nrun = \"sh e2e.sh\"\n", "[suites.e2e]\nrun = \"sh e2e.sh\"\ntimeout = \"1s\"\n", 1)
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": config,
+		"unit.sh":      event("pass", "TestUnit"),
+		"e2e.sh":       onHead(eventIn("e2e", "pass", "TestA")+"sleep 60\n", eventIn("e2e", "pass", "TestA")+eventIn("e2e", "pass", "TestB")),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestA", replay.Kept, "passed", "passed", 1)
+	wantVerdict(t, r, "TestB", replay.Broke, "passed", "absent", 1)
+	if got := r.test(t, "TestB").Head[0].Message; got != "the tests did not end within 1s" {
+		t.Errorf("the head message of TestB is %q; want the timeout", got)
+	}
+}
+
+func TestAnInterruptBetweenSuitesStartsNoLaterSuite(t *testing.T) {
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	repo := testrepo.New(t)
+	config := suitesConfig("pass_env = [\"SPY\"]\n", "start = 'touch \"$SPY/e2e-started\"'\nready = \"true\"\nstop = 'touch \"$SPY/e2e-stopped\"'\n") +
+		"\n[suites.unit.app]\nstart = \"true\"\nready = \"true\"\nstop = 'touch \"$SPY/unit-stopping\"; sleep 1'\n"
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": config,
+		"unit.sh":      event("pass", "TestUnit"),
+		"e2e.sh":       eventIn("e2e", "pass", "TestCheckout"),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go cancelWhen(ctx, cancel, filepath.Join(spy, "unit-stopping"))
+	r := run(t, ctx, repo.Dir, "replay", "--base", base)
+
+	if r.status != 2 || r.report.StoppedEarly != "interrupted" {
+		t.Errorf("exit %d, stopped_early %q; want 2 and interrupted", r.status, r.report.StoppedEarly)
+	}
+	for _, file := range []string{"e2e-started", "e2e-stopped"} {
+		if _, err := os.Stat(filepath.Join(spy, file)); err == nil {
+			t.Errorf("%s exists: the e2e suite started after the interrupt", file)
+		}
+	}
+}
+
+func TestAnEarlierSuiteThatDoesNotRunOrStopEndsTheRun(t *testing.T) {
+	tests := []struct {
+		name, unit, unitStop, wantStopped string
+	}{
+		{"no events", "true\n", "true", "base run 1 did not run: unit: the tests printed no go test -json events"},
+		{"a failing stop", event("pass", "TestUnit"), "exit 3", "unit: stop exited with status 3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := t.TempDir()
+			t.Setenv("SPY", spy)
+			repo := testrepo.New(t)
+			config := suitesConfig("pass_env = [\"SPY\"]\n", "start = 'touch \"$SPY/e2e-started\"'\nready = \"true\"\n") +
+				"\n[suites.unit.app]\nstart = \"true\"\nready = \"true\"\nstop = \"" + tt.unitStop + "\"\n"
+			base := repo.Commit(testrepo.GoModule(map[string]string{
+				"elprovo.toml": config,
+				"unit.sh":      tt.unit,
+				"e2e.sh":       eventIn("e2e", "pass", "TestCheckout"),
+				"a.go":         "package m\n",
+			}))
+			repo.Commit(map[string]string{"a.go": "package m\n\n// head\n"})
+
+			r := replayIn(t, repo.Dir, "--base", base)
+
+			if r.status != 2 || r.report.StoppedEarly != tt.wantStopped {
+				t.Errorf("exit %d, stopped_early %q; want 2 and %q", r.status, r.report.StoppedEarly, tt.wantStopped)
+			}
+			if _, err := os.Stat(filepath.Join(spy, "e2e-started")); err == nil {
+				t.Error("the e2e suite started after the unit suite")
+			}
+		})
+	}
+}
+
+func TestABaseRunStartsTheBaseCommitsAppOfEachSuite(t *testing.T) {
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	repo := testrepo.New(t)
+	config := func(side string) string {
+		return suitesConfig("pass_env = [\"SPY\"]\n", "start = 'echo "+side+" >> \"$SPY/order\"'\nready = \"true\"\n")
+	}
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": config("base"),
+		"unit.sh":      event("pass", "TestUnit"),
+		"e2e.sh":       eventIn("e2e", "pass", "TestCheckout"),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"elprovo.toml": config("head"), "a.go": "package m\n\n// head\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	wantVerdict(t, r, "TestCheckout", replay.Kept, "passed", "passed", 0)
+	if order := strings.Join(readLines(t, filepath.Join(spy, "order")), " "); order != "base head" {
+		t.Errorf("the e2e apps started in the order %q; want %q", order, "base head")
+	}
+}
+
+func TestASideWithoutThePackagesLeavesOutThePackageSuiteAndItsApp(t *testing.T) {
+	spy := t.TempDir()
+	t.Setenv("SPY", spy)
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": suitesConfig("pass_env = [\"SPY\"]\n", "") +
+			"\n[suites.unit.app]\nstart = 'echo started >> \"$SPY/unit-app\"'\nready = \"true\"\n",
+		"unit.sh": eventIn("added", "pass", "TestAdded"),
+		"e2e.sh":  eventIn("e2e", "pass", "TestCheckout"),
+	}))
+	// The change adds a package, so the base copy has no Go files in it.
+	repo.Commit(map[string]string{"added/added.go": "package added\n"})
+
+	r := replayIn(t, repo.Dir, "--base", base, "--runs", "1")
+
+	if starts := readLines(t, filepath.Join(spy, "unit-app")); len(starts) != 1 {
+		t.Errorf("the unit app started %d times; want once, on the head commit", len(starts))
+	}
+	if suites := r.report.BaseRuns[0].Suites; len(suites) != 1 || suites[0].Suite != "e2e" {
+		t.Errorf("base run 1 has suites %+v; want only e2e", suites)
+	}
+}
+
+func TestATestThatNoSuiteReportsTakesTheReasonOfASuiteWithoutPackages(t *testing.T) {
+	repo := testrepo.New(t)
+	// The unit suite gets the touched package e2e, which it cannot build.
+	// The e2e suite cannot build it either, because the new test uses code
+	// that the base commit lacks.
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": suitesConfig("", ""),
+		"unit.sh":      buildFailure("e2e", "build constraints exclude all Go files in e2e"),
+		"e2e.sh":       buildFailure("e2e", "e2e/coupon_test.go:9:2: undefined: cart.Coupon"),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"e2e/coupon_test.go": "package e2e\n\nimport \"testing\"\n\nfunc TestCoupon(t *testing.T) {}\n"})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--runs", "1", "e2e/coupon_test.go")
+
+	if got := r.test(t, "TestCoupon"); got.Verdict != replay.CouldNotRun || got.Base[0].Message != "e2e/coupon_test.go:9:2: undefined: cart.Coupon" {
+		t.Errorf("TestCoupon is %q with base message %q; want could-not-run with the e2e suite's reason", got.Verdict, got.Base[0].Message)
+	}
+}
+
+func TestReproduceRunsASuiteWithoutPackages(t *testing.T) {
+	repo := testrepo.New(t)
+	base := repo.Commit(testrepo.GoModule(map[string]string{
+		"elprovo.toml": suitesConfig("", ""),
+		"unit.sh":      buildFailure("e2e", "build constraints exclude all Go files in e2e"),
+		"e2e.sh":       eventIn("e2e", "fail", "TestCheckout"),
+		"a.go":         "package m\n",
+	}))
+	repo.Commit(map[string]string{"e2e/checkout_test.go": "package e2e\n\nimport \"testing\"\n\nfunc TestCheckout(t *testing.T) {}\n"})
+
+	r := reproduceIn(t, repo.Dir, "--base", base, "--runs", "1", "e2e/checkout_test.go")
+
+	if got := r.test(t, "TestCheckout"); got.Verdict != replay.Reproduced || got.Base[0].Suite != "e2e" {
+		t.Errorf("TestCheckout is %q with base suite %q; want reproduced by e2e\n%s", got.Verdict, got.Base[0].Suite, r.stdout)
 	}
 }
 

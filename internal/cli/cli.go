@@ -373,8 +373,12 @@ func (o output) stoppedEarly(report replay.Report) {
 	fmt.Fprintln(o.w)
 }
 
-// suiteLog returns the log of the suite named suite in run, or "".
+// suiteLog returns the log of the suite named suite in run, or "". A result
+// that no suite gave has the log of the run's only suite, when it has one.
 func suiteLog(run replay.RunReport, suite string) string {
+	if suite == "" && len(run.Suites) == 1 {
+		return run.Suites[0].Log
+	}
 	for _, s := range run.Suites {
 		if s.Suite == suite {
 			return s.Log

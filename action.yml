@@ -3,11 +3,11 @@ description: Replay the tests of a change on the base commit and on the change, 
 
 inputs:
   base:
-    description: The commit without the change. On a pull request, the default is origin/<base branch>, which needs a checkout with fetch-depth 0.
+    description: The commit without the change. On a pull request, the default is the merge base of HEAD and origin/<base branch>, which needs a checkout with fetch-depth 0.
     required: false
     default: ""
   require:
-    description: Fail when no changed test is fixed.
+    description: Fail when no test is fixed.
     required: false
     default: "false"
   runs:
@@ -19,11 +19,11 @@ inputs:
     required: false
     default: "."
   elprovo:
-    description: The elprovo binary to run. The default is elprovo built from this action's own source with the job's go.
+    description: The elprovo binary to run, as a name on PATH or a path from working-directory. The default is elprovo built from this action's own source with the job's go.
     required: false
     default: ""
   comment:
-    description: Post the result on the pull request, and update it on each run.
+    description: Post the result on the pull request, in one comment for each job and working-directory, and update it on each run.
     required: false
     default: "true"
   token:
@@ -47,9 +47,11 @@ runs:
       shell: bash
       env:
         ACTION_REF: ${{ github.action_ref }}
-        # A GOFLAGS of the job, such as -mod=vendor, is for the job's module,
-        # not for Elprovo's.
-        GOFLAGS: ""
+        # The job's GOFLAGS and GOWORK, such as -mod=vendor, are for the
+        # job's module, not for Elprovo's. An empty GOFLAGS would let the go
+        # env file set it.
+        GOFLAGS: -mod=readonly
+        GOWORK: "off"
         # Elprovo's go.mod picks the Go release, without a change to the
         # job's Go.
         GOTOOLCHAIN: auto
@@ -78,8 +80,12 @@ runs:
         set +e
         elprovo="${ELPROVO:-$RUNNER_TEMP/elprovo-action/elprovo}"
         base="$BASE"
-        if [ -z "$base" ] && [ -n "$BASE_REF" ]; then
-          base="origin/$BASE_REF"
+        # On a pull request, HEAD is GitHub's merge commit. The base branch
+        # can move on after GitHub makes it, as when a job waits or runs
+        # again, and the merge base is still the branch as it was then.
+        if [ -z "$base" ] && [ -n "$BASE_REF" ] && ! base=$(git merge-base HEAD "origin/$BASE_REF"); then
+          echo "::error::The Elprovo action found no merge base of HEAD and origin/$BASE_REF. Check out the whole history, with fetch-depth 0."
+          exit 1
         fi
         if [ -z "$base" ]; then
           echo "::error::Set the base input of the Elprovo action. It has a default only on a pull request."
@@ -106,18 +112,26 @@ runs:
           export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
         fi
 
+        if ! command -v "$elprovo" > /dev/null; then
+          echo "::error::The Elprovo action cannot find elprovo at $elprovo. A relative path starts from working-directory."
+          exit 1
+        fi
         version=$("$elprovo" version)
         # Progress goes to standard error, which the log shows as it comes.
         "$elprovo" "${args[@]}" 2>&1 > "$out/replay.txt" | tee "$out/replay-stderr.txt" >&2
         status=${PIPESTATUS[0]}
         cat "$out/replay.txt"
 
-        report=""
-        for file in "$out"/runs/*/report.json; do
-          if [ -f "$file" ]; then
-            report=$file
-          fi
-        done
+        # The path comes from elprovo's own output: the tests of the change
+        # can make other directories in the output directory.
+        report=$(sed -n 's/^Report: //p' "$out/replay.txt")
+        case "$report" in
+          "" | /*) ;;
+          *) report="$PWD/$report" ;;
+        esac
+        if [ ! -f "$report" ]; then
+          report=""
+        fi
         {
           echo "exit-status=$status"
           echo "out=$out"
@@ -138,12 +152,16 @@ runs:
         REPORT: ${{ steps.replay.outputs.report }}
         STATUS: ${{ steps.replay.outputs.exit-status }}
         VERSION: ${{ steps.replay.outputs.version }}
-        BASE_NAME: ${{ github.base_ref || inputs.base }}
+        BASE_NAME: ${{ inputs.base || github.base_ref }}
+        JOB: ${{ github.job }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       with:
-        github-token: ${{ inputs.token }}
+        # A workflow that passes a secret gets an empty token on a pull
+        # request from a fork.
+        github-token: ${{ inputs.token || github.token }}
         script: |
           const fs = require('fs');
-          const marker = '<!-- elprovo replay -->';
+          const marker = `<!-- elprovo replay job=${process.env.JOB} working-directory=${process.env.WORKING_DIRECTORY} -->`;
           const read = file => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
           const out = process.env.OUT;
           const status = process.env.STATUS || '2';
@@ -207,7 +225,7 @@ runs:
           try {
             const issue = { owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number };
             const comments = await github.paginate(github.rest.issues.listComments, issue);
-            const previous = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
+            const previous = comments.find(c => c.user?.type === 'Bot' && c.body.startsWith(marker));
             if (previous) {
               await github.rest.issues.updateComment({ owner: issue.owner, repo: issue.repo, comment_id: previous.id, body });
             } else {

@@ -8,6 +8,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -163,13 +164,22 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 		if meta.IsDefined("app") {
 			problems = append(problems, "app is a table of version 2; in version 3 each suite has its own, such as [suites.e2e.app]")
 		}
+		// A suite written with dotted keys, such as unit.run under [suites],
+		// has no key of its own, so the names come from every key below
+		// suites, in the order they first appear.
+		var names []string
 		for _, key := range meta.Keys() {
-			if len(key) != 2 || key[0] != "suites" {
-				continue
+			if len(key) >= 2 && key[0] == "suites" && !slices.Contains(names, key[1]) {
+				names = append(names, key[1])
 			}
-			suiteName := key[1]
-			if !suiteNamePattern.MatchString(suiteName) {
+		}
+		for _, suiteName := range names {
+			switch {
+			case !suiteNamePattern.MatchString(suiteName):
 				problems = append(problems, fmt.Sprintf("suite name %q must match [a-z0-9][a-z0-9-]*", EscapeControl(suiteName)))
+				continue
+			case suiteName == "artifacts":
+				problems = append(problems, "suite name artifacts is the name of the run's artifacts directory; choose another")
 				continue
 			}
 			prefix := "suites." + suiteName
@@ -177,7 +187,10 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 			suite, problems = parseSuite(problems, suiteName, prefix, prefix+".app", raw.Suites[suiteName], meta.IsDefined("suites", suiteName, "app"))
 			repo.Suites = append(repo.Suites, suite)
 		}
-		if len(raw.Suites) == 0 {
+		switch kind := meta.Type("suites"); {
+		case kind != "" && kind != "Hash":
+			problems = append(problems, "suites must be a table, such as [suites.unit]")
+		case len(names) == 0:
 			problems = append(problems, "suites is missing; add at least one, such as [suites.unit]")
 		}
 	default:
@@ -269,10 +282,10 @@ func unknownKeys(meta toml.MetaData) []string {
 			}
 			field, ok := fieldWithTag(parent, part)
 			if !ok {
-				// The keys under an unknown table would repeat its error, so
-				// only the table's own key reports it.
-				if i == len(key)-1 {
-					unknown = append(unknown, strconv.Quote(key.String()))
+				// A table of dotted keys, such as aap in aap.start, has no
+				// key of its own, so the first unknown part reports it, once.
+				if name := strconv.Quote(key[:i+1].String()); !slices.Contains(unknown, name) {
+					unknown = append(unknown, name)
 				}
 				break
 			}

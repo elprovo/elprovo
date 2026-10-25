@@ -42,7 +42,7 @@ stop = "docker compose down -v"
 | `env` | No | Table of name to string | Empty | Plain values that every command gets. The file is in the repository, so these must not be secrets. |
 | `pass_env` | No | Array of names | Empty | Variables that Elprovo copies from its own environment into every command, such as `GOCACHE` or `DOCKER_HOST`. A listed variable that is not set is an error. |
 | `tests.files` | Yes | Array of patterns | | The files of the tests: the test files, and the files that the tests read, such as those in `testdata`. Go test files, `*_test.go`, always count, whether a pattern matches them or not. Section 1.2 defines the patterns. |
-| `suites.<name>` | At least one | Table | | A suite: a command that runs tests, with what they need running. Suites run in the order the file lists them. The name must match `[a-z0-9][a-z0-9-]*`. |
+| `suites.<name>` | At least one | Table | | A suite: a command that runs tests, with what they need running. Suites run in the order the file lists them, as tables or as dotted keys. The name must match `[a-z0-9][a-z0-9-]*`, and must not be `artifacts`, the name of a run's artifacts directory. |
 | `suites.<name>.run` | Yes | Command | | Runs the tests and prints what `go test -json` prints. When it contains `{packages}`, Elprovo puts the packages that the change touches there, as section 3.2 says. Without `{packages}`, it runs as written on every replay. |
 | `suites.<name>.report` | Yes | String | | The format of what `run` prints. It must be `go-test-json`. |
 | `suites.<name>.timeout` | No | Duration | `10m` | The longest time `run` may take. |
@@ -55,7 +55,7 @@ stop = "docker compose down -v"
 
 A suite of unit tests usually takes `{packages}` and has no `app`. A suite of e2e tests usually runs a fixed set of packages, such as `./e2e/...`, and has an `app`. Leave out a suite's `app` when its tests need nothing running.
 
-Keep the suites apart: put the e2e tests behind a build tag, such as `//go:build e2e`, or in packages that the unit suite does not get. A test that two suites report counts once, as section 3.3 says, but it runs twice.
+Keep the suites apart: put the e2e tests behind a build tag, such as `//go:build e2e`, or in packages that the unit suite does not get. A test that two suites report counts once, as section 3.3 says, but it runs twice. When one of them skips it, the skip also hides a missing result in the other.
 
 A name in `env` or `pass_env` must match `[A-Za-z_][A-Za-z0-9_]*` and must not start with `ELPROVO_`. A value in `env` must be a string, such as `PORT = "8080"`.
 
@@ -102,7 +102,7 @@ Both must run inside a Git repository. They read commits, not the working tree, 
 | `--runs N` | `2` | The number of runs on each commit. `N` must be from 1 to 10. |
 | `--require` | Off | `replay` only. Treat a replay in which no test is `fixed` as a failure. Use it for a change that fixes a bug. |
 | `--out DIR` | `.elprovo` | Where Elprovo writes logs, artifacts and the report. A relative path is relative to the working directory. |
-| `--dry-run` | Off | `replay` only. Check the files and print the changed tests, without running any command. It exits 0 when the files are valid, 1 when the change touches no package and `--require` is on, and 2 when a file is invalid. |
+| `--dry-run` | Off | `replay` only. Check the files and print the changed tests, without running any command. It exits 0 when the files are valid, 1 when no suite would run, as rule 3 of section 3.5 says, and `--require` is on, and 2 when a file is invalid. |
 
 A `TEST_FILE` is a path relative to the working directory. It must end in `_test.go`, be in the head commit, and have at least one changed test, from section 3.1.
 
@@ -163,7 +163,7 @@ When several suites print a result for one test in one run, a failure counts ove
 An outcome other than `passed` comes with a message:
 
 - for `failed` and `skipped`, the first line that the test printed, such as `cart_test.go:7: Total(100, 10) = 80; want 90`, or `panic: …`. When that line holds only a location, such as `cart_test.go:7:` from testify, the next lines follow it;
-- for `absent`, the first line that says why the package failed, such as a compile error, or why Elprovo has no result. When a suite prints a test's result in any run, it is the package's suite, and only its reason counts. So a unit suite that cannot build an e2e package, because the package has a build tag, does not explain the e2e tests.
+- for `absent`, the first line that says why the package failed, such as a compile error, or why Elprovo has no result. When a suite prints the test's result in any run, the first such suite, in the order of the file, is the test's own suite, and only its reason counts. So a unit suite that cannot build e2e tests, because they have a build tag, does not explain them. When the test's own suite did not end within its `timeout`, and gives the package no other reason, the message says so. For a test that no suite prints in any run, the reason comes first from a suite without `{packages}`, which chose the package itself, and then from any suite.
 
 Elprovo removes the paths of the run's directories from the message, because they change in every run. A file in the copy gets its path from the repository root, and the run's home and temporary directories become `$HOME` and `$TMPDIR`. Then Elprovo keeps the first 200 characters of the message, and writes control characters as escape sequences, such as `\x1b` and `\n`.
 
@@ -302,7 +302,7 @@ A block shows the verdict, how the test ended on each commit, and the message of
 - `absent`, for `not-run`;
 - `skipped`, for `skipped`.
 
-For `not-fixed`, `flaky` and `broke`, the block also shows the path of that run's `test.log`, of the suite whose result or reason counted. When there are several suites, the lines about a run that was not run name the suite, and so do the progress lines that Elprovo prints to standard error. For `reproduce`, the explaining run is the first one that is `failed` for `reproduced`, and `absent` for `could-not-run`; the blocks show the base runs only, and one line counts the verdicts of the tests.
+For `not-fixed`, `flaky` and `broke`, the block also shows the path of that run's `test.log`, of the suite whose result or reason counted, or of the run's only suite when no suite did. When there are several suites, the lines about a run that was not run name the suite, and so do the progress lines that Elprovo prints to standard error. For `reproduce`, the explaining run is the first one that is `failed` for `reproduced`, and `absent` for `could-not-run`; the blocks show the base runs only, and one line counts the verdicts of the tests.
 
 The text form is for people. Programs read `report.json`.
 
@@ -368,7 +368,7 @@ The example shows one run on each commit to keep it short.
 | `command` | `replay` or `reproduce`. A `reproduce` report has no head runs and no other tests. |
 | `base`, `head` | The full commit IDs. |
 | `runs` | The number of runs on each commit. |
-| `stopped_early` | Why the replay ended early, such as `interrupted`, `stop exited with status 1` or `base run 1 did not run: start exited with status 1`. With several suites, the reason starts with the suite's name, as in `base run 1 did not run: e2e: start exited with status 1`. It is empty when the replay ended normally. |
+| `stopped_early` | Why the replay ended early, such as `interrupted`, `stop exited with status 1` or `base run 1 did not run: start exited with status 1`. With several suites, the reason starts with the suite's name, as in `base run 1 did not run: e2e: start exited with status 1` or `e2e: stop exited with status 1`. It is empty when the replay ended normally. |
 | `suites` | The names of the suites, in the order they run. A version 2 file has one suite, `tests`. |
 | `packages` | The packages, from section 3.1. |
 | `changed` | The changed tests, in file and name order. |

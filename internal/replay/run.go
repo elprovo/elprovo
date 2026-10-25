@@ -118,6 +118,10 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, ru
 	stop := ""
 	interrupted := false
 	for _, suite := range r.plan.headConfig.Suites {
+		if ctx.Err() != nil {
+			interrupted = true
+			break
+		}
 		if suite.TakesPackages() && len(packages) == 0 {
 			continue
 		}
@@ -134,8 +138,15 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, ru
 		}
 		s := r.runSuite(ctx, c, suite)
 		run.Suites = append(run.Suites, s.run)
-		results.suites = append(results.suites, suiteResults{name: suite.Name, whole: !suite.TakesPackages(), Results: s.results})
+		sr := suiteResults{name: suite.Name, whole: !suite.TakesPackages(), Results: s.results}
+		if s.run.TimedOut {
+			sr.timedOut = fmt.Sprintf("the tests did not end within %s", formatDuration(suite.Timeout))
+		}
+		results.suites = append(results.suites, sr)
 		stop, interrupted = s.stop, s.interrupted
+		if stop != "" && len(r.plan.headConfig.Suites) > 1 {
+			stop = suite.Name + ": " + stop
+		}
 		if s.run.Outcome == RunNotRun {
 			run.Outcome = RunNotRun
 		}
@@ -352,13 +363,19 @@ type suiteResults struct {
 	// whole is true for a suite without {packages}, all of whose results
 	// count.
 	whole bool
+	// timedOut is the reason for the suite's missing tests when its command
+	// did not end in time, or "".
+	timedOut string
 	gotest.Results
 }
 
 // result returns t's result in the run. When several suites report t, the
 // result that counts over the others wins. A test that no suite reports is
-// absent, with the reason of the package from owner, the suite that reports
-// tests in it, or when no suite does, from the first suite that gives one.
+// absent, with the reason from owner, the suite that runs it in another run:
+// the reason of its package, or the owner's timeout. Without an owner, the
+// reason comes first from a suite without {packages}, which chose the
+// package itself. A suite with {packages} gets every touched package, also
+// one that only another suite can build.
 func (r runResults) result(t gotest.Test, owner string) TestRun {
 	var best TestRun
 	for _, s := range r.suites {
@@ -372,7 +389,17 @@ func (r runResults) result(t gotest.Test, owner string) TestRun {
 	}
 	run := TestRun{Outcome: gotest.Absent}
 	for _, s := range r.suites {
-		if reason := s.Reasons[t.Package]; reason != "" && (owner == "" || s.name == owner) {
+		reason := s.Reasons[t.Package]
+		if s.name == owner && reason == "" {
+			reason = s.timedOut
+		}
+		if reason != "" && (s.name == owner || (owner == "" && s.whole)) {
+			run.Message, run.Suite, run.stopped = reason, s.name, true
+			return run
+		}
+	}
+	for _, s := range r.suites {
+		if reason := s.Reasons[t.Package]; reason != "" && owner == "" {
 			run.Message, run.Suite, run.stopped = reason, s.name, true
 			return run
 		}

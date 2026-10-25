@@ -43,7 +43,9 @@ jobs:
         id: base
         env:
           BASE: ${{ inputs.base }}
-        run: echo "commit=$(git merge-base HEAD "$BASE")" >> "$GITHUB_OUTPUT"
+        run: |
+          commit=$(git merge-base HEAD "$BASE")
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - name: Replay the tests
         uses: ./
         with:
@@ -64,7 +66,9 @@ jobs:
           go-version-file: go.mod
       - name: Make the demo repository
         id: demo
-        run: echo "dir=$(TMPDIR="$RUNNER_TEMP" sh assets/demo-repo.sh)" >> "$GITHUB_OUTPUT"
+        run: |
+          dir=$(TMPDIR="$RUNNER_TEMP" sh assets/demo-repo.sh)
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
       - name: Switch to coupon-once
         working-directory: ${{ steps.demo.outputs.dir }}
         run: git switch -q coupon-once

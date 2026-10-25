@@ -251,7 +251,7 @@ stop = "docker compose down --volumes --rmi local"
 | --- | --- | --- |
 | `version` | | The format version. It must be `3`, or `2`, the format of Elprovo 0.3, which has one suite. |
 | `tests.files` | | The files of the tests: the test files, and the files that they read. Go test files, `*_test.go`, always count. The base copy gets the head commit's version of these files. `**` matches any number of directories. |
-| `suites.<name>` | | A suite: tests that run with one command and one setup, such as `unit` or `e2e`. Each run runs the suites in the order of the file. A name has lowercase letters, digits and `-`. |
+| `suites.<name>` | | A suite: tests that run with one command and one setup, such as `unit` or `e2e`. Each run runs the suites in the order of the file. A name has lowercase letters, digits and `-`, and is not `artifacts`. |
 | `suites.<name>.run` | | The test command. It must print `go test -json` output. When it has `{packages}`, Elprovo puts the packages there, such as `./cart`, and the suite runs only when the change touches a package. Without `{packages}`, the command runs as written on every replay, and all its tests count. |
 | `suites.<name>.report` | | The format of that output. It must be `go-test-json`. |
 | `suites.<name>.timeout` | `10m` | The longest time the test command may take. Give `go test` a shorter `-timeout`, so that a test that hangs fails with a message. |
@@ -261,7 +261,7 @@ stop = "docker compose down --volumes --rmi local"
 
 Put the files that the tests read, such as `testdata`, in `tests.files`. Otherwise a new test fails without the change only because its data file is missing, and that failure is not the bug.
 
-Keep the suites apart, so that no test runs twice. The demo's e2e tests have the build tag `e2e`, so only the e2e suite runs them. When a change touches `./e2e`, the unit suite cannot build that package, and Elprovo ignores that failure for the e2e tests.
+Keep the suites apart, so that no test runs twice. The demo's e2e tests have the build tag `e2e`, so only the e2e suite runs them. When a change touches `./e2e`, the unit suite cannot build that package, and that failure does not explain the e2e tests.
 
 Field names are case-sensitive, and a field that SPEC.md does not define is an error, so a misspelled field fails instead of being ignored. Elprovo's own [`elprovo.toml`](elprovo.toml) is of version 2, with one suite and no app.
 
@@ -276,6 +276,10 @@ on: pull_request
 permissions:
   contents: read
   pull-requests: write
+
+concurrency:
+  group: elprovo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   replay:
@@ -295,13 +299,13 @@ The step ends with the exit status of `elprovo replay`. Make the job a required 
 
 | Input | Default | What it does |
 | --- | --- | --- |
-| `base` | `origin/<base branch>` on a pull request | The commit without the change. The default needs the whole history, `fetch-depth: 0`. |
-| `require` | `false` | Fails when no changed test is `fixed`, as `--require` does. |
+| `base` | The merge base of `HEAD` and `origin/<base branch>` on a pull request | The commit without the change. The default needs the whole history, `fetch-depth: 0`. |
+| `require` | `false` | Fails when no test is `fixed`, as `--require` does. |
 | `runs` | `2` | The number of runs on each commit. |
 | `working-directory` | `.` | The repository's directory in the workspace. |
-| `elprovo` | | An `elprovo` binary to run instead. By default, the action builds `elprovo` from its own source with the job's `go`. When Elprovo needs a newer Go, `go` downloads it for that build only, so the job's Go does not change. |
-| `comment` | `true` | Posts the result on the pull request, and updates that comment on each run. A pull request from a fork gets a token that cannot comment, so the action then only warns. |
-| `token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. |
+| `elprovo` | | An `elprovo` binary to run instead, as a name on `PATH` or a path from `working-directory`. By default, the action builds `elprovo` from its own source with the job's `go`. When Elprovo needs a newer Go, `go` downloads it for that build only, so the job's Go does not change. |
+| `comment` | `true` | Posts the result on the pull request, in one comment for each job and working directory, and updates it on each run. A pull request from a fork gets a token that cannot comment, so the action then only warns. |
+| `token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. The action updates its earlier comment only when a bot posted it, as with `github.token`. |
 
 The outputs are `exit-status`, and `report`, the path of `report.json`. Each run has an empty home directory, so the action sets these variables for the replay:
 
@@ -311,9 +315,9 @@ The outputs are `exit-status`, and `report`, the path of `report.json`. Each run
 
 A GitHub-hosted Ubuntu runner has Docker and Docker Compose, so an e2e suite can build and start the app from each copy with `docker compose`. Each run then has its own app and data, and the suite's `app.stop` removes them. A service container of the job, under `services:`, lives for the whole job, so every run shares it. A suite that uses one must reset its data in `app.start`, such as by creating the database again.
 
-An e2e suite runs on every replay, twice on each commit by default. To save time, start the workflow only for changes to some paths. With `runs: 1`, a replay takes half the time, but it cannot find flaky tests.
+An e2e suite runs on every replay, twice on each commit by default. With `runs: 1`, a replay takes half the time, but it cannot find flaky tests. Do not limit a required check to some `paths`: GitHub keeps the check of a skipped workflow pending, so the pull request cannot merge.
 
-Elprovo's own [pull request check](.github/workflows/elprovo.yml) builds `elprovo` from the base commit and gives it to the action, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `action.yml`, `go.mod` and `elprovo.toml`, so review changes to them.
+Elprovo's own [pull request check](.github/workflows/elprovo.yml) builds `elprovo` from the base commit and gives it to the action, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `action.yml`, `go.mod` and `elprovo.toml`, so review changes to them. Its tests also run in the job, as the job's user, so a hostile change can make its own check pass. The check catches honest mistakes. Review the tests too.
 
 ## For coding agents
 

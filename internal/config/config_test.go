@@ -92,11 +92,25 @@ func TestParseRepoReadsTheSuitesOfVersion3InFileOrder(t *testing.T) {
 	}
 }
 
+func TestParseRepoReadsSuitesWrittenWithDottedKeys(t *testing.T) {
+	content := "version = 3\n\n[tests]\nfiles = [\"**/*_test.go\"]\n\n[suites]\n" +
+		"unit.run = \"go test -json {packages}\"\nunit.report = \"go-test-json\"\n" +
+		"e2e = { run = \"sh e2e.sh\", report = \"go-test-json\" }\n"
+	repo, err := ParseRepo("elprovo.toml", []byte(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.Suites) != 2 || repo.Suites[0].Name != "unit" || repo.Suites[1].Name != "e2e" {
+		t.Fatalf("suites are %+v; want unit, then e2e", repo.Suites)
+	}
+}
+
 func TestParseRepoRejectsInvalidVersion3Files(t *testing.T) {
 	tests := []struct {
 		name, content, wantInError string
 	}{
 		{"no suite", "version = 3\n\n[tests]\nfiles = [\"**/*_test.go\"]\n", "suites is missing"},
+		{"an empty suites table", "version = 3\n\n[tests]\nfiles = [\"**/*_test.go\"]\n\n[suites]\n", "suites is missing"},
 		{"a bad suite name", strings.Replace(suites, "[suites.unit]", "[suites.Unit]", 1), `suite name "Unit" must match [a-z0-9][a-z0-9-]*`},
 		{"an unknown suite field", strings.Replace(suites, "timeout = \"20m\"", "timout = \"20m\"", 1), `unknown field "suites.e2e.timout"`},
 		{"an unknown app field", strings.Replace(suites, "stop = \"docker compose down -v\"", "stp = \"x\"", 1), `unknown field "suites.e2e.app.stp"`},
@@ -106,6 +120,13 @@ func TestParseRepoRejectsInvalidVersion3Files(t *testing.T) {
 		{"tests.run in version 3", strings.Replace(suites, "files = [\"**/*_test.go\"]", "files = [\"**/*_test.go\"]\nrun = \"go test\"", 1), "tests.run is a field of version 2"},
 		{"an app table in version 3", suites + "\n[app]\nstart = \"x\"\nready = \"y\"\n", "app is a table of version 2"},
 		{"suites in version 2", minimal + "\n[suites.unit]\nrun = \"x\"\nreport = \"go-test-json\"\n", "suites is a table of version 3"},
+		{"a dotted suite without report", strings.Replace(suites, "[suites.unit]\n", "[suites]\nlint.run = \"x\"\n\n[suites.unit]\n", 1), "suites.lint.report is missing"},
+		{"a dotted bad suite name", strings.Replace(suites, "[suites.unit]\n", "[suites]\nLint.run = \"x\"\n\n[suites.unit]\n", 1), `suite name "Lint" must match`},
+		{"an app without its suite", strings.Replace(suites, "[suites.e2e]\nrun", "[suites.e2f.app]\nstart = \"x\"\nready = \"y\"\n\n[suites.e2e]\nrun", 1), "suites.e2f.run is missing"},
+		{"a misspelled dotted app", strings.Replace(suites, "[suites.e2e.app]\n", "[suites.e2e.aap]\n", 1), `unknown field "suites.e2e.aap"`},
+		{"a misspelled table of dotted keys", strings.Replace(suites, "files = [\"**/*_test.go\"]", "files = [\"**/*_test.go\"]\n\n[suites.lint]\nrun = \"x\"\nreport = \"go-test-json\"\naap.start = \"y\"", 1), `unknown field "suites.lint.aap"`},
+		{"suites that is not a table", "version = 3\nsuites = []\n\n[tests]\nfiles = [\"**/*_test.go\"]\n", "suites must be a table"},
+		{"a suite named artifacts", strings.Replace(suites, "[suites.unit]", "[suites.artifacts]", 1), "suite name artifacts is the name of the run's artifacts directory"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,6 +160,7 @@ func TestParseRepoRejectsInvalidFiles(t *testing.T) {
 		{"app without ready", minimal + "\n[app]\nstart = \"s\"\n", "app.ready is missing"},
 		{"proof-file field", minimal + "start = \"s\"\n", `unknown field "tests.start"`},
 		{"misspelled field", strings.Replace(minimal, "files =", "fils =", 1), `unknown field "tests.fils"`},
+		{"misspelled table of dotted keys", minimal + "tset.files = [\"x\"]\n", `unknown field "tests.tset"`},
 		{"table in capitals", strings.Replace(minimal, "[tests]", "[TESTS]", 1), `unknown field "TESTS"`},
 		{"env that is not a table", "version = 2\nenv = \"PORT=8080\"\n" + strings.Replace(minimal, "version = 2\n", "", 1), "env must be a table"},
 		{"env name", "version = 2\nenv.BAD-NAME = \"x\"\n" + strings.Replace(minimal, "version = 2\n", "", 1), `env name "BAD-NAME"`},
