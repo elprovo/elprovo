@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elprovo/elprovo-next/internal/config"
-	"github.com/elprovo/elprovo-next/internal/gotest"
-	"github.com/elprovo/elprovo-next/internal/replay"
+	"github.com/elprovo/elprovo/internal/config"
+	"github.com/elprovo/elprovo/internal/gotest"
+	"github.com/elprovo/elprovo/internal/replay"
 )
 
 // Env is what the command gets from the process that runs it.

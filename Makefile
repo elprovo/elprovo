@@ -2,7 +2,7 @@ SHELL := /bin/sh
 GO ?= go
 
 .DEFAULT_GOAL := help
-.PHONY: help build test test-race vet fmt-check mod-check check replay clean
+.PHONY: help build test test-race vet fmt-check mod-check check replay release-check clean
 
 help: ## List the targets
 	@awk -F ':.*## ' '/^[a-z-]+:.*## / { printf "%-10s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -30,5 +30,9 @@ check: fmt-check vet mod-check test-race build ## Run every check that CI runs
 replay: build ## Replay this repository's tests against the merge base with origin/HEAD, or against BASE
 	GOCACHE="$$($(GO) env GOCACHE)" GOMODCACHE="$$($(GO) env GOMODCACHE)" ./bin/elprovo replay $${BASE:+--base "$$BASE"}
 
-clean: ## Remove the build and replay output
-	rm -rf bin .elprovo
+release-check: ## Check the GoReleaser config and build the release archives in dist/, without publishing
+	goreleaser check
+	goreleaser release --snapshot --clean
+
+clean: ## Remove the build, release and replay output
+	rm -rf bin dist .elprovo

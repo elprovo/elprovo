@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elprovo/elprovo-next/internal/config"
-	"github.com/elprovo/elprovo-next/internal/gotest"
+	"github.com/elprovo/elprovo/internal/config"
+	"github.com/elprovo/elprovo/internal/gotest"
 )
 
 // readyInterval is the pause between two runs of ready.

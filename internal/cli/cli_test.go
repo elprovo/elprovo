@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elprovo/elprovo-next/internal/replay"
-	"github.com/elprovo/elprovo-next/internal/testrepo"
+	"github.com/elprovo/elprovo/internal/replay"
+	"github.com/elprovo/elprovo/internal/testrepo"
 )
 
 // goConfig is an elprovo.toml that runs go test, with the caches of the go

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/elprovo/elprovo-next/internal/replay"
-	"github.com/elprovo/elprovo-next/internal/testrepo"
+	"github.com/elprovo/elprovo/internal/replay"
+	"github.com/elprovo/elprovo/internal/testrepo"
 )
 
 // scriptTests is an elprovo.toml whose test command is run.sh in the copy.

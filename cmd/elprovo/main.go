@@ -10,7 +10,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/elprovo/elprovo-next/internal/cli"
+	"github.com/elprovo/elprovo/internal/cli"
 )
 
 // version is set at release builds with -ldflags "-X main.version=v0.1.0".

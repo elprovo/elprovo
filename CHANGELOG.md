@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (2026-10-25)
+
+Elprovo is public, at `github.com/elprovo/elprovo`. Nothing in its behavior changed.
+
+- The module path is `github.com/elprovo/elprovo`. Install with `go install github.com/elprovo/elprovo/cmd/elprovo@latest`. Earlier tags have the old module path, so `go install` cannot use them.
+- Each release has archives for macOS and Linux, on amd64 and arm64, built with GoReleaser.
+- CI and the pull request check run on GitHub-hosted runners.
+
 ## 0.3.0 (2026-10-24)
 
 A bug fix now proves itself with its own test: the test fails without the fix and passes with it, and the other tests keep their results.

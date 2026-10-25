@@ -1,9 +1,9 @@
 name: ci
 
-# CI runs only by hand, on the elprovo organization's self-hosted Linux
-# runners, as the other Elprovo repositories do. make check on the
-# developer's Mac is the gate, and it covers macOS. Do not run pull requests
-# from forks on self-hosted runners when the repository goes public.
+# CI runs only by hand, on GitHub-hosted Linux runners. make check on the
+# developer's Mac is the gate, and it covers macOS. The repository is public,
+# so its workflows must never run on self-hosted runners: a pull request from
+# a fork can change a workflow file.
 on:
   workflow_dispatch:
     inputs:
@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   check:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,7 +29,7 @@ jobs:
 
   replay:
     # Elprovo replays its own tests.
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

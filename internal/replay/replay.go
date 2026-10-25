@@ -16,9 +16,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elprovo/elprovo-next/internal/config"
-	"github.com/elprovo/elprovo-next/internal/gitrepo"
-	"github.com/elprovo/elprovo-next/internal/gotest"
+	"github.com/elprovo/elprovo/internal/config"
+	"github.com/elprovo/elprovo/internal/gitrepo"
+	"github.com/elprovo/elprovo/internal/gotest"
 )
 
 // maxTestFileSize is the largest test file that Elprovo reads to find the

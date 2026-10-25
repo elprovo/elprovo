@@ -3,7 +3,7 @@ package replay
 import (
 	"testing"
 
-	"github.com/elprovo/elprovo-next/internal/gotest"
+	"github.com/elprovo/elprovo/internal/gotest"
 )
 
 const (
