@@ -4,7 +4,7 @@ Elprovo shows that a bug fix fixes the bug. The fix comes with a test that repro
 
 ![elprovo reproduce shows that a new test fails on main, and elprovo replay shows that the fix makes it pass](assets/demo.gif)
 
-**Status:** 0.3.1. It reads Go tests only. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the file, the runs, the verdicts and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.4.0. It reads Go tests only. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the file, the runs, the verdicts and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 
@@ -224,49 +224,66 @@ Field names are case-sensitive, and a field that SPEC.md does not define is an e
 
 ## In CI
 
-The reviewer should trust a replay that their own CI ran, not a summary that the author pasted. This GitHub Actions job replays the tests of a pull request, puts the output in the job summary, and keeps the report and the logs:
+The reviewer should trust a replay that their own CI ran, not a summary that the author pasted. The Elprovo action replays the tests of a pull request in GitHub Actions:
 
 ```yaml
-replay:
-  if: github.event_name == 'pull_request'
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 0
-        persist-credentials: false
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-      with:
-        go-version-file: go.mod
-    - run: go install github.com/elprovo/elprovo/cmd/elprovo@v0.3.1
-    - name: Replay the tests of this pull request
-      shell: bash
-      env:
-        BASE_REF: ${{ github.base_ref }}
-      run: |
-        set +e
-        GOCACHE=$(go env GOCACHE)
-        GOMODCACHE=$(go env GOMODCACHE)
-        export GOCACHE GOMODCACHE
-        elprovo replay --base "origin/$BASE_REF" > replay.txt
-        status=$?
-        cat replay.txt
-        { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-        exit "$status"
-    - name: Keep the report and the logs
-      if: always()
-      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-      with:
-        name: elprovo-replay
-        path: |
-          .elprovo/runs/*/report.json
-          .elprovo/runs/**/*.log
-        if-no-files-found: ignore
+name: elprovo
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: elprovo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: elprovo/elprovo@v0.4.0
 ```
 
-`setup-go` puts the `bin` folder of Go's `GOPATH` on `PATH`, so the job finds the `elprovo` that `go install` built. Make the job a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan.
+The action builds the `elprovo` of its tag with the job's Go, and replays the pull request against the merge base of the pull request and its base branch. Then it:
 
-Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `go.mod` and `elprovo.toml`, so review changes to them. The check also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
+- puts the output in the job summary;
+- posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**, and updates that comment in each later run;
+- keeps the report and the logs as an artifact;
+- ends with the exit status of `elprovo replay`, so the job fails when the replay fails.
+
+Make the job a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan. Do not limit a required check to some `paths`: GitHub keeps the check of a skipped workflow pending, so the pull request cannot merge.
+
+| Input | Default | What it does |
+| --- | --- | --- |
+| `base` | The merge base of `HEAD` and `origin/<base branch>` on a pull request | The commit without the change. The default needs the whole history, `fetch-depth: 0`. Outside a pull request, set it. |
+| `require` | `false` | Fails when no test is `fixed`, as `--require` does. |
+| `runs` | `2` | The number of runs on each commit. |
+| `working-directory` | `.` | The repository's directory in the workspace. |
+| `elprovo` | | An `elprovo` binary to run instead, as a name on `PATH` or a path from `working-directory`. By default, the action builds `elprovo` from its own source with the job's `go`. When Elprovo needs a newer Go, `go` downloads it for that build only, so the job's Go does not change. |
+| `comment` | `true` | Posts the result on the pull request, in one comment for each job name and working directory. The jobs of a matrix share one job name, so set `comment: false` in all but one of them. A pull request from a fork gets a token that cannot comment, so the action then only warns, and the exit status still decides the check. |
+| `token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. The action updates its earlier comment only when a bot posted it, as with `github.token`. |
+
+The outputs are `exit-status`, and `report`, the path of `report.json`.
+
+The job sets up what the tests need, as any test job does: services, Docker, logins to registries. Put those steps before the action. Each run has an empty home directory, so the action sets these variables for the replay:
+
+- `GOCACHE` and `GOMODCACHE`, from the job's `go env`, so that `pass_env` can pass Go's caches.
+- `DOCKER_CONFIG`, set to `~/.docker` when `docker` is installed and `DOCKER_CONFIG` is not set, so that `pass_env` can pass Docker's settings: its context, its plugins such as Compose, and its registry logins.
+- `TMPDIR`, set to the runner's temporary directory, where Elprovo makes its copies. It is in the runner's work directory. On a runner that uses Docker in Docker, such as one of Actions Runner Controller, the Docker daemon sees only that directory, so a bind mount from the copy works.
+
+A GitHub-hosted Ubuntu runner has Docker and Docker Compose, so `[app]` can build and start the app from each copy with `docker compose`. Each run then has its own app and data, and `stop` removes them. A service container of the job, under `services:`, lives for the whole job, so every run shares it. When the tests use one, `[app]`'s `start` must reset its data, such as by creating the database again.
+
+Run the action on `pull_request`, never on `pull_request_target`, because the replay runs the code of the pull request.
+
+Elprovo's own [pull request check](.github/workflows/elprovo.yml) builds `elprovo` from the base commit and gives it to the action, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `action.yml`, `go.mod` and `elprovo.toml`, so review changes to them. Its tests also run in the job, as the job's user, so a hostile change can make its own check pass. The check catches honest mistakes. Review the tests too.
 
 ## For coding agents
 

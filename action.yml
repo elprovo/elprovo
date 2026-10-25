@@ -1,0 +1,271 @@
+name: Elprovo replay
+description: Replay the tests of a change on the base commit and on the change, and post the verdicts on the pull request.
+
+inputs:
+  base:
+    description: The commit without the change. On a pull request, the default is the merge base of HEAD and origin/<base branch>, which needs a checkout with fetch-depth 0.
+    required: false
+    default: ""
+  require:
+    description: Fail when no test is fixed.
+    required: false
+    default: "false"
+  runs:
+    description: The number of runs on each commit, from 1 to 10.
+    required: false
+    default: "2"
+  working-directory:
+    description: The directory of the repository, relative to the workspace.
+    required: false
+    default: "."
+  elprovo:
+    description: The elprovo binary to run, as a name on PATH or a path from working-directory. The default is elprovo built from this action's own source with the job's go.
+    required: false
+    default: ""
+  comment:
+    description: Post the result on the pull request, in one comment for each job name and working-directory, and update it on each run. The jobs of a matrix share one job name.
+    required: false
+    default: "true"
+  token:
+    description: The token that posts the comment. It needs pull-requests write.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  exit-status:
+    description: The exit status of elprovo replay. 0 passed, 1 failed, 2 did not finish.
+    value: ${{ steps.replay.outputs.exit-status }}
+  report:
+    description: The absolute path of report.json, or empty when elprovo wrote none.
+    value: ${{ steps.replay.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build elprovo
+      if: inputs.elprovo == ''
+      shell: bash
+      env:
+        ACTION_REF: ${{ github.action_ref }}
+        # The job's GOFLAGS, GOWORK and CGO_ENABLED, such as -mod=vendor, are
+        # for the job's module, not for Elprovo's. An empty GOFLAGS would let
+        # the go env file set it.
+        GOFLAGS: -mod=readonly
+        GOWORK: "off"
+        CGO_ENABLED: "0"
+        # Elprovo's go.mod picks the Go release, without a change to the
+        # job's Go.
+        GOTOOLCHAIN: auto
+      run: |
+        if ! command -v go > /dev/null; then
+          echo "::error::The Elprovo action builds elprovo with go. Set up Go before it, or set its elprovo input."
+          exit 1
+        fi
+        ldflags=""
+        case "$ACTION_REF" in
+          v*) ldflags="-X main.version=$ACTION_REF" ;;
+        esac
+        # The job's GOOS and GOARCH, as for its own cross builds, would give
+        # a binary that cannot run on the runner.
+        GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) \
+          go build -C "$GITHUB_ACTION_PATH" -trimpath -ldflags "$ldflags" -o "$RUNNER_TEMP/elprovo-action/elprovo" ./cmd/elprovo
+
+    - name: Replay the tests
+      id: replay
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ELPROVO: ${{ inputs.elprovo }}
+        BASE: ${{ inputs.base }}
+        BASE_REF: ${{ github.base_ref }}
+        RUNS: ${{ inputs.runs }}
+        REQUIRE: ${{ inputs.require }}
+      run: |
+        set +e
+        elprovo="${ELPROVO:-$RUNNER_TEMP/elprovo-action/elprovo}"
+        base="$BASE"
+        # On a pull request, HEAD is GitHub's merge commit. The base branch
+        # can move on after GitHub makes it, as when a job waits or runs
+        # again, and the merge base is still the branch as it was then.
+        if [ -z "$base" ] && [ -n "$BASE_REF" ] && ! base=$(git merge-base HEAD "origin/$BASE_REF"); then
+          echo "::error::The Elprovo action found no merge base of HEAD and origin/$BASE_REF. Check out the whole history, with fetch-depth 0."
+          exit 1
+        fi
+        if [ -z "$base" ]; then
+          echo "::error::Set the base input of the Elprovo action. It has a default only on a pull request."
+          exit 1
+        fi
+        args=(replay --base "$base" --runs "$RUNS")
+        if [ "$REQUIRE" = true ]; then
+          args+=(--require)
+        fi
+        out=$(mktemp -d "$RUNNER_TEMP/elprovo-XXXXXXXX") || exit 1
+        args+=(--out "$out")
+
+        # On Docker-in-Docker runners, the Docker daemon sees only the
+        # runner's work directory, so the copies must be in it.
+        export TMPDIR="$RUNNER_TEMP"
+        # A run has an empty home directory, so these let elprovo.toml pass
+        # Go's caches and Docker's settings with pass_env.
+        if command -v go > /dev/null; then
+          GOCACHE=$(go env GOCACHE)
+          GOMODCACHE=$(go env GOMODCACHE)
+          export GOCACHE GOMODCACHE
+        fi
+        if command -v docker > /dev/null; then
+          export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
+        fi
+
+        if ! command -v "$elprovo" > /dev/null; then
+          echo "::error::The Elprovo action cannot find elprovo at $elprovo. A relative path starts from working-directory."
+          exit 1
+        fi
+        version=$("$elprovo" version)
+        # Progress goes to standard error, which the log shows as it comes.
+        "$elprovo" "${args[@]}" 2>&1 > "$out/replay.txt" | tee "$out/replay-stderr.txt" >&2
+        status=${PIPESTATUS[0]}
+        cat "$out/replay.txt"
+
+        # SPEC.md puts the report in <out>/runs/<replay ID>/, and the output
+        # directory is new. A second report there was not written by this
+        # replay, as when a test writes one, so the action then trusts none.
+        shopt -s nullglob
+        reports=("$out"/runs/*/report.json)
+        shopt -u nullglob
+        report=""
+        if [ "${#reports[@]}" -eq 1 ]; then
+          report=${reports[0]}
+        fi
+        {
+          echo "exit-status=$status"
+          echo "out=$out"
+          echo "reports=${#reports[@]}"
+          echo "report=$report"
+          echo "version=$version"
+          if [ -n "$report" ]; then
+            echo "dir=$(dirname "$report")"
+            echo "replay-id=$(basename "$(dirname "$report")")"
+          fi
+        } >> "$GITHUB_OUTPUT"
+        # The output quotes text from the change, so its fence is longer than
+        # any run of backticks in it.
+        fence=$(grep -o '`*' "$out/replay.txt" | awk '{ if (length > n) n = length } END { n = n < 3 ? 3 : n + 1; while (n--) printf "`" }')
+        { echo "$fence"; cat "$out/replay.txt"; echo "$fence"; } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Post the result on the pull request
+      if: always() && inputs.comment == 'true' && steps.replay.outputs.exit-status != '' && github.event_name == 'pull_request'
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        OUT: ${{ steps.replay.outputs.out }}
+        REPORT: ${{ steps.replay.outputs.report }}
+        REPORTS: ${{ steps.replay.outputs.reports }}
+        STATUS: ${{ steps.replay.outputs.exit-status }}
+        VERSION: ${{ steps.replay.outputs.version }}
+        BASE_NAME: ${{ inputs.base || github.base_ref }}
+        JOB: ${{ github.job }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      with:
+        # A workflow that passes a secret gets an empty token on a pull
+        # request from a fork.
+        github-token: ${{ inputs.token || github.token }}
+        script: |
+          const fs = require('fs');
+          const marker = `<!-- elprovo replay job=${process.env.JOB} working-directory=${process.env.WORKING_DIRECTORY} -->`;
+          const read = file => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+          const out = process.env.OUT;
+          const status = process.env.STATUS || '2';
+          const base = process.env.BASE_NAME;
+          // Progress goes to standard error too, so only Elprovo's own
+          // errors and warnings join the output.
+          const errors = read(`${out}/replay-stderr.txt`).split('\n').filter(line => line.startsWith('elprovo: '));
+          const output = [read(`${out}/replay.txt`).trimEnd(), ...errors].filter(Boolean).join('\n');
+          let report = null;
+          try {
+            report = process.env.REPORT ? JSON.parse(read(process.env.REPORT)) : null;
+          } catch (error) {
+            core.warning(`Elprovo could not read ${process.env.REPORT}: ${error.message}`);
+          }
+          const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+          // The headline uses only what Elprovo wrote, never text from the
+          // change, which stays in the code block.
+          const headline = () => {
+            // Elprovo exits 0, or 1 with --require, and writes no report when
+            // the change touches no Go package.
+            if (process.env.REPORTS === '0' && (status === '0' || status === '1')) return 'No Go package changed, so there is no test to run.';
+            if (!report || report.format !== 2) return 'Elprovo could not replay this pull request.';
+            if (report.stopped_early) return 'The replay stopped early.';
+            const count = (tests, verdict) => tests.filter(t => t.verdict === verdict).length;
+            const changed = report.changed, others = report.regressions;
+            const parts = [];
+            const fixed = count(changed, 'fixed');
+            const problems = [
+              [count(changed, 'not-fixed'), 'not fixed here'],
+              [count(changed, 'not-reproduced'), `not reproduced on ${base}`],
+              [count(changed, 'flaky'), 'flaky'],
+            ].filter(([n]) => n > 0);
+            if (changed.length === 0) parts.push('No test changed.');
+            else if (problems.length > 0) parts.push(problems.map(([n, what]) => `${plural(n, 'changed test', 'changed tests')} ${what}`).join(', ') + '.');
+            else if (fixed > 0) parts.push(`${fixed === 1 ? 'Reproduced' : plural(fixed, 'test', 'tests') + ' reproduced'} on ${base} and fixed here.`);
+            else if (count(changed, 'new') > 0) parts.push(`${plural(count(changed, 'new'), 'new test passes', 'new tests pass')} here.`);
+            else parts.push('The changed tests were skipped.');
+            const broke = count(others, 'broke') + count(others, 'flaky');
+            const notRun = count(others, 'not-run');
+            if (broke > 0) parts.push(`${plural(broke, 'other test', 'other tests')} broke or turned flaky.`);
+            else if (notRun > 0) parts.push(`${plural(notRun, 'other test', 'other tests')} could not run on both commits.`);
+            else if (others.length > 0) parts.push('Nothing else broke.');
+            return parts.join(' ');
+          };
+
+          const verdict = { '0': 'passed', '1': 'failed' }[status] || 'did not finish';
+          // GitHub refuses a comment longer than 65,536 characters, and the
+          // earlier comment would then stay as it was.
+          const limit = 60000;
+          const shown = output.length > limit ? output.slice(0, limit) + "\n[The output is cut here. The job's log has all of it.]" : output;
+          // The output quotes the pull request's own text, so it goes in a code
+          // block whose fence is longer than any run of backticks in it.
+          const fence = '`'.repeat(Math.max(3, ...[...shown.matchAll(/`+/g)].map(m => m[0].length + 1)));
+          const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+          const body = [
+            marker,
+            `**${headline()}**`,
+            '',
+            `Elprovo replay ${verdict} (exit status ${status}), with ${process.env.VERSION || 'elprovo'}.`,
+            '',
+            fence + 'text',
+            shown,
+            fence,
+            '',
+            `[Logs and report](${run})`,
+          ].join('\n');
+          // A pull request from a fork gets a token that cannot comment. The
+          // replay's status still decides the check.
+          try {
+            const issue = { owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number };
+            const comments = await github.paginate(github.rest.issues.listComments, issue);
+            const previous = comments.find(c => c.user?.type === 'Bot' && c.body.startsWith(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner: issue.owner, repo: issue.repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...issue, body });
+            }
+          } catch (error) {
+            core.warning(`Elprovo could not post the result on the pull request: ${error.message}`);
+          }
+
+    - name: Keep the report and the logs
+      if: always() && steps.replay.outputs.replay-id != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        # The replay ID keeps the names apart when a job replays more than
+        # once, or a matrix runs the action in several jobs.
+        name: elprovo-replay-${{ steps.replay.outputs.replay-id }}
+        path: |
+          ${{ steps.replay.outputs.dir }}/report.json
+          ${{ steps.replay.outputs.dir }}/**/*.log
+
+    - name: Exit with the status of the replay
+      if: always() && steps.replay.outputs.exit-status != ''
+      shell: bash
+      env:
+        STATUS: ${{ steps.replay.outputs.exit-status }}
+      run: exit "$STATUS"
