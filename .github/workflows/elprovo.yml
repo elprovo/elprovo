@@ -3,8 +3,8 @@ name: elprovo
 # Replays the tests of a pull request on the base commit and on the pull
 # request, and posts the verdicts on the pull request. The replay uses elprovo
 # built from the base commit, so a pull request cannot change the elprovo that
-# judges it. It can change this file, its go.mod and its elprovo.toml, so
-# review changes to them.
+# judges it. It can change this file, action.yml, its go.mod and its
+# elprovo.toml, so review changes to them.
 on:
   pull_request:
     branches: [main]
@@ -39,101 +39,6 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/elprovo-base" "$BASE_SHA"
           (cd "$RUNNER_TEMP/elprovo-base" && go build -o "$RUNNER_TEMP/elprovo" ./cmd/elprovo)
       - name: Replay the tests of this pull request
-        shell: bash
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          set +e
-          GOCACHE=$(go env GOCACHE)
-          GOMODCACHE=$(go env GOMODCACHE)
-          export GOCACHE GOMODCACHE
-          "$RUNNER_TEMP/elprovo" replay --base "origin/$BASE_REF" > replay.txt 2> replay-stderr.txt
-          status=$?
-          cat replay.txt replay-stderr.txt
-          echo "$status" > replay-status.txt
-          { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-      - name: Post the result on the pull request
-        if: always() && hashFiles('replay.txt') != ''
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        uses: ./
         with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- elprovo replay -->';
-            const read = file => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-            const status = read('replay-status.txt').trim() || '2';
-            // Progress goes to standard error too, so only Elprovo's own
-            // errors and warnings join the output.
-            const errors = read('replay-stderr.txt').split('\n').filter(line => line.startsWith('elprovo: '));
-            const output = [read('replay.txt').trimEnd(), ...errors].filter(Boolean).join('\n');
-
-            const runs = '.elprovo/runs';
-            const dirs = fs.existsSync(runs) ? fs.readdirSync(runs) : [];
-            const reportFile = dirs.map(d => `${runs}/${d}/report.json`).find(f => fs.existsSync(f));
-            const report = reportFile ? JSON.parse(fs.readFileSync(reportFile, 'utf8')) : null;
-            const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-            // The headline uses only what Elprovo wrote, never text from the
-            // change, which stays in the code block.
-            const headline = () => {
-              const packagesLine = read('replay.txt').split('\n')[1];
-              if (!report && packagesLine === 'packages: none') return 'No Go package changed, so there is no test to run.';
-              if (!report || report.format !== 2) return 'Elprovo could not replay this pull request.';
-              if (report.stopped_early) return 'The replay stopped early.';
-              const count = (tests, verdict) => tests.filter(t => t.verdict === verdict).length;
-              const changed = report.changed, others = report.regressions;
-              const parts = [];
-              const fixed = count(changed, 'fixed');
-              const problems = [
-                [count(changed, 'not-fixed'), 'not fixed here'],
-                [count(changed, 'not-reproduced'), 'not reproduced on main'],
-                [count(changed, 'flaky'), 'flaky'],
-              ].filter(([n]) => n > 0);
-              if (changed.length === 0) parts.push('No test changed.');
-              else if (problems.length > 0) parts.push(problems.map(([n, what]) => `${plural(n, 'changed test', 'changed tests')} ${what}`).join(', ') + '.');
-              else if (fixed > 0) parts.push(`${fixed === 1 ? 'Reproduced' : plural(fixed, 'test', 'tests') + ' reproduced'} on main and fixed here.`);
-              else if (count(changed, 'new') > 0) parts.push(`${plural(count(changed, 'new'), 'new test passes', 'new tests pass')} here.`);
-              else parts.push('The changed tests were skipped.');
-              const broke = count(others, 'broke') + count(others, 'flaky');
-              const notRun = count(others, 'not-run');
-              if (broke > 0) parts.push(`${plural(broke, 'other test', 'other tests')} broke or turned flaky.`);
-              else if (notRun > 0) parts.push(`${plural(notRun, 'other test', 'other tests')} could not run on both commits.`);
-              else if (others.length > 0) parts.push('Nothing else broke.');
-              return parts.join(' ');
-            };
-
-            const verdict = { '0': 'passed', '1': 'failed' }[status] || 'did not finish';
-            // The output quotes the pull request's own text, so it goes in a code
-            // block whose fence is longer than any run of backticks in it.
-            const fence = '`'.repeat(Math.max(3, ...[...output.matchAll(/`+/g)].map(m => m[0].length + 1)));
-            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const body = [
-              marker,
-              `**${headline()}**`,
-              '',
-              `Elprovo replay ${verdict} (exit status ${status}), with elprovo built from the base commit \`${process.env.BASE_SHA.slice(0, 7)}\`.`,
-              '',
-              fence + 'text',
-              output,
-              fence,
-              '',
-              `[Logs and report](${run})`,
-            ].join('\n');
-            const issue = { owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number };
-            const comments = await github.paginate(github.rest.issues.listComments, issue);
-            const previous = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
-            if (previous) {
-              await github.rest.issues.updateComment({ owner: issue.owner, repo: issue.repo, comment_id: previous.id, body });
-            } else {
-              await github.rest.issues.createComment({ ...issue, body });
-            }
-      - name: Keep the report and the logs
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: elprovo-replay
-          path: |
-            .elprovo/runs/*/report.json
-            .elprovo/runs/**/*.log
-          if-no-files-found: ignore
+          elprovo: ${{ runner.temp }}/elprovo

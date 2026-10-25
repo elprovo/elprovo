@@ -39,26 +39,71 @@ jobs:
         with:
           go-version-file: go.mod
       - run: make build
-      - name: Replay the tests
-        shell: bash
+      - name: Find the merge base
+        id: base
         env:
           BASE: ${{ inputs.base }}
-        run: |
-          set +e
-          GOCACHE=$(go env GOCACHE)
-          GOMODCACHE=$(go env GOMODCACHE)
-          export GOCACHE GOMODCACHE
-          ./bin/elprovo replay --base "$(git merge-base HEAD "$BASE")" > replay.txt
-          status=$?
-          cat replay.txt
-          { echo '```'; cat replay.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-      - name: Keep the report and the logs
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        run: echo "sha=$(git merge-base HEAD "$BASE")" >> "$GITHUB_OUTPUT"
+      - name: Replay the tests
+        uses: ./
         with:
-          name: elprovo-replay
-          path: |
-            .elprovo/runs/*/report.json
-            .elprovo/runs/**/*.log
-          if-no-files-found: ignore
+          base: ${{ steps.base.outputs.sha }}
+          elprovo: ./bin/elprovo
+
+  action:
+    # Replays changes through the action as another project's workflow would:
+    # the README's demo, and a repository whose e2e test needs its app
+    # running in Docker Compose.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Make the repositories
+        id: repos
+        run: |
+          echo "demo=$(TMPDIR="$RUNNER_TEMP" sh assets/demo-repo.sh)" >> "$GITHUB_OUTPUT"
+          echo "app=$(TMPDIR="$RUNNER_TEMP" sh .github/scripts/app-repo.sh)" >> "$GITHUB_OUTPUT"
+      - name: Switch the demo to coupon-once
+        working-directory: ${{ steps.repos.outputs.demo }}
+        run: git switch -q coupon-once
+      - name: Replay coupon-once
+        id: fix
+        uses: ./
+        with:
+          base: main
+          working-directory: ${{ steps.repos.outputs.demo }}
+      - name: Check that the test is fixed
+        env:
+          REPORT: ${{ steps.fix.outputs.report }}
+        run: jq -e '.changed | map(select(.name == "TestCouponAppliesOnce" and .verdict == "fixed")) | length == 1' "$REPORT"
+      - name: Switch the demo to late-check
+        working-directory: ${{ steps.repos.outputs.demo }}
+        run: git switch -q late-check
+      - name: Replay late-check
+        id: late
+        uses: ./
+        continue-on-error: true
+        with:
+          base: main
+          working-directory: ${{ steps.repos.outputs.demo }}
+      - name: Check that the replay fails and the test is not fixed
+        env:
+          STATUS: ${{ steps.late.outputs.exit-status }}
+          REPORT: ${{ steps.late.outputs.report }}
+        run: |
+          test "$STATUS" = 1
+          jq -e '.changed | map(select(.name == "TestCouponAppliesOnce" and .verdict == "not-fixed")) | length == 1' "$REPORT"
+      - name: Replay the fix of the app
+        id: app
+        uses: ./
+        with:
+          base: main
+          working-directory: ${{ steps.repos.outputs.app }}
+      - name: Check that the e2e test is fixed
+        env:
+          REPORT: ${{ steps.app.outputs.report }}
+        run: jq -e '.changed | map(select(.name == "TestGreetsByName" and .verdict == "fixed")) | length == 1' "$REPORT"
