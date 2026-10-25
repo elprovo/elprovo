@@ -4,7 +4,7 @@ Elprovo shows that a bug fix fixes the bug. The fix comes with a test that repro
 
 ![elprovo reproduce shows that a new test fails on main, and elprovo replay shows that the fix makes it pass](assets/demo.gif)
 
-**Status:** 0.3.0. It reads Go tests only. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the file, the runs, the verdicts and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
+**Status:** 0.3.1. It reads Go tests only. It runs on macOS and Linux. It does not support Windows, because it runs commands with `/bin/sh` in Unix process groups. [SPEC.md](SPEC.md) is the contract: the file, the runs, the verdicts and `report.json`. [CHANGELOG.md](CHANGELOG.md) lists what each version changed.
 
 ## Why
 
@@ -19,13 +19,21 @@ The check that does show it starts from the bug:
 
 Benchmarks for coding agents, such as SWE-bench, grade a fix in the same way. Elprovo runs these checks on copies that the author's machine never touched, twice on each commit, and alternates the commits to catch flaky results. The reviewer then reads one test and the line it failed with, and spends the rest of the review on the code.
 
-## Try it
+## Install
 
-Elprovo needs Go 1.27, `git` and `/bin/sh`. The module is not published yet, so build it from a clone. Each run has an empty home directory, so give `go test` its caches through the environment:
+Elprovo needs `git` and `/bin/sh`. Download an archive for macOS or Linux from the [releases](https://github.com/elprovo/elprovo/releases), or install it with Go 1.27 or later:
 
 ```console
-$ make build
-$ export PATH="$PWD/bin:$PATH"
+$ go install github.com/elprovo/elprovo/cmd/elprovo@latest
+```
+
+## Try it
+
+The demo is in this repository, so clone it first. Each run has an empty home directory, so give `go test` its caches through the environment:
+
+```console
+$ git clone https://github.com/elprovo/elprovo.git
+$ cd elprovo
 $ export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"
 ```
 
@@ -230,6 +238,7 @@ replay:
     - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version-file: go.mod
+    - run: go install github.com/elprovo/elprovo/cmd/elprovo@v0.3.1
     - name: Replay the tests of this pull request
       shell: bash
       env:
@@ -255,7 +264,7 @@ replay:
         if-no-files-found: ignore
 ```
 
-The job needs `elprovo` on `PATH`. Make it a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan.
+`setup-go` puts the `bin` folder of Go's `GOPATH` on `PATH`, so the job finds the `elprovo` that `go install` built. Make the job a required status check of the branch, so that a pull request merges only when the replay passes. On a private repository, GitHub offers required checks only on a paid plan.
 
 Elprovo's own [pull request check](.github/workflows/elprovo.yml) does more. It builds `elprovo` from the base commit, so a pull request cannot change the `elprovo` that judges it. A pull request can still change the workflow file, `go.mod` and `elprovo.toml`, so review changes to them. The check also posts the result on the pull request, with a headline such as **Reproduced on main and fixed here. Nothing else broke.**
 

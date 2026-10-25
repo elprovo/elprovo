@@ -16,16 +16,18 @@ Elprovo is a command line tool, `elprovo`, that runs the tests of a change on fr
 | `skills/elprovo-reproduce` | The skill that tells coding agents how to reproduce a bug as a test, fix it, and prove the fix |
 | `elprovo.toml` | How `make replay` replays Elprovo's own tests |
 | `assets/` | The README's demo: `demo-repo.sh` makes the demo repository, and `demo.tape` records `demo.gif` |
-| `.github/workflows` | `ci.yml`, which runs by hand, and `elprovo.yml`, the pull request check |
+| `.github/workflows` | `ci.yml`, which runs by hand, `elprovo.yml`, the pull request check, and `release.yml`, which publishes a version tag |
+| `.goreleaser.yaml` | How GoReleaser builds the release archives |
 
 Imports go one way: `cmd/elprovo` → `cli` → `replay` → `config`, `gotest` and `gitrepo`. `cli` also uses types from `config` and `gotest`. Only tests import `testrepo`.
 
 ## Rules
 
-- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build. It is the gate. The CI workflow runs only by hand, on the elprovo organization's self-hosted Linux runners. The elprovo workflow replays the tests of each pull request on the same runners, with elprovo built from the base commit, and posts the verdicts on the pull request.
+- Run `make check` before you finish a change. It runs gofmt, go vet, `go mod tidy -diff`, the tests with the race detector, and the build. It is the gate. The CI workflow runs only by hand, on GitHub-hosted Linux runners. The elprovo workflow replays the tests of each pull request on the same runners, with elprovo built from the base commit, and posts the verdicts on the pull request. The repository is public, so no workflow may run on a self-hosted runner.
 - A change to behavior that SPEC.md describes changes SPEC.md in the same commit. Keep the README examples equal to the real output.
 - `report.json` and `elprovo.toml` are contracts. Add fields to `report.json`; do not rename or remove them without a new format. A new field in `elprovo.toml` needs a new format version.
 - Test through `cli.Run` or the `replay` package, with real Git repositories from `testrepo`, real `/bin/sh` and real processes. Test each verdict with real `go test`. A test of the runs themselves, such as timeouts or the environment, may use a script that prints `go test -json` events. Do not mock Git or the shell. Watch a new test fail before you trust it.
 - Add a dependency only when it removes more risk than it adds. The only one today is `github.com/BurntSushi/toml`.
 - When a change fixes a bug, add a test that fails without the fix. `make replay` must show it as `fixed`.
+- To release, add the version's section to CHANGELOG.md, merge it, and push the tag `vX.Y.Z` on main. The release workflow builds the archives with GoReleaser and takes the notes from that section. `make release-check` builds the archives locally, without publishing.
 - Write documentation and messages in plain, short sentences.

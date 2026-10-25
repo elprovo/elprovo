@@ -19,12 +19,10 @@ concurrency:
 
 jobs:
   replay:
-    # Self-hosted runners must never run code from a fork. A fork's pull
-    # request runs its own copy of this file, so the repository setting that
-    # keeps workflows from running for forks is the protection, not this
-    # condition.
+    # A pull request from a fork gets a token that cannot comment, so the
+    # replay runs only for branches of this repository.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
