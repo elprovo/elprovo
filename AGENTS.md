@@ -16,6 +16,7 @@ Elprovo is a command line tool, `elprovo`, that runs the tests of a change on fr
 | `skills/elprovo-reproduce` | The skill that tells coding agents how to reproduce a bug as a test, fix it, and prove the fix |
 | `elprovo.toml` | How `make replay` replays Elprovo's own tests |
 | `assets/` | The README's demo: `demo-repo.sh` makes the demo repository, and `demo.tape` records `demo.gif` |
+| `action.yml` | The Elprovo action, which replays a pull request in GitHub Actions |
 | `.github/workflows` | `ci.yml`, which runs by hand, `elprovo.yml`, the pull request check, and `release.yml`, which publishes a version tag |
 | `.goreleaser.yaml` | How GoReleaser builds the release archives |
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 (2026-10-25)
+
+The Elprovo action runs a replay in GitHub Actions. Nothing in the behavior of `elprovo` changed.
+
+- `uses: elprovo/elprovo@v0.4.0` builds the `elprovo` of that tag with the job's Go, and replays the pull request against the merge base of the pull request and its base branch. It posts the result on the pull request and updates that comment in each later run, keeps the report and the logs as an artifact, and ends with the exit status of `elprovo replay`. The README's "In CI" section lists its inputs.
+- The job sets up what the tests need, such as services and Docker. The action sets `GOCACHE`, `GOMODCACHE` and `DOCKER_CONFIG` to the job's own, for `pass_env`, and makes the copies in the runner's temporary directory.
+- Elprovo's own pull request check and its CI replay run through the action. A CI job also replays the demo through it, and a repository whose e2e test needs its app running in Docker Compose.
+
 ## 0.3.1 (2026-10-25)
 
 Elprovo is public, at `github.com/elprovo/elprovo`. Nothing in its behavior changed.
