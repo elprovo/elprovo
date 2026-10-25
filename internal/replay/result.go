@@ -3,7 +3,7 @@ package replay
 import (
 	"slices"
 
-	"github.com/elprovo/elprovo-next/internal/gotest"
+	"github.com/elprovo/elprovo/internal/gotest"
 )
 
 // RunOutcome is how one run on one commit ended.
