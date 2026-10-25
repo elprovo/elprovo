@@ -15,11 +15,15 @@ func TestParseRepoReadsTheTestsAndAppliesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(repo.Tests.Files) != 1 || repo.Tests.Files[0] != "**/*_test.go" || repo.Tests.Run != "go test -json -count=1 {packages}" {
-		t.Errorf("tests are %+v; want the values of the file", repo.Tests)
+	if len(repo.Suites) != 1 || repo.Suites[0].Name != "tests" {
+		t.Fatalf("suites are %+v; want one suite named tests", repo.Suites)
 	}
-	if repo.Tests.Timeout != 10*time.Minute || repo.App != nil {
-		t.Errorf("timeout is %v and app is %+v; want 10m and no app", repo.Tests.Timeout, repo.App)
+	suite := repo.Suites[0]
+	if len(repo.Tests.Files) != 1 || repo.Tests.Files[0] != "**/*_test.go" || suite.Run != "go test -json -count=1 {packages}" {
+		t.Errorf("files are %v and run is %q; want the values of the file", repo.Tests.Files, suite.Run)
+	}
+	if suite.Timeout != 10*time.Minute || suite.App != nil {
+		t.Errorf("timeout is %v and app is %+v; want 10m and no app", suite.Timeout, suite.App)
 	}
 }
 
@@ -31,12 +35,12 @@ func TestParseRepoReadsTheApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	app := repo.App
+	app := repo.Suites[0].App
 	if app == nil || app.Start != "docker compose up -d" || app.Ready != "curl -fsS localhost:8080" || app.Stop != "docker compose down" {
 		t.Fatalf("app is %+v; want start, ready and stop from the file", app)
 	}
-	if app.StartTimeout != 10*time.Minute || app.ReadyTimeout != time.Minute || app.StopTimeout != 2*time.Minute || repo.Tests.Timeout != 20*time.Minute {
-		t.Errorf("timeouts are start %v, ready %v, stop %v, tests %v; want 10m, 1m, 2m, 20m", app.StartTimeout, app.ReadyTimeout, app.StopTimeout, repo.Tests.Timeout)
+	if app.StartTimeout != 10*time.Minute || app.ReadyTimeout != time.Minute || app.StopTimeout != 2*time.Minute || repo.Suites[0].Timeout != 20*time.Minute {
+		t.Errorf("timeouts are start %v, ready %v, stop %v, tests %v; want 10m, 1m, 2m, 20m", app.StartTimeout, app.ReadyTimeout, app.StopTimeout, repo.Suites[0].Timeout)
 	}
 	if repo.Env["PORT"] != "8080" || len(repo.PassEnv) != 1 {
 		t.Errorf("env is %v and pass_env is %v; want PORT=8080 and DOCKER_HOST", repo.Env, repo.PassEnv)

@@ -47,15 +47,9 @@ type runner struct {
 // "".
 func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, runResults, string) {
 	started := time.Now()
-	// Both commits run the tests as the head commit's elprovo.toml says, so
-	// that only the code differs. The app belongs to the code, so a base run
-	// starts the base commit's app when the base commit has one.
-	commit, cfg := r.plan.Head, r.plan.headConfig
+	commit := r.plan.Head
 	if side == "base" {
 		commit = r.plan.Base
-		if r.plan.baseApp != nil {
-			cfg.App = r.plan.baseApp
-		}
 	}
 
 	// cannot ends the replay because Elprovo itself failed. When the replay
@@ -113,98 +107,35 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, ru
 		}
 	}
 
-	env := commandEnv(r.opts.Environ, cfg, home, tmp, id, artifacts)
-	command := func(ctx context.Context, name, line string, timeout time.Duration) (commandResult, error) {
-		return runCommand(ctx, line, work, env, filepath.Join(runDir, name+".log"), timeout)
+	c := runCopy{
+		scratch:  scratch,
+		work:     work,
+		env:      commandEnv(r.opts.Environ, r.plan.headConfig, home, tmp, id, artifacts),
+		packages: packages,
+		logDir:   runDir,
+		logName:  name,
 	}
 	run := &RunReport{Run: n, Outcome: RunNotRun, Dir: name, LogDir: runDir}
 	var results gotest.Results
 	stop := ""
 	interrupted := false
-
-	ready := true
-	if cfg.App != nil {
-		ready = false
-		result, err := command(ctx, "start", cfg.App.Start, cfg.App.StartTimeout)
-		switch {
-		case err != nil:
-			stop = fmt.Sprintf("could not run start: %v", err)
-		case result.interrupted:
-			interrupted = true
-		case !result.ok():
-			run.Reason = result.describe("start", cfg.App.StartTimeout)
-			run.Log = filepath.Join(name, "start.log")
-		default:
-			ready, interrupted, run.Reason, err = r.waitReady(ctx, command, cfg.App.Ready, cfg.App.ReadyTimeout)
-			if err != nil {
-				stop = fmt.Sprintf("could not run ready: %v", err)
-			}
-			if run.Reason != "" {
-				run.Log = filepath.Join(name, "ready.log")
-			}
+	for _, suite := range r.plan.headConfig.Suites {
+		// Both commits run the tests as the head commit's elprovo.toml
+		// says, so that only the code differs. The app belongs to the code,
+		// so a base run starts the base commit's app when it has one.
+		if app := r.plan.baseApps[suite.Name]; side == "base" && app != nil {
+			suite.App = app
 		}
-	}
-	switch {
-	case !ready:
-	case len(packages) == 0:
-		run.Outcome = Ran
-	default:
-		line := strings.ReplaceAll(cfg.Tests.Run, config.Packages, shellWords(packages))
-		result, err := command(ctx, "test", line, cfg.Tests.Timeout)
-		switch {
-		case err != nil:
-			stop = fmt.Sprintf("could not run the tests: %v", err)
-		case result.interrupted:
-			interrupted = true
-		default:
-			run.Log = filepath.Join(name, "test.log")
-			run.TimedOut = result.timedOut
-			if result.exitCode >= 0 {
-				code := result.exitCode
-				run.ExitCode = &code
-			}
-			// The parse comes before the cut, which drops the end of a long
-			// log.
-			results, err = parseLog(filepath.Join(runDir, "test.log"))
-			switch {
-			case err != nil:
-				run.Reason = fmt.Sprintf("could not read the output of the tests: %v", err)
-			case results.Events == 0:
-				run.Reason = "the tests printed no go test -json events"
-				if result.timedOut {
-					run.Reason = fmt.Sprintf("the tests did not end within %s and printed no go test -json events", formatDuration(cfg.Tests.Timeout))
-				}
-			default:
-				run.Outcome = Ran
-				cleanPaths(results, scratch, work)
-				if result.timedOut {
-					for _, pkg := range packages {
-						setReason(&results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(cfg.Tests.Timeout)))
-					}
-				}
-			}
-		}
-	}
-
-	if cfg.App != nil && cfg.App.Stop != "" {
-		// stop runs after an interrupt too, so it must not inherit ctx.
-		result, err := command(context.WithoutCancel(ctx), "stop", cfg.App.Stop, cfg.App.StopTimeout)
-		switch {
-		case err != nil:
-			stop = fmt.Sprintf("could not run stop: %v", err)
-		case !result.ok() && stop == "":
-			stop = result.describe("stop", cfg.App.StopTimeout)
+		s := r.runSuite(ctx, c, suite)
+		results = s.results
+		run.Outcome, run.ExitCode, run.TimedOut = s.run.Outcome, s.run.ExitCode, s.run.TimedOut
+		run.Reason, run.LastLine, run.Log = s.run.Reason, s.run.LastLine, s.run.Log
+		stop, interrupted = s.stop, s.interrupted
+		if stop != "" || interrupted || s.run.Outcome == RunNotRun {
+			break
 		}
 	}
 	run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
-
-	// The cut drops the end of a long log, so the last line comes first.
-	if run.Outcome == RunNotRun && run.Log != "" {
-		log := filepath.Join(r.dir, run.Log)
-		if run.LastLine, err = lastLine(log); err != nil {
-			r.warn(fmt.Sprintf("could not read the last line of %s: %v", log, err))
-		}
-	}
 	r.cutLogs(runDir)
 	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
 
@@ -212,6 +143,121 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, ru
 		return nil, runResults{}, "interrupted"
 	}
 	return run, runResults{Results: results, missing: missing}, stop
+}
+
+// runCopy is what the suites of one run share.
+type runCopy struct {
+	scratch, work string
+	env           []string
+	// packages are the touched packages that have Go files in the copy.
+	packages []string
+	// logDir is where the suites write their logs, and logName is logDir
+	// relative to the replay's directory.
+	logDir, logName string
+}
+
+// suiteResult is how one suite ended in one run.
+type suiteResult struct {
+	run         SuiteRun
+	results     gotest.Results
+	stop        string
+	interrupted bool
+}
+
+// runSuite starts the suite's app, runs its command, reads its events and
+// stops its app.
+func (r runner) runSuite(ctx context.Context, c runCopy, suite config.Suite) suiteResult {
+	command := func(ctx context.Context, name, line string, timeout time.Duration) (commandResult, error) {
+		return runCommand(ctx, line, c.work, c.env, filepath.Join(c.logDir, name+".log"), timeout)
+	}
+	s := suiteResult{run: SuiteRun{Suite: suite.Name, Outcome: RunNotRun}}
+	started := time.Now()
+
+	ready := true
+	if suite.App != nil {
+		ready = false
+		result, err := command(ctx, "start", suite.App.Start, suite.App.StartTimeout)
+		switch {
+		case err != nil:
+			s.stop = fmt.Sprintf("could not run start: %v", err)
+		case result.interrupted:
+			s.interrupted = true
+		case !result.ok():
+			s.run.Reason = result.describe("start", suite.App.StartTimeout)
+			s.run.Log = filepath.Join(c.logName, "start.log")
+		default:
+			ready, s.interrupted, s.run.Reason, err = r.waitReady(ctx, command, suite.App.Ready, suite.App.ReadyTimeout)
+			if err != nil {
+				s.stop = fmt.Sprintf("could not run ready: %v", err)
+			}
+			if s.run.Reason != "" {
+				s.run.Log = filepath.Join(c.logName, "ready.log")
+			}
+		}
+	}
+	switch {
+	case !ready:
+	case len(c.packages) == 0:
+		s.run.Outcome = Ran
+	default:
+		line := strings.ReplaceAll(suite.Run, config.Packages, shellWords(c.packages))
+		result, err := command(ctx, "test", line, suite.Timeout)
+		switch {
+		case err != nil:
+			s.stop = fmt.Sprintf("could not run the tests: %v", err)
+		case result.interrupted:
+			s.interrupted = true
+		default:
+			s.run.Log = filepath.Join(c.logName, "test.log")
+			s.run.TimedOut = result.timedOut
+			if result.exitCode >= 0 {
+				code := result.exitCode
+				s.run.ExitCode = &code
+			}
+			// The parse comes before the cut, which drops the end of a long
+			// log.
+			s.results, err = parseLog(filepath.Join(c.logDir, "test.log"))
+			switch {
+			case err != nil:
+				s.run.Reason = fmt.Sprintf("could not read the output of the tests: %v", err)
+			case s.results.Events == 0:
+				s.run.Reason = "the tests printed no go test -json events"
+				if result.timedOut {
+					s.run.Reason = fmt.Sprintf("the tests did not end within %s and printed no go test -json events", formatDuration(suite.Timeout))
+				}
+			default:
+				s.run.Outcome = Ran
+				cleanPaths(s.results, c.scratch, c.work)
+				if result.timedOut {
+					for _, pkg := range c.packages {
+						setReason(&s.results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(suite.Timeout)))
+					}
+				}
+			}
+		}
+	}
+
+	if suite.App != nil && suite.App.Stop != "" {
+		// stop runs after an interrupt too, so it must not inherit ctx.
+		result, err := command(context.WithoutCancel(ctx), "stop", suite.App.Stop, suite.App.StopTimeout)
+		switch {
+		case err != nil:
+			s.stop = fmt.Sprintf("could not run stop: %v", err)
+		case !result.ok() && s.stop == "":
+			s.stop = result.describe("stop", suite.App.StopTimeout)
+		}
+	}
+	s.run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
+
+	// The cut drops the end of a long log, so the last line comes first.
+	if s.run.Outcome == RunNotRun && s.run.Log != "" {
+		log := filepath.Join(r.dir, s.run.Log)
+		var err error
+		if s.run.LastLine, err = lastLine(log); err != nil {
+			r.warn(fmt.Sprintf("could not read the last line of %s: %v", log, err))
+		}
+	}
+	return s
 }
 
 // hasGoFiles reports whether dir holds a Go file that go test reads.

@@ -83,10 +83,10 @@ type Plan struct {
 	// module is the path of the head commit's Go module.
 	module     string
 	headConfig config.Repo
-	// baseApp is the [app] of the base commit's elprovo.toml, or nil when the
-	// base commit has no such file of version 2, or no [app] in it. The base
-	// runs then use the head commit's.
-	baseApp *config.App
+	// baseApps holds, by suite name, the apps of the base commit's
+	// elprovo.toml. A suite that it lacks starts the head commit's app on
+	// the base commit too.
+	baseApps map[string]*config.App
 	// reproduce is true for a plan of elprovo reproduce, which runs on the
 	// base commit only.
 	reproduce bool
@@ -207,7 +207,12 @@ func Prepare(ctx context.Context, opts Options) (Plan, error) {
 		case err != nil:
 			return Plan{}, err
 		default:
-			plan.baseApp = base.App
+			plan.baseApps = map[string]*config.App{}
+			for _, suite := range base.Suites {
+				if suite.App != nil {
+					plan.baseApps[suite.Name] = suite.App
+				}
+			}
 		}
 	}
 	environ := envMap(opts.Environ)

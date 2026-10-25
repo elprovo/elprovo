@@ -37,16 +37,23 @@ type Repo struct {
 	Env     map[string]string
 	PassEnv []string
 	Tests   Tests
-	// App is nil when the file has no [app] table.
-	App *App
+	// Suites run in this order in every run.
+	Suites []Suite
 }
 
-// Tests says which files hold tests and how to run them.
+// Tests says which files hold the tests.
 type Tests struct {
 	// Files are the patterns of section 1.2 of SPEC.md.
-	Files   []string
+	Files []string
+}
+
+// Suite is a command that runs tests, with the app that they need.
+type Suite struct {
+	Name    string
 	Run     string
 	Timeout time.Duration
+	// App is nil when the suite needs nothing running.
+	App *App
 }
 
 // App says how to start, check and stop an app that the tests need.
@@ -112,8 +119,10 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 	repo := Repo{
 		Env:     raw.Env,
 		PassEnv: raw.PassEnv,
-		Tests:   Tests{Files: tests.Files, Run: tests.Run},
+		Tests:   Tests{Files: tests.Files},
 	}
+	// Version 2 has one suite: [tests] with [app].
+	suite := Suite{Name: "tests", Run: tests.Run}
 	if len(tests.Files) == 0 {
 		problems = append(problems, "tests.files is missing")
 	}
@@ -135,17 +144,18 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 	default:
 		problems = append(problems, fmt.Sprintf("tests.report is %q; this release reads %s", tests.Report, GoTestJSON))
 	}
-	problems = parseDuration(problems, "tests.timeout", tests.Timeout, 10*time.Minute, &repo.Tests.Timeout)
+	problems = parseDuration(problems, "tests.timeout", tests.Timeout, 10*time.Minute, &suite.Timeout)
 
 	if meta.IsDefined("app") {
 		app := raw.App
-		repo.App = &App{Start: app.Start, Ready: app.Ready, Stop: strings.TrimSpace(app.Stop)}
+		suite.App = &App{Start: app.Start, Ready: app.Ready, Stop: strings.TrimSpace(app.Stop)}
 		problems = requireCommand(problems, "app.start", app.Start)
 		problems = requireCommand(problems, "app.ready", app.Ready)
-		problems = parseDuration(problems, "app.timeouts.start", app.Timeouts.Start, 10*time.Minute, &repo.App.StartTimeout)
-		problems = parseDuration(problems, "app.timeouts.ready", app.Timeouts.Ready, 5*time.Minute, &repo.App.ReadyTimeout)
-		problems = parseDuration(problems, "app.timeouts.stop", app.Timeouts.Stop, 2*time.Minute, &repo.App.StopTimeout)
+		problems = parseDuration(problems, "app.timeouts.start", app.Timeouts.Start, 10*time.Minute, &suite.App.StartTimeout)
+		problems = parseDuration(problems, "app.timeouts.ready", app.Timeouts.Ready, 5*time.Minute, &suite.App.ReadyTimeout)
+		problems = parseDuration(problems, "app.timeouts.stop", app.Timeouts.Stop, 2*time.Minute, &suite.App.StopTimeout)
 	}
+	repo.Suites = []Suite{suite}
 	if len(problems) > 0 {
 		return Repo{}, fmt.Errorf("%s: %s", name, strings.Join(problems, "; "))
 	}

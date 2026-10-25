@@ -66,6 +66,20 @@ type RunReport struct {
 	LogDir string `json:"-"`
 }
 
+// SuiteRun is how one suite ended in one run.
+type SuiteRun struct {
+	Suite   string     `json:"suite"`
+	Outcome RunOutcome `json:"outcome"`
+	// ExitCode is the exit status of the suite's command, which decides
+	// nothing.
+	ExitCode *int    `json:"exit_code"`
+	TimedOut bool    `json:"timed_out"`
+	Seconds  float64 `json:"seconds"`
+	Reason   string  `json:"reason"`
+	LastLine string  `json:"last_line"`
+	Log      string  `json:"log"`
+}
+
 // TestRun is a test's result in one run.
 type TestRun struct {
 	Outcome gotest.Outcome `json:"outcome"`
