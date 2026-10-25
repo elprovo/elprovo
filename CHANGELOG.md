@@ -8,6 +8,8 @@
 - A suite whose app does not start stops the replay with exit status 2, and the message names the suite.
 - Version 2 still works, as one suite named `tests`. A base run takes each suite's `app` from the base commit's file, of version 2 or 3, when it has one for that suite.
 - **Breaking:** `report.json` is format 3. It lists the `suites`. Each run has `suites`, with the outcome, exit code, reason, last line and log of each suite. Each test has `suites`, and each of its results has the `suite` whose result counted. Logs are in `<side>-<n>/<suite>/`.
+- The Elprovo action, `uses: elprovo/elprovo@v0.4.0`, replays a pull request in GitHub Actions. It builds `elprovo` from its own source, or runs the binary of its `elprovo` input, posts the verdicts on the pull request, keeps the report and the logs as an artifact, and ends with the replay's exit status. It passes Go's caches and Docker's endpoint to `pass_env`, and makes the copies in the runner's temporary directory, which Docker-in-Docker runners share with the daemon.
+- Elprovo's own pull request check and its CI replay run through the action.
 
 ## 0.3.1 (2026-10-25)
 
