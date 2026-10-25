@@ -268,7 +268,7 @@ Make the job a required status check of the branch, so that a pull request merge
 | `runs` | `2` | The number of runs on each commit. |
 | `working-directory` | `.` | The repository's directory in the workspace. |
 | `elprovo` | | An `elprovo` binary to run instead, as a name on `PATH` or a path from `working-directory`. By default, the action builds `elprovo` from its own source with the job's `go`. When Elprovo needs a newer Go, `go` downloads it for that build only, so the job's Go does not change. |
-| `comment` | `true` | Posts the result on the pull request, in one comment for each job and working directory. A pull request from a fork gets a token that cannot comment, so the action then only warns, and the exit status still decides the check. |
+| `comment` | `true` | Posts the result on the pull request, in one comment for each job name and working directory. The jobs of a matrix share one job name, so set `comment: false` in all but one of them. A pull request from a fork gets a token that cannot comment, so the action then only warns, and the exit status still decides the check. |
 | `token` | `github.token` | The token that posts the comment. It needs `pull-requests: write`. The action updates its earlier comment only when a bot posted it, as with `github.token`. |
 
 The outputs are `exit-status`, and `report`, the path of `report.json`.

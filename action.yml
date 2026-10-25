@@ -23,7 +23,7 @@ inputs:
     required: false
     default: ""
   comment:
-    description: Post the result on the pull request, in one comment for each job and working-directory, and update it on each run.
+    description: Post the result on the pull request, in one comment for each job name and working-directory, and update it on each run. The jobs of a matrix share one job name.
     required: false
     default: "true"
   token:
@@ -47,11 +47,12 @@ runs:
       shell: bash
       env:
         ACTION_REF: ${{ github.action_ref }}
-        # The job's GOFLAGS and GOWORK, such as -mod=vendor, are for the
-        # job's module, not for Elprovo's. An empty GOFLAGS would let the go
-        # env file set it.
+        # The job's GOFLAGS, GOWORK and CGO_ENABLED, such as -mod=vendor, are
+        # for the job's module, not for Elprovo's. An empty GOFLAGS would let
+        # the go env file set it.
         GOFLAGS: -mod=readonly
         GOWORK: "off"
+        CGO_ENABLED: "0"
         # Elprovo's go.mod picks the Go release, without a change to the
         # job's Go.
         GOTOOLCHAIN: auto
@@ -64,7 +65,10 @@ runs:
         case "$ACTION_REF" in
           v*) ldflags="-X main.version=$ACTION_REF" ;;
         esac
-        go build -C "$GITHUB_ACTION_PATH" -trimpath -ldflags "$ldflags" -o "$RUNNER_TEMP/elprovo-action/elprovo" ./cmd/elprovo
+        # The job's GOOS and GOARCH, as for its own cross builds, would give
+        # a binary that cannot run on the runner.
+        GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) \
+          go build -C "$GITHUB_ACTION_PATH" -trimpath -ldflags "$ldflags" -o "$RUNNER_TEMP/elprovo-action/elprovo" ./cmd/elprovo
 
     - name: Replay the tests
       id: replay
@@ -125,14 +129,17 @@ runs:
         # SPEC.md puts the report in <out>/runs/<replay ID>/, and the output
         # directory is new. A second report there was not written by this
         # replay, as when a test writes one, so the action then trusts none.
+        shopt -s nullglob
         reports=("$out"/runs/*/report.json)
+        shopt -u nullglob
         report=""
-        if [ "${#reports[@]}" -eq 1 ] && [ -f "${reports[0]}" ]; then
+        if [ "${#reports[@]}" -eq 1 ]; then
           report=${reports[0]}
         fi
         {
           echo "exit-status=$status"
           echo "out=$out"
+          echo "reports=${#reports[@]}"
           echo "report=$report"
           echo "version=$version"
           if [ -n "$report" ]; then
@@ -140,7 +147,10 @@ runs:
             echo "replay-id=$(basename "$(dirname "$report")")"
           fi
         } >> "$GITHUB_OUTPUT"
-        { echo '```'; cat "$out/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        # The output quotes text from the change, so its fence is longer than
+        # any run of backticks in it.
+        fence=$(grep -o '`*' "$out/replay.txt" | awk '{ if (length > n) n = length } END { n = n < 3 ? 3 : n + 1; while (n--) printf "`" }')
+        { echo "$fence"; cat "$out/replay.txt"; echo "$fence"; } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Post the result on the pull request
       if: always() && inputs.comment == 'true' && steps.replay.outputs.exit-status != '' && github.event_name == 'pull_request'
@@ -148,6 +158,7 @@ runs:
       env:
         OUT: ${{ steps.replay.outputs.out }}
         REPORT: ${{ steps.replay.outputs.report }}
+        REPORTS: ${{ steps.replay.outputs.reports }}
         STATUS: ${{ steps.replay.outputs.exit-status }}
         VERSION: ${{ steps.replay.outputs.version }}
         BASE_NAME: ${{ inputs.base || github.base_ref }}
@@ -168,14 +179,19 @@ runs:
           // errors and warnings join the output.
           const errors = read(`${out}/replay-stderr.txt`).split('\n').filter(line => line.startsWith('elprovo: '));
           const output = [read(`${out}/replay.txt`).trimEnd(), ...errors].filter(Boolean).join('\n');
-          const report = process.env.REPORT ? JSON.parse(read(process.env.REPORT)) : null;
+          let report = null;
+          try {
+            report = process.env.REPORT ? JSON.parse(read(process.env.REPORT)) : null;
+          } catch (error) {
+            core.warning(`Elprovo could not read ${process.env.REPORT}: ${error.message}`);
+          }
           const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
           // The headline uses only what Elprovo wrote, never text from the
           // change, which stays in the code block.
           const headline = () => {
             // Elprovo exits 0, or 1 with --require, and writes no report when
             // the change touches no Go package.
-            if (!report && status !== '2') return 'No Go package changed, so there is no test to run.';
+            if (process.env.REPORTS === '0' && (status === '0' || status === '1')) return 'No Go package changed, so there is no test to run.';
             if (!report || report.format !== 2) return 'Elprovo could not replay this pull request.';
             if (report.stopped_early) return 'The replay stopped early.';
             const count = (tests, verdict) => tests.filter(t => t.verdict === verdict).length;
@@ -201,9 +217,13 @@ runs:
           };
 
           const verdict = { '0': 'passed', '1': 'failed' }[status] || 'did not finish';
+          // GitHub refuses a comment longer than 65,536 characters, and the
+          // earlier comment would then stay as it was.
+          const limit = 60000;
+          const shown = output.length > limit ? output.slice(0, limit) + "\n[The output is cut here. The job's log has all of it.]" : output;
           // The output quotes the pull request's own text, so it goes in a code
           // block whose fence is longer than any run of backticks in it.
-          const fence = '`'.repeat(Math.max(3, ...[...output.matchAll(/`+/g)].map(m => m[0].length + 1)));
+          const fence = '`'.repeat(Math.max(3, ...[...shown.matchAll(/`+/g)].map(m => m[0].length + 1)));
           const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
           const body = [
             marker,
@@ -212,7 +232,7 @@ runs:
             `Elprovo replay ${verdict} (exit status ${status}), with ${process.env.VERSION || 'elprovo'}.`,
             '',
             fence + 'text',
-            output,
+            shown,
             fence,
             '',
             `[Logs and report](${run})`,
