@@ -9,23 +9,27 @@ A reviewer trusts what a machine re-ran, not your report. A fix is shown when a 
 
 ## 1. Check the setup
 
-The repository root needs `elprovo.toml` of version 2. If it has none, write one, and tell the user that it needs their review, because every replay runs it:
+The repository root needs `elprovo.toml` of version 3, or of version 2, which has one suite. If it has none, write one, and tell the user that it needs their review, because every replay runs it:
 
 ```toml
-version = 2
+version = 3
 pass_env = ["GOCACHE", "GOMODCACHE"]
 
 [tests]
 files = ["**/*_test.go", "**/testdata/**"]
+
+[suites.unit]
 run = "go test -json -count=1 -timeout=5m {packages}"
 report = "go-test-json"
 ```
 
-Set the caches before you run Elprovo: `export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"`. Elprovo writes logs and reports to `.elprovo/`; add it to `.gitignore`. Each run gets an empty `HOME` and `TMPDIR`, and only `PATH`, `USER` and `LANG` from the environment. A test that needs more, such as a database, needs an `[app]` table with `start`, `ready` and `stop`, as SPEC.md section 1 shows.
+Set the caches before you run Elprovo: `export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)"`. Elprovo writes logs and reports to `.elprovo/`; add it to `.gitignore`. Each run gets an empty `HOME` and `TMPDIR`, and only `PATH`, `USER` and `LANG` from the environment. A test that needs more, such as a database, needs an `app` table in its suite with `start`, `ready` and `stop`, as SPEC.md section 1 shows.
+
+A suite whose `run` has `{packages}`, such as `unit`, runs the packages that the change touches. A suite without it, such as an `e2e` suite with its own app, runs on every replay. Elprovo runs every suite in `reproduce` too, so a replay with an e2e suite takes longer and needs what its app needs, such as Docker. The e2e tests of the repository usually have a build tag, such as `//go:build e2e`.
 
 ## 2. Reproduce the bug as a test
 
-Write a Go test that fails because of the bug, in the package where the bug is. When the bug has several symptoms, such as one for files and one for directories, write one test for each. Make each a top-level function, `func TestXxx(t *testing.T)`. Elprovo gives verdicts to top-level test functions only. A subtest, or a method of a testify suite, counts only through its top-level function, so even in a repository that uses suites, put the reproduction in its own function, and reuse the package's test helpers where they fit. A good test:
+Write a Go test that fails because of the bug, in the package where the bug is. When the bug shows only in the running app, such as a wrong HTTP status, and the repository has an e2e suite, write the test with the e2e tests, with their build tag. When the bug has several symptoms, such as one for files and one for directories, write one test for each. Make each a top-level function, `func TestXxx(t *testing.T)`. Elprovo gives verdicts to top-level test functions only. A subtest, or a method of a testify suite, counts only through its top-level function, so even in a repository that uses suites, put the reproduction in its own function, and reuse the package's test helpers where they fit. A good test:
 
 - checks the exact result that the bug gets wrong, such as the value, the text or the status;
 - fails with a message that names the bug in its first 200 characters, such as `total after SAVE10 twice is 81.00; want 90.00`;
@@ -58,7 +62,7 @@ Run the repository's own checks, such as `make check`, and commit the fix.
 Run `elprovo replay --base <base> --require`.
 
 - The test must be `fixed`: it failed without the fix and passed with it.
-- The other tests in the packages must be `kept`. `broke` means that your fix broke a test: fix the code. `not run` means that a package did not build on one commit: read its line.
+- The other tests, in the packages and in the suites that run on every replay, must be `kept`. `broke` means that your fix broke a test: fix the code. `not run` means that a package did not build on one commit: read its line.
 - `not fixed`, `not reproduced` and `flaky` mean the fix is not done.
 
 If `elprovo` is not installed and you may not install it, do not run the steps by hand and do not call the bug fixed. Tell the user that the test and the fix are ready, and that they need `elprovo`.

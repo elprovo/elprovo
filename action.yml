@@ -96,19 +96,14 @@ runs:
         # runner's work directory, so the copies must be in it.
         export TMPDIR="$RUNNER_TEMP"
         # A run has an empty home directory, so these let elprovo.toml pass
-        # Go's caches and Docker's endpoint with pass_env.
+        # Go's caches and Docker's settings with pass_env.
         if command -v go > /dev/null; then
           GOCACHE=$(go env GOCACHE)
           GOMODCACHE=$(go env GOMODCACHE)
           export GOCACHE GOMODCACHE
         fi
-        if [ -z "${DOCKER_HOST:-}" ] && command -v docker > /dev/null; then
-          DOCKER_HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2> /dev/null)
-          if [ -n "$DOCKER_HOST" ]; then
-            export DOCKER_HOST
-          else
-            unset DOCKER_HOST
-          fi
+        if command -v docker > /dev/null; then
+          export DOCKER_CONFIG="${DOCKER_CONFIG:-$HOME/.docker}"
         fi
 
         version=$("$elprovo" version)

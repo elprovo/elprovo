@@ -49,3 +49,51 @@ jobs:
         with:
           base: ${{ steps.base.outputs.commit }}
           elprovo: ./bin/elprovo
+
+  demo:
+    # The README's demo, replayed through the action as a project's own CI
+    # would replay it: its e2e suite builds and starts the shop with Docker
+    # Compose in every run.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Make the demo repository
+        id: demo
+        run: echo "dir=$(TMPDIR="$RUNNER_TEMP" sh assets/demo-repo.sh)" >> "$GITHUB_OUTPUT"
+      - name: Switch to coupon-once
+        working-directory: ${{ steps.demo.outputs.dir }}
+        run: git switch -q coupon-once
+      - name: Replay coupon-once
+        id: fix
+        uses: ./
+        with:
+          base: main
+          working-directory: ${{ steps.demo.outputs.dir }}
+      - name: Check that the unit test is fixed and the e2e tests are kept
+        env:
+          REPORT: ${{ steps.fix.outputs.report }}
+        run: |
+          jq -e '.changed | map(select(.name == "TestCouponAppliesOnce" and .verdict == "fixed")) | length == 1' "$REPORT"
+          jq -e '.regressions | map(select(.package == "./e2e" and .verdict == "kept")) | length == 2' "$REPORT"
+      - name: Switch to api-break
+        working-directory: ${{ steps.demo.outputs.dir }}
+        run: git switch -q api-break
+      - name: Replay api-break
+        id: break
+        uses: ./
+        continue-on-error: true
+        with:
+          base: main
+          working-directory: ${{ steps.demo.outputs.dir }}
+      - name: Check that the replay fails and an e2e test broke
+        env:
+          STATUS: ${{ steps.break.outputs.exit-status }}
+          REPORT: ${{ steps.break.outputs.report }}
+        run: |
+          test "$STATUS" = 1
+          jq -e '.regressions | map(select(.name == "TestCheckoutWithACoupon" and .verdict == "broke")) | length == 1' "$REPORT"

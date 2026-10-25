@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-25)
+
+A replay runs unit tests and e2e tests, each suite with its own setup, and the Elprovo action runs it in GitHub Actions.
 
 - `elprovo.toml` version 3 has named suites, `[suites.<name>]`, each with its own `run`, `report`, `timeout` and `app`. Suites run one after the other in each run, in the order the file lists them. `[tests]` keeps only `files`.
 - A suite whose `run` has `{packages}` gets the packages that the change touches, as before, and is left out when there are none. A suite without `{packages}`, such as an e2e suite, runs as written on every replay, and all its tests count. So a change to the app's code alone shows whether an e2e test broke.
@@ -8,8 +10,11 @@
 - A suite whose app does not start stops the replay with exit status 2, and the message names the suite.
 - Version 2 still works, as one suite named `tests`. A base run takes each suite's `app` from the base commit's file, of version 2 or 3, when it has one for that suite.
 - **Breaking:** `report.json` is format 3. It lists the `suites`. Each run has `suites`, with the outcome, exit code, reason, last line and log of each suite. Each test has `suites`, and each of its results has the `suite` whose result counted. Logs are in `<side>-<n>/<suite>/`.
-- The Elprovo action, `uses: elprovo/elprovo@v0.4.0`, replays a pull request in GitHub Actions. It builds `elprovo` from its own source, or runs the binary of its `elprovo` input, posts the verdicts on the pull request, keeps the report and the logs as an artifact, and ends with the replay's exit status. It passes Go's caches and Docker's endpoint to `pass_env`, and makes the copies in the runner's temporary directory, which Docker-in-Docker runners share with the daemon.
+- The Elprovo action, `uses: elprovo/elprovo@v0.4.0`, replays a pull request in GitHub Actions. It builds `elprovo` from its own source, or runs the binary of its `elprovo` input, posts the verdicts on the pull request, keeps the report and the logs as an artifact, and ends with the replay's exit status. It sets `GOCACHE`, `GOMODCACHE` and `DOCKER_CONFIG` for `pass_env`, and makes the copies in the runner's temporary directory, which Docker-in-Docker runners share with the daemon.
 - Elprovo's own pull request check and its CI replay run through the action.
+- The demo repository has e2e tests in `./e2e`, with the build tag `e2e`, that call the shop's API in Docker Compose, and a branch `api-break` whose change only the e2e tests see. The README walks through it, and shows the action and the fields of version 3.
+- A `demo` job in the CI workflow replays the demo through the action on a GitHub-hosted runner, with Docker, and checks the verdicts in `report.json`.
+- `skills/elprovo-reproduce` tells agents that an e2e suite runs on every replay, and to reproduce a bug with the e2e tests when it shows only in the running app.
 
 ## 0.3.1 (2026-10-25)
 

@@ -17,6 +17,7 @@ Output assets/demo.gif
 
 Require elprovo
 Require go
+Require docker
 
 Set Shell "bash"
 Set FontSize 18
@@ -26,7 +27,7 @@ Set Padding 24
 Set TypingSpeed 50ms
 
 Hide
-Type `cd "$(sh assets/demo-repo.sh)" && export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" && clear`
+Type `cd "$(sh assets/demo-repo.sh)" && export GOCACHE="$(go env GOCACHE)" GOMODCACHE="$(go env GOMODCACHE)" DOCKER_CONFIG="$HOME/.docker" && clear`
 Enter
 Sleep 2s
 Show
