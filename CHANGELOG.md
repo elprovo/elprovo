@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- `elprovo.toml` version 3 has named suites, `[suites.<name>]`, each with its own `run`, `report`, `timeout` and `app`. Suites run one after the other in each run, in the order the file lists them. `[tests]` keeps only `files`.
+- A suite whose `run` has `{packages}` gets the packages that the change touches, as before, and is left out when there are none. A suite without `{packages}`, such as an e2e suite, runs as written on every replay, and all its tests count. So a change to the app's code alone shows whether an e2e test broke.
+- When several suites report one test in one run, a failure counts over a pass, and a pass over a skip. A test without a result takes its reason from the suite that runs its package's tests, so a unit suite that cannot build an e2e package does not explain the e2e tests.
+- A suite whose app does not start stops the replay with exit status 2, and the message names the suite.
+- Version 2 still works, as one suite named `tests`. A base run takes each suite's `app` from the base commit's file, of version 2 or 3, when it has one for that suite.
+- **Breaking:** `report.json` is format 3. It lists the `suites`. Each run has `suites`, with the outcome, exit code, reason, last line and log of each suite. Each test has `suites`, and each of its results has the `suite` whose result counted. Logs are in `<side>-<n>/<suite>/`.
+
 ## 0.3.1 (2026-10-25)
 
 Elprovo is public, at `github.com/elprovo/elprovo`. Nothing in its behavior changed.

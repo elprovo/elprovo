@@ -61,7 +61,7 @@ func TestARunKeepsWithinItsLimitsAndLeavesNothingBehind(t *testing.T) {
 	if entries, _ := os.ReadDir(filepath.Join(run.LogDir, "artifacts")); len(entries) != 0 {
 		t.Errorf("the artifacts directory holds %d entries after the drop; want 0", len(entries))
 	}
-	log, err := os.ReadFile(filepath.Join(run.LogDir, "test.log"))
+	log, err := os.ReadFile(filepath.Join(run.LogDir, "tests", "test.log"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,15 +107,15 @@ func TestTheLastLineIsReadBeforeTheLogIsCut(t *testing.T) {
 	report, _ := replayOnce(t, "yes a | head -c 1000; echo the end\n", replay.Limits{LogBytes: 100})
 
 	run := report.BaseRuns[0]
-	if run.Outcome != replay.RunNotRun || run.LastLine != "the end" {
-		t.Errorf("outcome %q, last_line %q; want not-run and %q", run.Outcome, run.LastLine, "the end")
+	if run.Outcome != replay.RunNotRun || run.Suites[0].LastLine != "the end" {
+		t.Errorf("outcome %q, last_line %q; want not-run and %q", run.Outcome, run.Suites[0].LastLine, "the end")
 	}
 }
 
 func TestTheLastLineKeepsAtMost200Characters(t *testing.T) {
 	report, _ := replayOnce(t, "printf 'é%.0s' $(seq 300); echo\n", replay.Limits{})
 
-	if got := report.BaseRuns[0].LastLine; got != strings.Repeat("é", 200) {
+	if got := report.BaseRuns[0].Suites[0].LastLine; got != strings.Repeat("é", 200) {
 		t.Errorf("last_line has %d characters in %d bytes; want 200 é characters", utf8.RuneCountInString(got), len(got))
 	}
 }

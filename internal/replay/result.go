@@ -45,28 +45,23 @@ const (
 
 // RunReport is one run on one commit.
 type RunReport struct {
-	Run     int        `json:"run"`
-	Outcome RunOutcome `json:"outcome"`
-	// ExitCode is the exit status of the test command, which decides
-	// nothing.
-	ExitCode         *int    `json:"exit_code"`
-	TimedOut         bool    `json:"timed_out"`
-	Seconds          float64 `json:"seconds"`
-	Reason           string  `json:"reason"`
-	LastLine         string  `json:"last_line"`
-	ArtifactsDropped bool    `json:"artifacts_dropped"`
-	Dir              string  `json:"dir"`
-	// Log is the log of the command that decided the outcome, relative to
-	// the replay's directory: the test command's, or for a run that did not
-	// run, the log of start, ready or the test command. It is empty when no
-	// such command ran.
-	Log string `json:"log"`
+	Run int `json:"run"`
+	// Outcome is not-run when a suite did not run.
+	Outcome          RunOutcome `json:"outcome"`
+	Seconds          float64    `json:"seconds"`
+	ArtifactsDropped bool       `json:"artifacts_dropped"`
+	Dir              string     `json:"dir"`
+	// Suites are the suites that the run started, in their order.
+	Suites []SuiteRun `json:"suites"`
 	// LogDir is the absolute path of the run's directory. It is not in the
 	// report, which uses paths relative to the replay's directory.
 	LogDir string `json:"-"`
 }
 
-// SuiteRun is how one suite ended in one run.
+// SuiteRun is how one suite ended in one run. Its log is the log of the
+// command that decided its outcome, relative to the replay's directory: the
+// suite's command, or for a suite that did not run, the log of start, ready
+// or the command. It is empty when no such command ran.
 type SuiteRun struct {
 	Suite   string     `json:"suite"`
 	Outcome RunOutcome `json:"outcome"`
@@ -84,6 +79,9 @@ type SuiteRun struct {
 type TestRun struct {
 	Outcome gotest.Outcome `json:"outcome"`
 	Message string         `json:"message"`
+	// Suite is the suite whose result or reason counted. It is empty for a
+	// test that no suite reported.
+	Suite string `json:"suite,omitempty"`
 	// stopped is true for an absent test whose package failed in the run,
 	// such as by a build error, a panic or a timeout.
 	stopped bool
@@ -100,7 +98,9 @@ type TestReport struct {
 	Name    string `json:"name"`
 	// File is the test's file. It is empty for a test that the change does
 	// not add or edit.
-	File    string    `json:"file,omitempty"`
+	File string `json:"file,omitempty"`
+	// Suites are the suites that reported the test in any run.
+	Suites  []string  `json:"suites"`
 	Verdict Verdict   `json:"verdict"`
 	Base    []TestRun `json:"base"`
 	Head    []TestRun `json:"head"`
@@ -122,7 +122,9 @@ type Report struct {
 	Head         string `json:"head"`
 	Runs         int    `json:"runs"`
 	StoppedEarly string `json:"stopped_early"`
-	// Packages are the packages that the runs test.
+	// Suites are the names of the suites, in the order they run.
+	Suites []string `json:"suites"`
+	// Packages are the packages that the suites with {packages} test.
 	Packages    []string     `json:"packages"`
 	Changed     []TestReport `json:"changed"`
 	Regressions []TestReport `json:"regressions"`

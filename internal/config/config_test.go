@@ -47,6 +47,76 @@ func TestParseRepoReadsTheApp(t *testing.T) {
 	}
 }
 
+// suites is an elprovo.toml of version 3 with a unit suite and an e2e suite.
+const suites = `version = 3
+
+[tests]
+files = ["**/*_test.go"]
+
+[suites.unit]
+run = "go test -json -count=1 {packages}"
+report = "go-test-json"
+
+[suites.e2e]
+run = "go test -json -count=1 -tags=e2e ./e2e/..."
+report = "go-test-json"
+timeout = "20m"
+
+[suites.e2e.app]
+start = "docker compose up -d --wait"
+ready = "curl -fsS localhost:8080/healthz"
+stop = "docker compose down -v"
+timeouts.ready = "1m"
+`
+
+func TestParseRepoReadsTheSuitesOfVersion3InFileOrder(t *testing.T) {
+	repo, err := ParseRepo("elprovo.toml", []byte(strings.Replace(suites, "[suites.unit]", "[suites.zeta]", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.Suites) != 2 || repo.Suites[0].Name != "zeta" || repo.Suites[1].Name != "e2e" {
+		t.Fatalf("suites are %+v; want zeta, then e2e", repo.Suites)
+	}
+	unit, e2e := repo.Suites[0], repo.Suites[1]
+	if !unit.TakesPackages() || unit.Timeout != 10*time.Minute || unit.App != nil {
+		t.Errorf("the first suite is %+v; want one that takes packages, with a 10m timeout and no app", unit)
+	}
+	if e2e.TakesPackages() || e2e.Timeout != 20*time.Minute || e2e.Run != "go test -json -count=1 -tags=e2e ./e2e/..." {
+		t.Errorf("the e2e suite is %+v; want its own command and a 20m timeout", e2e)
+	}
+	if e2e.App == nil || e2e.App.Start != "docker compose up -d --wait" || e2e.App.ReadyTimeout != time.Minute || e2e.App.StartTimeout != 10*time.Minute {
+		t.Errorf("the e2e app is %+v; want start from the file, ready in 1m, start in 10m", e2e.App)
+	}
+	if len(repo.Tests.Files) != 1 {
+		t.Errorf("tests.files is %v; want one pattern", repo.Tests.Files)
+	}
+}
+
+func TestParseRepoRejectsInvalidVersion3Files(t *testing.T) {
+	tests := []struct {
+		name, content, wantInError string
+	}{
+		{"no suite", "version = 3\n\n[tests]\nfiles = [\"**/*_test.go\"]\n", "suites is missing"},
+		{"a bad suite name", strings.Replace(suites, "[suites.unit]", "[suites.Unit]", 1), `suite name "Unit" must match [a-z0-9][a-z0-9-]*`},
+		{"an unknown suite field", strings.Replace(suites, "timeout = \"20m\"", "timout = \"20m\"", 1), `unknown field "suites.e2e.timout"`},
+		{"an unknown app field", strings.Replace(suites, "stop = \"docker compose down -v\"", "stp = \"x\"", 1), `unknown field "suites.e2e.app.stp"`},
+		{"a suite without run", strings.Replace(suites, "run = \"go test -json -count=1 {packages}\"\n", "", 1), "suites.unit.run is missing"},
+		{"another report", strings.Replace(suites, "report = \"go-test-json\"\ntimeout", "report = \"junit\"\ntimeout", 1), `suites.e2e.report is "junit"`},
+		{"an app without ready", strings.Replace(suites, "ready = \"curl -fsS localhost:8080/healthz\"\n", "", 1), "suites.e2e.app.ready is missing"},
+		{"tests.run in version 3", strings.Replace(suites, "files = [\"**/*_test.go\"]", "files = [\"**/*_test.go\"]\nrun = \"go test\"", 1), "tests.run is a field of version 2"},
+		{"an app table in version 3", suites + "\n[app]\nstart = \"x\"\nready = \"y\"\n", "app is a table of version 2"},
+		{"suites in version 2", minimal + "\n[suites.unit]\nrun = \"x\"\nreport = \"go-test-json\"\n", "suites is a table of version 3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ParseRepo("elprovo.toml", []byte(tt.content))
+			if err == nil || !strings.Contains(err.Error(), tt.wantInError) {
+				t.Errorf("error is %v; want one that contains %q", err, tt.wantInError)
+			}
+		})
+	}
+}
+
 func TestParseRepoRejectsVersion1WithItsOwnError(t *testing.T) {
 	_, err := ParseRepo("elprovo.toml", []byte("version = 1\nstart = \"s\"\nready = \"r\"\n"))
 	if !errors.Is(err, ErrVersion1) || !strings.Contains(err.Error(), "version 1 is the proof-file format of Elprovo 0.2") {
@@ -59,7 +129,7 @@ func TestParseRepoRejectsInvalidFiles(t *testing.T) {
 		name, content, wantInError string
 	}{
 		{"missing version", strings.Replace(minimal, "version = 2\n", "", 1), "version is missing"},
-		{"newer version", strings.Replace(minimal, "version = 2", "version = 3", 1), "version 3 is not supported"},
+		{"newer version", strings.Replace(minimal, "version = 2", "version = 4", 1), "version 4 is not supported"},
 		{"missing files", strings.Replace(minimal, "files = [\"**/*_test.go\"]\n", "", 1), "tests.files is missing"},
 		{"bad pattern", strings.Replace(minimal, "**/*_test.go", "[", 1), `tests.files pattern "[" is not valid`},
 		{"missing run", strings.Replace(minimal, "run = \"go test -json -count=1 {packages}\"\n", "", 1), "tests.run is missing"},

@@ -96,8 +96,17 @@ func parse(flags *flag.FlagSet, args []string, opts *replay.Options, env Env) (i
 
 // runPlan runs a prepared plan, with progress on standard error.
 func runPlan(ctx context.Context, plan replay.Plan, opts replay.Options, env Env) (replay.Report, bool) {
+	named := len(plan.Suites()) > 1
 	opts.RunDone = func(side string, run replay.RunReport) {
-		fmt.Fprintf(env.Stderr, "%s run %d: %s (%.1fs)\n", side, run.Run, run.Outcome, run.Seconds)
+		if !named || len(run.Suites) == 0 {
+			fmt.Fprintf(env.Stderr, "%s run %d: %s (%.1fs)\n", side, run.Run, run.Outcome, run.Seconds)
+			return
+		}
+		var suites []string
+		for _, s := range run.Suites {
+			suites = append(suites, fmt.Sprintf("%s %s (%.1fs)", s.Suite, s.Outcome, s.Seconds))
+		}
+		fmt.Fprintf(env.Stderr, "%s run %d: %s\n", side, run.Run, strings.Join(suites, ", "))
 	}
 	opts.Warn = func(message string) { fmt.Fprintf(env.Stderr, "elprovo: warning: %s\n", config.EscapeControl(message)) }
 	report, err := replay.Run(ctx, plan, opts)
@@ -157,7 +166,7 @@ func runReplay(ctx context.Context, args []string, env Env) int {
 		runs += " (dry run)"
 	}
 	out.header(plan, runs)
-	if len(plan.Packages) == 0 {
+	if !plan.HasWork() {
 		fmt.Fprintln(out.w, "The change touches no Go package, so there is no test to run.")
 		if *require {
 			fmt.Fprintln(out.w, "--require is on, so this is a failure.")
@@ -193,13 +202,17 @@ type output struct {
 }
 
 // header names the commits, says how many runs there are, and lists the
-// packages.
+// packages and, when there are several, the suites.
 func (o output) header(plan replay.Plan, runs string) {
 	packages := "none"
 	if len(plan.Packages) > 0 {
 		packages = config.EscapeControl(strings.Join(plan.Packages, " "))
 	}
-	fmt.Fprintf(o.w, "base %s  head %s  %s\npackages: %s\n\n", plan.Base[:7], plan.Head[:7], runs, packages)
+	fmt.Fprintf(o.w, "base %s  head %s  %s\npackages: %s\n", plan.Base[:7], plan.Head[:7], runs, packages)
+	if suites := plan.Suites(); len(suites) > 1 {
+		fmt.Fprintf(o.w, "suites: %s\n", strings.Join(suites, ", "))
+	}
+	fmt.Fprintln(o.w)
 }
 
 func (o output) dryRun(plan replay.Plan) {
@@ -286,7 +299,7 @@ func (o output) test(report replay.Report, t replay.TestReport, where string) {
 			if side == "head" {
 				runs = report.HeadRuns
 			}
-			if log := runs[n-1].Log; log != "" {
+			if log := suiteLog(runs[n-1], run.Suite); log != "" {
 				fmt.Fprintf(o.w, "%slog: %s\n", indent, o.rel(filepath.Join(report.Dir, log)))
 			}
 		}
@@ -338,20 +351,36 @@ func (o output) stoppedEarly(report replay.Report) {
 		runs []replay.RunReport
 	}{{"base", report.BaseRuns}, {"head", report.HeadRuns}} {
 		for _, run := range side.runs {
-			if run.Outcome != replay.RunNotRun {
-				continue
-			}
-			if run.LastLine == "" {
-				fmt.Fprintf(o.w, "%s run %d printed nothing.\n", side.name, run.Run)
-			} else {
-				fmt.Fprintf(o.w, "%s run %d ended with: %s\n", side.name, run.Run, run.LastLine)
-			}
-			if run.Log != "" {
-				fmt.Fprintf(o.w, "log: %s\n", o.rel(filepath.Join(report.Dir, run.Log)))
+			for _, suite := range run.Suites {
+				if suite.Outcome != replay.RunNotRun {
+					continue
+				}
+				which := fmt.Sprintf("%s run %d", side.name, run.Run)
+				if len(report.Suites) > 1 {
+					which += " " + suite.Suite
+				}
+				if suite.LastLine == "" {
+					fmt.Fprintf(o.w, "%s printed nothing.\n", which)
+				} else {
+					fmt.Fprintf(o.w, "%s ended with: %s\n", which, suite.LastLine)
+				}
+				if suite.Log != "" {
+					fmt.Fprintf(o.w, "log: %s\n", o.rel(filepath.Join(report.Dir, suite.Log)))
+				}
 			}
 		}
 	}
 	fmt.Fprintln(o.w)
+}
+
+// suiteLog returns the log of the suite named suite in run, or "".
+func suiteLog(run replay.RunReport, suite string) string {
+	for _, s := range run.Suites {
+		if s.Suite == suite {
+			return s.Log
+		}
+	}
+	return ""
 }
 
 // outcomes says how a test ended in a side's runs, such as "failed 2 of 2".

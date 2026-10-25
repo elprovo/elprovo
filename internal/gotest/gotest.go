@@ -67,6 +67,12 @@ const (
 // rank orders the outcomes of one name: the higher one counts.
 var rank = map[Outcome]int{Skipped: 0, Passed: 1, Failed: 2}
 
+// Over reports whether o counts over other when one test has both: a
+// failure counts over a pass, and a pass over a skip.
+func (o Outcome) Over(other Outcome) bool {
+	return rank[o] > rank[other]
+}
+
 // locationOnly matches a line that names a place in a file and nothing else,
 // such as "x_test.go:10:".
 var locationOnly = regexp.MustCompile(`^[^\s:]+\.go:[0-9]+:$`)
@@ -166,7 +172,7 @@ func Parse(r io.Reader) (Results, error) {
 		if result.Outcome != Passed {
 			result.Message = firstLines[t]
 		}
-		if previous, ok := results.Tests[t]; ok && rank[previous.Outcome] >= rank[result.Outcome] {
+		if previous, ok := results.Tests[t]; ok && !result.Outcome.Over(previous.Outcome) {
 			continue
 		}
 		results.Tests[t] = result

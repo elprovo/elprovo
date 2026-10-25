@@ -131,7 +131,7 @@ packages: ./cart
 ✗ not fixed       TestCouponAppliesOnce  cart/coupon_test.go
                   base: failed 2 of 2   head: failed 2 of 2
                   head run 1: coupon_test.go:12: total after SAVE10 twice is 81.00; want 90.00
-                  log: .elprovo/runs/e2hsazj0/head-1/test.log
+                  log: .elprovo/runs/e2hsazj0/head-1/tests/test.log
 
 Changed tests: 1 not fixed.
 Other tests: 2 kept.

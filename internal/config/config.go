@@ -22,7 +22,7 @@ const MaxFileSize = 64 << 10
 // RepoFile is the path of the repository file, relative to the repository root.
 const RepoFile = "elprovo.toml"
 
-// Packages is the placeholder in tests.run for the packages to test.
+// Packages is the placeholder in a suite's run for the packages to test.
 const Packages = "{packages}"
 
 // GoTestJSON is the only report format this release reads: the output of
@@ -30,7 +30,7 @@ const Packages = "{packages}"
 const GoTestJSON = "go-test-json"
 
 // ErrVersion1 is the error for an elprovo.toml in the format of Elprovo 0.2.
-var ErrVersion1 = errors.New("version 1 is the proof-file format of Elprovo 0.2; write version 2, as SPEC.md section 1 shows")
+var ErrVersion1 = errors.New("version 1 is the proof-file format of Elprovo 0.2; write version 3, as SPEC.md section 1 shows")
 
 // Repo is a checked elprovo.toml.
 type Repo struct {
@@ -56,6 +56,13 @@ type Suite struct {
 	App *App
 }
 
+// TakesPackages reports whether the suite's command takes the packages that
+// the change touches, in place of {packages}. A suite that does not runs on
+// every replay.
+func (s Suite) TakesPackages() bool {
+	return strings.Contains(s.Run, Packages)
+}
+
 // App says how to start, check and stop an app that the tests need.
 type App struct {
 	Start        string
@@ -67,10 +74,31 @@ type App struct {
 }
 
 var (
-	envNamePattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	durationPattern = regexp.MustCompile(`^([1-9][0-9]*)([smh])$`)
+	envNamePattern   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	suiteNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	durationPattern  = regexp.MustCompile(`^([1-9][0-9]*)([smh])$`)
 )
 
+type rawApp struct {
+	Start    string `toml:"start"`
+	Ready    string `toml:"ready"`
+	Stop     string `toml:"stop"`
+	Timeouts struct {
+		Start string `toml:"start"`
+		Ready string `toml:"ready"`
+		Stop  string `toml:"stop"`
+	} `toml:"timeouts"`
+}
+
+type rawSuite struct {
+	Run     string `toml:"run"`
+	Report  string `toml:"report"`
+	Timeout string `toml:"timeout"`
+	App     rawApp `toml:"app"`
+}
+
+// rawRepo holds both versions. Version 2 has run, report and timeout in
+// [tests], and [app]; version 3 has them in [suites.<name>].
 type rawRepo struct {
 	Version *int              `toml:"version"`
 	Env     map[string]string `toml:"env"`
@@ -81,16 +109,8 @@ type rawRepo struct {
 		Report  string   `toml:"report"`
 		Timeout string   `toml:"timeout"`
 	} `toml:"tests"`
-	App struct {
-		Start    string `toml:"start"`
-		Ready    string `toml:"ready"`
-		Stop     string `toml:"stop"`
-		Timeouts struct {
-			Start string `toml:"start"`
-			Ready string `toml:"ready"`
-			Stop  string `toml:"stop"`
-		} `toml:"timeouts"`
-	} `toml:"app"`
+	App    rawApp              `toml:"app"`
+	Suites map[string]rawSuite `toml:"suites"`
 }
 
 // ParseRepo checks the content of an elprovo.toml. name is the file's name in
@@ -102,64 +122,96 @@ func ParseRepo(name string, data []byte) (Repo, error) {
 		return Repo{}, fmt.Errorf("%s: %w", name, err)
 	}
 	var problems []string
-	switch {
-	case raw.Version == nil:
-		problems = append(problems, "version is missing")
-	case *raw.Version != 2:
-		problems = append(problems, fmt.Sprintf("version %d is not supported; this release reads version 2", *raw.Version))
-	}
 	for envName := range raw.Env {
 		problems = checkEnvName(problems, "env", envName)
 	}
 	for _, envName := range raw.PassEnv {
 		problems = checkEnvName(problems, "pass_env", envName)
 	}
-
-	tests := raw.Tests
-	repo := Repo{
-		Env:     raw.Env,
-		PassEnv: raw.PassEnv,
-		Tests:   Tests{Files: tests.Files},
-	}
-	// Version 2 has one suite: [tests] with [app].
-	suite := Suite{Name: "tests", Run: tests.Run}
-	if len(tests.Files) == 0 {
+	repo := Repo{Env: raw.Env, PassEnv: raw.PassEnv, Tests: Tests{Files: raw.Tests.Files}}
+	if len(repo.Tests.Files) == 0 {
 		problems = append(problems, "tests.files is missing")
 	}
-	for _, pattern := range tests.Files {
+	for _, pattern := range repo.Tests.Files {
 		if !validPattern(pattern) {
 			problems = append(problems, fmt.Sprintf("tests.files pattern %q is not valid", pattern))
 		}
 	}
-	switch {
-	case strings.TrimSpace(tests.Run) == "":
-		problems = append(problems, "tests.run is missing")
-	case !strings.Contains(tests.Run, Packages):
-		problems = append(problems, "tests.run must contain "+Packages+", where Elprovo puts the packages to test")
-	}
-	switch tests.Report {
-	case "":
-		problems = append(problems, "tests.report is missing")
-	case GoTestJSON:
-	default:
-		problems = append(problems, fmt.Sprintf("tests.report is %q; this release reads %s", tests.Report, GoTestJSON))
-	}
-	problems = parseDuration(problems, "tests.timeout", tests.Timeout, 10*time.Minute, &suite.Timeout)
 
-	if meta.IsDefined("app") {
-		app := raw.App
-		suite.App = &App{Start: app.Start, Ready: app.Ready, Stop: strings.TrimSpace(app.Stop)}
-		problems = requireCommand(problems, "app.start", app.Start)
-		problems = requireCommand(problems, "app.ready", app.Ready)
-		problems = parseDuration(problems, "app.timeouts.start", app.Timeouts.Start, 10*time.Minute, &suite.App.StartTimeout)
-		problems = parseDuration(problems, "app.timeouts.ready", app.Timeouts.Ready, 5*time.Minute, &suite.App.ReadyTimeout)
-		problems = parseDuration(problems, "app.timeouts.stop", app.Timeouts.Stop, 2*time.Minute, &suite.App.StopTimeout)
+	switch {
+	case raw.Version == nil:
+		problems = append(problems, "version is missing")
+	case *raw.Version == 2:
+		if meta.IsDefined("suites") {
+			problems = append(problems, "suites is a table of version 3; write version 3, or put the command in [tests]")
+		}
+		// Version 2 has one suite: [tests] with [app]. Its command takes
+		// the packages.
+		tests := rawSuite{Run: raw.Tests.Run, Report: raw.Tests.Report, Timeout: raw.Tests.Timeout, App: raw.App}
+		var suite Suite
+		suite, problems = parseSuite(problems, "tests", "tests", "app", tests, meta.IsDefined("app"))
+		if suite.Run != "" && !suite.TakesPackages() {
+			problems = append(problems, "tests.run must contain "+Packages+", where Elprovo puts the packages to test")
+		}
+		repo.Suites = []Suite{suite}
+	case *raw.Version == 3:
+		for _, field := range []string{"run", "report", "timeout"} {
+			if meta.IsDefined("tests", field) {
+				problems = append(problems, fmt.Sprintf("tests.%s is a field of version 2; in version 3 it belongs to a suite, such as [suites.unit]", field))
+			}
+		}
+		if meta.IsDefined("app") {
+			problems = append(problems, "app is a table of version 2; in version 3 each suite has its own, such as [suites.e2e.app]")
+		}
+		for _, key := range meta.Keys() {
+			if len(key) != 2 || key[0] != "suites" {
+				continue
+			}
+			suiteName := key[1]
+			if !suiteNamePattern.MatchString(suiteName) {
+				problems = append(problems, fmt.Sprintf("suite name %q must match [a-z0-9][a-z0-9-]*", EscapeControl(suiteName)))
+				continue
+			}
+			prefix := "suites." + suiteName
+			var suite Suite
+			suite, problems = parseSuite(problems, suiteName, prefix, prefix+".app", raw.Suites[suiteName], meta.IsDefined("suites", suiteName, "app"))
+			repo.Suites = append(repo.Suites, suite)
+		}
+		if len(raw.Suites) == 0 {
+			problems = append(problems, "suites is missing; add at least one, such as [suites.unit]")
+		}
+	default:
+		problems = append(problems, fmt.Sprintf("version %d is not supported; this release reads versions 2 and 3", *raw.Version))
 	}
-	repo.Suites = []Suite{suite}
 	if len(problems) > 0 {
 		return Repo{}, fmt.Errorf("%s: %s", name, strings.Join(problems, "; "))
 	}
 	return repo, nil
+}
+
+// parseSuite checks one suite. prefix and appPrefix name its fields and its
+// app's fields in messages.
+func parseSuite(problems []string, name, prefix, appPrefix string, raw rawSuite, hasApp bool) (Suite, []string) {
+	suite := Suite{Name: name, Run: raw.Run}
+	problems = requireCommand(problems, prefix+".run", raw.Run)
+	switch raw.Report {
+	case "":
+		problems = append(problems, prefix+".report is missing")
+	case GoTestJSON:
+	default:
+		problems = append(problems, fmt.Sprintf("%s.report is %q; this release reads %s", prefix, raw.Report, GoTestJSON))
+	}
+	problems = parseDuration(problems, prefix+".timeout", raw.Timeout, 10*time.Minute, &suite.Timeout)
+	if hasApp {
+		app := raw.App
+		suite.App = &App{Start: app.Start, Ready: app.Ready, Stop: strings.TrimSpace(app.Stop)}
+		problems = requireCommand(problems, appPrefix+".start", app.Start)
+		problems = requireCommand(problems, appPrefix+".ready", app.Ready)
+		problems = parseDuration(problems, appPrefix+".timeouts.start", app.Timeouts.Start, 10*time.Minute, &suite.App.StartTimeout)
+		problems = parseDuration(problems, appPrefix+".timeouts.ready", app.Timeouts.Ready, 5*time.Minute, &suite.App.ReadyTimeout)
+		problems = parseDuration(problems, appPrefix+".timeouts.stop", app.Timeouts.Stop, 2*time.Minute, &suite.App.StopTimeout)
+	}
+	return suite, problems
 }
 
 // decode reads a TOML document into raw and rejects keys that raw has no
@@ -201,12 +253,17 @@ func decode(data []byte, raw *rawRepo) (toml.MetaData, error) {
 // unknownKeys lists, quoted, the keys of the file that no field of rawRepo
 // has as its exact toml tag. The decoder also matches a key to a field in
 // another case, so MetaData.Undecoded would let RUN set run. A key under a
-// map, such as a name in env, is not checked.
+// map, such as a name in env or a suite name, is not checked; the fields of
+// a suite are.
 func unknownKeys(meta toml.MetaData) []string {
 	var unknown []string
 	for _, key := range meta.Keys() {
 		parent := reflect.TypeFor[rawRepo]()
 		for i, part := range key {
+			if parent.Kind() == reflect.Map && parent.Elem().Kind() == reflect.Struct {
+				parent = parent.Elem()
+				continue
+			}
 			if parent.Kind() != reflect.Struct {
 				break
 			}

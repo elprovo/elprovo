@@ -149,7 +149,7 @@ func Prepare(ctx context.Context, opts Options) (Plan, error) {
 		})
 		slices.Sort(plan.Packages)
 	}
-	if len(plan.Packages) > 0 {
+	if plan.HasWork() {
 		if plan.module, err = modulePath(ctx, repo, plan.Head); err != nil {
 			return Plan{}, err
 		}
@@ -422,7 +422,8 @@ func Run(ctx context.Context, plan Plan, opts Options) (Report, error) {
 		return Report{}, err
 	}
 	report := Report{
-		Format: 2, Command: CommandReplay, Base: plan.Base, Head: plan.Head, Runs: opts.Runs, Packages: append([]string{}, plan.Packages...),
+		Format: 3, Command: CommandReplay, Base: plan.Base, Head: plan.Head, Runs: opts.Runs,
+		Suites: plan.Suites(), Packages: append([]string{}, plan.Packages...),
 		Changed: []TestReport{}, Regressions: []TestReport{}, BaseRuns: []RunReport{}, HeadRuns: []RunReport{},
 	}
 	report.Dir = filepath.Join(out, "runs", randomID())
@@ -457,7 +458,13 @@ runs:
 					opts.RunDone(side, *run)
 				}
 				if run.Outcome == RunNotRun && stop == "" {
-					stop = fmt.Sprintf("%s run %d did not run: %s", side, n, run.Reason)
+					// The run stops at the first suite that did not run.
+					suite := run.Suites[len(run.Suites)-1]
+					reason := suite.Reason
+					if len(report.Suites) > 1 {
+						reason = suite.Suite + ": " + reason
+					}
+					stop = fmt.Sprintf("%s run %d did not run: %s", side, n, reason)
 				}
 			}
 			if stop != "" {
@@ -482,11 +489,16 @@ runs:
 // printed a result for, its results and, when every run ended, its verdict.
 func (p Plan) testReports(base, head []runResults, finished bool) (changed, regressions []TestReport) {
 	changed, regressions = []TestReport{}, []TestReport{}
+	runs := slices.Concat(base, head)
+	owners := owners(p.Suites(), runs)
 	isChanged := map[gotest.Test]bool{}
 	for _, c := range p.Changed {
 		t := gotest.Test{Package: p.importPath(c.Package), Name: c.Name}
 		isChanged[t] = true
-		report := TestReport{Package: c.Package, Name: c.Name, File: c.File, Base: testRuns(base, t), Head: testRuns(head, t)}
+		report := TestReport{
+			Package: c.Package, Name: c.Name, File: c.File, Suites: reportedBy(t, runs, p.Suites()),
+			Base: testRuns(base, t, owners), Head: testRuns(head, t, owners),
+		}
 		switch {
 		case !finished:
 		case p.reproduce:
@@ -500,25 +512,32 @@ func (p Plan) testReports(base, head []runResults, finished bool) (changed, regr
 		return changed, regressions
 	}
 
-	pkgOf := map[string]string{}
+	// A suite with {packages} counts for the touched packages only; a suite
+	// without it counts for every package that it reports.
+	touched := map[string]bool{}
 	for _, pkg := range p.Packages {
-		pkgOf[p.importPath(pkg)] = pkg
+		touched[p.importPath(pkg)] = true
 	}
 	seen := map[gotest.Test]bool{}
 	var others []gotest.Test
-	for _, results := range slices.Concat(base, head) {
-		for t := range results.Tests {
-			if _, ok := pkgOf[t.Package]; ok && !isChanged[t] && !seen[t] {
-				seen[t] = true
-				others = append(others, t)
+	for _, results := range runs {
+		for _, s := range results.suites {
+			for t := range s.Tests {
+				if (s.whole || touched[t.Package]) && !isChanged[t] && !seen[t] {
+					seen[t] = true
+					others = append(others, t)
+				}
 			}
 		}
 	}
 	slices.SortFunc(others, func(a, b gotest.Test) int {
-		return strings.Compare(pkgOf[a.Package]+"\x00"+a.Name, pkgOf[b.Package]+"\x00"+b.Name)
+		return strings.Compare(p.packageDir(a.Package)+"\x00"+a.Name, p.packageDir(b.Package)+"\x00"+b.Name)
 	})
 	for _, t := range others {
-		report := TestReport{Package: pkgOf[t.Package], Name: config.EscapeControl(t.Name), Base: testRuns(base, t), Head: testRuns(head, t)}
+		report := TestReport{
+			Package: config.EscapeControl(p.packageDir(t.Package)), Name: config.EscapeControl(t.Name), Suites: reportedBy(t, runs, p.Suites()),
+			Base: testRuns(base, t, owners), Head: testRuns(head, t, owners),
+		}
 		if finished {
 			report.Verdict = regressionVerdict(regressionOutcomes(report.Head), regressionOutcomes(report.Base))
 		}
@@ -529,26 +548,82 @@ func (p Plan) testReports(base, head []runResults, finished bool) (changed, regr
 
 // testRuns returns the result of t in each run, with control characters in
 // the messages escaped.
-func testRuns(runs []runResults, t gotest.Test) []TestRun {
+func testRuns(runs []runResults, t gotest.Test, owners map[string]string) []TestRun {
 	list := []TestRun{}
 	for _, results := range runs {
-		result := results.Result(t)
-		run := TestRun{Outcome: result.Outcome, Message: result.Message}
-		if result.Outcome == gotest.Absent {
-			switch {
-			case run.Message != "":
-				// go test gave the package a reason, or the tests timed out.
-				run.stopped = true
-			case results.missing[t.Package] != "":
-				run.Message = results.missing[t.Package]
-			default:
-				run.Message = "the run printed no result for this test"
-			}
-		}
+		run := results.result(t, owners[t.Package])
 		run.Message = config.EscapeControl(cutRunes(run.Message, maxReported))
 		list = append(list, run)
 	}
 	return list
+}
+
+// owners returns, for each package, the first suite, in suite order, that
+// reports a test in it in any run. Another suite can only fail to build the
+// package, as a unit suite does for an e2e package with a build tag, so its
+// reason must not explain the owner's tests.
+func owners(suites []string, runs []runResults) map[string]string {
+	owners := map[string]string{}
+	for _, suite := range slices.Backward(suites) {
+		for _, results := range runs {
+			for _, s := range results.suites {
+				if s.name != suite {
+					continue
+				}
+				for t := range s.Tests {
+					owners[t.Package] = suite
+				}
+			}
+		}
+	}
+	return owners
+}
+
+// reportedBy returns, in suite order, the suites that report t in any run.
+func reportedBy(t gotest.Test, runs []runResults, suites []string) []string {
+	by := []string{}
+	for _, suite := range suites {
+		if slices.ContainsFunc(runs, func(results runResults) bool {
+			return slices.ContainsFunc(results.suites, func(s suiteResults) bool {
+				_, ok := s.Tests[t]
+				return ok && s.name == suite
+			})
+		}) {
+			by = append(by, suite)
+		}
+	}
+	return by
+}
+
+// packageDir returns the directory of the package with the import path
+// importPath, as go test takes it, such as ./e2e. A package outside the
+// module keeps its import path.
+func (p Plan) packageDir(importPath string) string {
+	switch {
+	case importPath == p.module:
+		return "."
+	case strings.HasPrefix(importPath, p.module+"/"):
+		return "./" + strings.TrimPrefix(importPath, p.module+"/")
+	default:
+		return importPath
+	}
+}
+
+// Suites returns the names of the suites, in the order they run.
+func (p Plan) Suites() []string {
+	names := []string{}
+	for _, s := range p.headConfig.Suites {
+		names = append(names, s.Name)
+	}
+	return names
+}
+
+// HasWork reports whether any suite would run: a suite with {packages}
+// needs a touched package, and a suite without it always runs.
+func (p Plan) HasWork() bool {
+	return slices.ContainsFunc(p.headConfig.Suites, func(s config.Suite) bool {
+		return !s.TakesPackages() || len(p.Packages) > 0
+	})
 }
 
 func outcomes(runs []TestRun) []gotest.Outcome {

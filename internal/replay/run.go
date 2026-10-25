@@ -112,44 +112,52 @@ func (r runner) runOnce(ctx context.Context, side string, n int) (*RunReport, ru
 		work:     work,
 		env:      commandEnv(r.opts.Environ, r.plan.headConfig, home, tmp, id, artifacts),
 		packages: packages,
-		logDir:   runDir,
-		logName:  name,
 	}
-	run := &RunReport{Run: n, Outcome: RunNotRun, Dir: name, LogDir: runDir}
-	var results gotest.Results
+	run := &RunReport{Run: n, Outcome: Ran, Dir: name, Suites: []SuiteRun{}, LogDir: runDir}
+	results := runResults{missing: missing}
 	stop := ""
 	interrupted := false
 	for _, suite := range r.plan.headConfig.Suites {
+		if suite.TakesPackages() && len(packages) == 0 {
+			continue
+		}
 		// Both commits run the tests as the head commit's elprovo.toml
 		// says, so that only the code differs. The app belongs to the code,
 		// so a base run starts the base commit's app when it has one.
 		if app := r.plan.baseApps[suite.Name]; side == "base" && app != nil {
 			suite.App = app
 		}
+		c.logDir, c.logName = filepath.Join(runDir, suite.Name), filepath.Join(name, suite.Name)
+		if err := os.Mkdir(c.logDir, 0o755); err != nil {
+			stop = fmt.Sprintf("could not make %s: %v", c.logDir, err)
+			break
+		}
 		s := r.runSuite(ctx, c, suite)
-		results = s.results
-		run.Outcome, run.ExitCode, run.TimedOut = s.run.Outcome, s.run.ExitCode, s.run.TimedOut
-		run.Reason, run.LastLine, run.Log = s.run.Reason, s.run.LastLine, s.run.Log
+		run.Suites = append(run.Suites, s.run)
+		results.suites = append(results.suites, suiteResults{name: suite.Name, whole: !suite.TakesPackages(), Results: s.results})
 		stop, interrupted = s.stop, s.interrupted
+		if s.run.Outcome == RunNotRun {
+			run.Outcome = RunNotRun
+		}
 		if stop != "" || interrupted || s.run.Outcome == RunNotRun {
 			break
 		}
 	}
 	run.Seconds = math.Round(time.Since(started).Seconds()*10) / 10
-	r.cutLogs(runDir)
 	run.ArtifactsDropped = r.keepArtifacts(artifacts, filepath.Join(runDir, "artifacts"))
 
 	if interrupted || (stop != "" && ctx.Err() != nil) {
 		return nil, runResults{}, "interrupted"
 	}
-	return run, runResults{Results: results, missing: missing}, stop
+	return run, results, stop
 }
 
 // runCopy is what the suites of one run share.
 type runCopy struct {
 	scratch, work string
 	env           []string
-	// packages are the touched packages that have Go files in the copy.
+	// packages are the touched packages that have Go files in the copy. A
+	// suite with {packages} gets them.
 	packages []string
 	// logDir is where the suites write their logs, and logName is logDir
 	// relative to the replay's directory.
@@ -164,8 +172,8 @@ type suiteResult struct {
 	interrupted bool
 }
 
-// runSuite starts the suite's app, runs its command, reads its events and
-// stops its app.
+// runSuite starts the suite's app, runs its command, reads its events,
+// stops its app and cuts its logs.
 func (r runner) runSuite(ctx context.Context, c runCopy, suite config.Suite) suiteResult {
 	command := func(ctx context.Context, name, line string, timeout time.Duration) (commandResult, error) {
 		return runCommand(ctx, line, c.work, c.env, filepath.Join(c.logDir, name+".log"), timeout)
@@ -197,10 +205,11 @@ func (r runner) runSuite(ctx context.Context, c runCopy, suite config.Suite) sui
 	}
 	switch {
 	case !ready:
-	case len(c.packages) == 0:
-		s.run.Outcome = Ran
 	default:
-		line := strings.ReplaceAll(suite.Run, config.Packages, shellWords(c.packages))
+		line := suite.Run
+		if suite.TakesPackages() {
+			line = strings.ReplaceAll(line, config.Packages, shellWords(c.packages))
+		}
 		result, err := command(ctx, "test", line, suite.Timeout)
 		switch {
 		case err != nil:
@@ -228,7 +237,7 @@ func (r runner) runSuite(ctx context.Context, c runCopy, suite config.Suite) sui
 			default:
 				s.run.Outcome = Ran
 				cleanPaths(s.results, c.scratch, c.work)
-				if result.timedOut {
+				if result.timedOut && suite.TakesPackages() {
 					for _, pkg := range c.packages {
 						setReason(&s.results, r.plan.importPath(pkg), fmt.Sprintf("the tests did not end within %s", formatDuration(suite.Timeout)))
 					}
@@ -257,6 +266,7 @@ func (r runner) runSuite(ctx context.Context, c runCopy, suite config.Suite) sui
 			r.warn(fmt.Sprintf("could not read the last line of %s: %v", log, err))
 		}
 	}
+	r.cutLogs(c.logDir)
 	return s
 }
 
@@ -329,10 +339,49 @@ func cutRunes(text string, n int) string {
 
 // runResults is what the tests of one run printed.
 type runResults struct {
-	gotest.Results
+	// suites hold the results of each suite that ran, in suite order.
+	suites []suiteResults
 	// missing holds, by import path, the packages that the copy has no Go
 	// files in, with the reason that their tests have no result.
 	missing map[string]string
+}
+
+// suiteResults is what one suite printed in one run.
+type suiteResults struct {
+	name string
+	// whole is true for a suite without {packages}, all of whose results
+	// count.
+	whole bool
+	gotest.Results
+}
+
+// result returns t's result in the run. When several suites report t, the
+// result that counts over the others wins. A test that no suite reports is
+// absent, with the reason of the package from owner, the suite that reports
+// tests in it, or when no suite does, from the first suite that gives one.
+func (r runResults) result(t gotest.Test, owner string) TestRun {
+	var best TestRun
+	for _, s := range r.suites {
+		result, ok := s.Tests[t]
+		if ok && (best.Suite == "" || result.Outcome.Over(best.Outcome)) {
+			best = TestRun{Outcome: result.Outcome, Message: result.Message, Suite: s.name}
+		}
+	}
+	if best.Suite != "" {
+		return best
+	}
+	run := TestRun{Outcome: gotest.Absent}
+	for _, s := range r.suites {
+		if reason := s.Reasons[t.Package]; reason != "" && (owner == "" || s.name == owner) {
+			run.Message, run.Suite, run.stopped = reason, s.name, true
+			return run
+		}
+	}
+	run.Message = r.missing[t.Package]
+	if run.Message == "" {
+		run.Message = "the run printed no result for this test"
+	}
+	return run
 }
 
 // setReason gives pkg a reason, unless go test gave it one.
